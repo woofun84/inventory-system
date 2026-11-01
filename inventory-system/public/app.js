@@ -208,8 +208,10 @@ const App = {
       this.logout();
       return;
     }
-    // 强制改密
+    // 强制改密：先加载 params 和渲染基础布局，再弹出改密弹窗
     if (this.user && this.user.must_change_pwd) {
+      await this.loadParams();
+      this.setMain(this.pageWrap('📦 ' + this.t('appName'), '', '', '<div id="force-pwd-hint" style="padding:40px;text-align:center;color:var(--text-muted)">' + this.t('change_password') + '</div>'));
       this.showChangePwdModal(true);
       return;
     }
@@ -301,9 +303,11 @@ const App = {
 
   async loadParams() {
     try {
-      const res = await fetch('/api/params');
-      this.params = await res.json();
-    } catch (e) { console.error('Failed to load params', e); }
+      this.params = await this.api('/api/params');
+    } catch (e) {
+      console.error('Failed to load params', e);
+      this.params = { categories: [], units: [], destinations: [], locations: [] };
+    }
   },
 
   router() {
