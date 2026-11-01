@@ -1,0 +1,14 @@
+{
+  "name": "inventory-system",
+  "version": "1.0.0",
+  "description": "库存进出库管理系统 - Web版",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init-db": "node init-db.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^11.0.0"
+  }
+}
