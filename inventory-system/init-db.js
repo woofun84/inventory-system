@@ -108,6 +108,7 @@ CREATE TABLE inbound (
   remarks TEXT DEFAULT '',
   po_no TEXT DEFAULT '',
   contract_no TEXT DEFAULT '',
+  txn_type TEXT DEFAULT '采购入库',
   created_at TEXT DEFAULT (datetime('now','localtime')),
   FOREIGN KEY (code) REFERENCES materials(code)
 );
@@ -128,6 +129,7 @@ CREATE TABLE outbound (
   remarks TEXT DEFAULT '',
   cost_price REAL DEFAULT 0,
   cost_amount REAL GENERATED ALWAYS AS (qty * cost_price) STORED,
+  txn_type TEXT DEFAULT '正常出库',
   created_at TEXT DEFAULT (datetime('now','localtime')),
   FOREIGN KEY (code) REFERENCES materials(code)
 );
@@ -187,8 +189,8 @@ if (fs.existsSync(SEED_PATH)) {
   seed.suppliers.forEach(s => supStmt.run(s));
 
   // 入库
-  const inStmt = db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,location,remarks,po_no,contract_no) VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no)`);
-  seed.inbound.forEach(r => inStmt.run(r));
+  const inStmt = db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,location,remarks,po_no,contract_no,txn_type) VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no,@txn_type)`);
+  seed.inbound.forEach(r => inStmt.run({ ...r, txn_type: r.txn_type || '采购入库' }));
 
   // 出库 - 计算成本单价（加权平均）
   // 先按日期排序
@@ -226,8 +228,8 @@ if (fs.existsSync(SEED_PATH)) {
     }
   }
 
-  const outStmt = db.prepare(`INSERT INTO outbound (date,gin_no,code,qty,destination,receiver,handler,location,remarks,cost_price) VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price)`);
-  outboundWithCost.forEach(r => outStmt.run(r));
+  const outStmt = db.prepare(`INSERT INTO outbound (date,gin_no,code,qty,destination,receiver,handler,location,remarks,cost_price,txn_type) VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price,@txn_type)`);
+  outboundWithCost.forEach(r => outStmt.run({ ...r, txn_type: r.txn_type || '正常出库' }));
 
   // 采购订单
   const poStmt = db.prepare(`INSERT INTO purchase_orders (po_no,date,supplier,contract_no,project,expected_date,remarks,manual_status) VALUES (@po_no,@date,@supplier,@contract_no,@project,@expected_date,@remarks,@manual_status)`);

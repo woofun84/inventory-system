@@ -5,9 +5,13 @@ const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const DB_PATH = path.join(__dirname, 'inventory.db');
 const PORT = 3000;
+const JWT_SECRET = 'inventory-system-secret-key-2026';
+const JWT_EXPIRES = '7d';
 
 // 自动初始化数据库
 if (!fs.existsSync(DB_PATH)) {
@@ -18,6 +22,28 @@ if (!fs.existsSync(DB_PATH)) {
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+
+// ==================== 数据库迁移（给已有库加字段） ====================
+function migrateDB() {
+  // inbound 加 txn_type 字段（采购入库 / 退库入库）
+  try {
+    db.exec("ALTER TABLE inbound ADD COLUMN txn_type TEXT DEFAULT ''");
+    console.log('迁移: inbound.txn_type 已添加');
+  } catch(e) { /* 字段已存在 */ }
+
+  // outbound 加 txn_type 字段（正常出库 / 退货出库）
+  try {
+    db.exec("ALTER TABLE outbound ADD COLUMN txn_type TEXT DEFAULT ''");
+    console.log('迁移: outbound.txn_type 已添加');
+  } catch(e) { /* 字段已存在 */ }
+
+  // 给已有的 inbound 记录补默认值
+  try {
+    db.exec("UPDATE inbound SET txn_type = '采购入库' WHERE txn_type = '' OR txn_type IS NULL");
+    db.exec("UPDATE outbound SET txn_type = '正常出库' WHERE txn_type = '' OR txn_type IS NULL");
+  } catch(e) {}
+}
+migrateDB();
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -119,6 +145,50 @@ function genGinNo(date) {
   return `GIN-${d}-${String(count + 1).padStart(3, '0')}`;
 }
 
+// 自动生成物料编码：按类别前缀 + 序号
+function genMaterialCode(category) {
+  // 查类别对应的编码前缀
+  const cat = db.prepare("SELECT prefix FROM categories WHERE name=?").get(category);
+  let prefix = '';
+  if (cat && cat.prefix) {
+    prefix = cat.prefix;
+  } else {
+    // 无前缀的类别用类别首字母拼音简化处理，找不到就用 'IT'
+    prefix = 'IT';
+  }
+
+  // 找已有同前缀编码的最大序号
+  const like = prefix + '%';
+  const rows = db.prepare("SELECT code FROM materials WHERE code LIKE ?").all(like);
+  let maxSeq = 0;
+  rows.forEach(r => {
+    const numPart = r.code.replace(prefix, '');
+    const n = parseInt(numPart);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
+  });
+  const nextSeq = maxSeq + 1;
+  // 编码格式：前缀 + 3位序号（不足补零）
+  return `${prefix}${String(nextSeq).padStart(3, '0')}`;
+}
+
+// 获取订单明细（用于入库时选择订单带出明细）
+function getOrderLinesForInbound(poNo) {
+  const lines = db.prepare(`
+    SELECT ol.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
+    FROM order_lines ol LEFT JOIN materials m ON ol.code = m.code
+    WHERE ol.po_no=? ORDER BY ol.id
+  `).all(poNo);
+  // 查已入库数量
+  const inboundByPo = db.prepare("SELECT code, SUM(qty) as qty FROM inbound WHERE po_no=? GROUP BY code").all(poNo);
+  const receivedMap = {};
+  inboundByPo.forEach(r => receivedMap[r.code] = r.qty);
+  return lines.map(l => ({
+    ...l,
+    received_qty: receivedMap[l.code] || 0,
+    unreceived_qty: l.order_qty - (receivedMap[l.code] || 0)
+  }));
+}
+
 // ==================== API 路由 ====================
 
 // --- 仪表盘 ---
@@ -212,12 +282,28 @@ app.get('/api/materials', (req, res) => {
   res.json(rows);
 });
 
+// 自动生成物料编码（按类别前缀）
+app.get('/api/materials/next-code', (req, res) => {
+  const category = req.query.category;
+  if (!category) return res.status(400).json({ error: '请提供类别' });
+  try {
+    const code = genMaterialCode(category);
+    res.json({ code });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post('/api/materials', (req, res) => {
   const m = req.body;
   try {
+    // 如果 code 为空或 'auto'，自动生成
+    if (!m.code || m.code === 'auto') {
+      m.code = genMaterialCode(m.category);
+    }
     db.prepare(`INSERT INTO materials (code,name,spec,category,unit,opening_qty,opening_price,min_stock,default_location,brand,status)
       VALUES (@code,@name,@spec,@category,@unit,@opening_qty,@opening_price,@min_stock,@default_location,@brand,@status)`).run(m);
-    res.json({ success: true });
+    res.json({ success: true, code: m.code });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -279,7 +365,7 @@ app.delete('/api/suppliers/:id', (req, res) => {
 
 // --- 入库记录 ---
 app.get('/api/inbound', (req, res) => {
-  const { code, startDate, endDate, supplier, handler, poNo, contractNo, keyword } = req.query;
+  const { code, startDate, endDate, supplier, handler, poNo, contractNo, keyword, txnType } = req.query;
   let sql = `SELECT i.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM inbound i LEFT JOIN materials m ON i.code = m.code WHERE 1=1`;
   const params = [];
@@ -290,6 +376,7 @@ app.get('/api/inbound', (req, res) => {
   if (handler) { sql += " AND i.handler LIKE ?"; params.push('%' + handler + '%'); }
   if (poNo) { sql += " AND i.po_no=?"; params.push(poNo); }
   if (contractNo) { sql += " AND i.contract_no=?"; params.push(contractNo); }
+  if (txnType) { sql += " AND i.txn_type=?"; params.push(txnType); }
   if (keyword) {
     sql += " AND (i.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ? OR m.brand LIKE ?)";
     params.push('%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%');
@@ -298,13 +385,35 @@ app.get('/api/inbound', (req, res) => {
   res.json(db.prepare(sql).all(...params));
 });
 
+// 批量入库：支持一次提交多行
 app.post('/api/inbound', (req, res) => {
-  const r = req.body;
+  const body = req.body;
+  // 兼容：单行（有 code 字段）或多行（items 数组）
+  const items = Array.isArray(body.items) ? body.items : [body];
+  if (items.length === 0) return res.status(400).json({ error: '无数据' });
   try {
-    if (!r.grn_no) r.grn_no = genGrnNo(r.date);
-    db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,location,remarks,po_no,contract_no)
-      VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no)`).run(r);
-    res.json({ success: true, grn_no: r.grn_no });
+    const stmt = db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,location,remarks,po_no,contract_no,txn_type)
+      VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no,@txn_type)`);
+    const tx = db.transaction(() => {
+      const results = [];
+      items.forEach(r => {
+        if (!r.code || !r.qty || !r.date) return; // 跳过空行
+        if (!r.grn_no) r.grn_no = genGrnNo(r.date);
+        if (!r.txn_type) r.txn_type = '采购入库';
+        if (!r.supplier) r.supplier = '';
+        if (!r.handler) r.handler = '';
+        if (!r.location) r.location = '';
+        if (!r.remarks) r.remarks = '';
+        if (!r.po_no) r.po_no = '';
+        if (!r.contract_no) r.contract_no = '';
+        if (!r.price) r.price = 0;
+        stmt.run(r);
+        results.push({ grn_no: r.grn_no });
+      });
+      return results;
+    });
+    const results = tx();
+    res.json({ success: true, count: results.length, results });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -313,8 +422,9 @@ app.post('/api/inbound', (req, res) => {
 app.put('/api/inbound/:id', (req, res) => {
   const r = req.body;
   try {
+    if (!r.txn_type) r.txn_type = '采购入库';
     db.prepare(`UPDATE inbound SET date=@date,grn_no=@grn_no,code=@code,qty=@qty,price=@price,
-      supplier=@supplier,handler=@handler,location=@location,remarks=@remarks,po_no=@po_no,contract_no=@contract_no WHERE id=@id`).run({ ...r, id: req.params.id });
+      supplier=@supplier,handler=@handler,location=@location,remarks=@remarks,po_no=@po_no,contract_no=@contract_no,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
     res.json({ success: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -332,7 +442,7 @@ app.delete('/api/inbound/:id', (req, res) => {
 
 // --- 出库记录 ---
 app.get('/api/outbound', (req, res) => {
-  const { code, startDate, endDate, destination, receiver, handler, keyword } = req.query;
+  const { code, startDate, endDate, destination, receiver, handler, keyword, txnType } = req.query;
   let sql = `SELECT o.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM outbound o LEFT JOIN materials m ON o.code = m.code WHERE 1=1`;
   const params = [];
@@ -342,6 +452,7 @@ app.get('/api/outbound', (req, res) => {
   if (destination) { sql += " AND o.destination=?"; params.push(destination); }
   if (receiver) { sql += " AND o.receiver LIKE ?"; params.push('%' + receiver + '%'); }
   if (handler) { sql += " AND o.handler LIKE ?"; params.push('%' + handler + '%'); }
+  if (txnType) { sql += " AND o.txn_type=?"; params.push(txnType); }
   if (keyword) {
     sql += " AND (o.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ? OR m.brand LIKE ?)";
     params.push('%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%');
@@ -350,15 +461,33 @@ app.get('/api/outbound', (req, res) => {
   res.json(db.prepare(sql).all(...params));
 });
 
+// 批量出库：支持一次提交多行
 app.post('/api/outbound', (req, res) => {
-  const r = req.body;
+  const body = req.body;
+  const items = Array.isArray(body.items) ? body.items : [body];
+  if (items.length === 0) return res.status(400).json({ error: '无数据' });
   try {
-    if (!r.gin_no) r.gin_no = genGinNo(r.date);
-    // 计算成本单价
-    r.cost_price = computeCostPrice(r.code, r.qty, r.date);
-    db.prepare(`INSERT INTO outbound (date,gin_no,code,qty,destination,receiver,handler,location,remarks,cost_price)
-      VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price)`).run(r);
-    res.json({ success: true, gin_no: r.gin_no, cost_price: r.cost_price });
+    const stmt = db.prepare(`INSERT INTO outbound (date,gin_no,code,qty,destination,receiver,handler,location,remarks,cost_price,txn_type)
+      VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price,@txn_type)`);
+    const tx = db.transaction(() => {
+      const results = [];
+      items.forEach(r => {
+        if (!r.code || !r.qty || !r.date) return; // 跳过空行
+        if (!r.gin_no) r.gin_no = genGinNo(r.date);
+        if (!r.txn_type) r.txn_type = '正常出库';
+        if (!r.destination) r.destination = '';
+        if (!r.receiver) r.receiver = '';
+        if (!r.handler) r.handler = '';
+        if (!r.location) r.location = '';
+        if (!r.remarks) r.remarks = '';
+        r.cost_price = computeCostPrice(r.code, r.qty, r.date);
+        stmt.run(r);
+        results.push({ gin_no: r.gin_no, cost_price: r.cost_price });
+      });
+      return results;
+    });
+    const results = tx();
+    res.json({ success: true, count: results.length, results });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -368,8 +497,9 @@ app.put('/api/outbound/:id', (req, res) => {
   const r = req.body;
   try {
     r.cost_price = computeCostPrice(r.code, r.qty, r.date);
+    if (!r.txn_type) r.txn_type = '正常出库';
     db.prepare(`UPDATE outbound SET date=@date,gin_no=@gin_no,code=@code,qty=@qty,destination=@destination,
-      receiver=@receiver,handler=@handler,location=@location,remarks=@remarks,cost_price=@cost_price WHERE id=@id`).run({ ...r, id: req.params.id });
+      receiver=@receiver,handler=@handler,location=@location,remarks=@remarks,cost_price=@cost_price,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
     res.json({ success: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -619,6 +749,70 @@ app.delete('/api/order-lines/:id', (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// 查询某个订单的明细带已到货数量（给入库选订单用）
+app.get('/api/order-lines/by-po/:poNo', (req, res) => {
+  try {
+    res.json(getOrderLinesForInbound(req.params.poNo));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// 订单明细跟踪（全量查询，支持筛选）
+app.get('/api/order-tracking', (req, res) => {
+  const { poNo, supplier, keyword, deliveryStatus } = req.query;
+  let sql = `SELECT ol.*, po.date as po_date, po.supplier as po_supplier, po.expected_date, po.manual_status,
+    m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
+    FROM order_lines ol
+    LEFT JOIN purchase_orders po ON ol.po_no = po.po_no
+    LEFT JOIN materials m ON ol.code = m.code
+    WHERE 1=1`;
+  const params = [];
+  if (poNo) { sql += " AND ol.po_no=?"; params.push(poNo); }
+  if (supplier) { sql += " AND po.supplier LIKE ?"; params.push('%' + supplier + '%'); }
+  if (keyword) {
+    sql += " AND (ol.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ? OR m.brand LIKE ? OR ol.po_no LIKE ?)";
+    params.push('%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%');
+  }
+  sql += " ORDER BY ol.po_no, ol.id";
+  let rows = db.prepare(sql).all(...params);
+
+  // 计算每行的到货情况
+  rows = rows.map(l => {
+    const received = db.prepare("SELECT COALESCE(SUM(qty),0) as v FROM inbound WHERE po_no=? AND code=?").get(l.po_no, l.code).v;
+    const unreceived = l.order_qty - received;
+    let lineStatus;
+    if (l.manual_status === '已关闭' || l.manual_status === '已取消') {
+      lineStatus = l.manual_status;
+    } else if (received === 0) {
+      lineStatus = '未到货';
+    } else if (received < l.order_qty) {
+      lineStatus = '部分到货';
+    } else {
+      lineStatus = '已到货';
+    }
+    let overdueDays = 0;
+    if (l.expected_date && (lineStatus === '未到货' || lineStatus === '部分到货')) {
+      const diff = Math.floor((Date.now() - new Date(l.expected_date).getTime()) / 86400000);
+      overdueDays = diff > 0 ? diff : 0;
+    }
+    return {
+      ...l,
+      received_qty: received,
+      unreceived_qty: unreceived,
+      line_status: lineStatus,
+      overdue_days: overdueDays
+    };
+  });
+
+  // 按到货状态筛选
+  if (deliveryStatus) {
+    rows = rows.filter(r => r.line_status === deliveryStatus);
+  }
+
+  res.json(rows);
 });
 
 // --- 参数 ---
