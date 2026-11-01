@@ -80,6 +80,17 @@ const I18N = {
     ot_received_qty: '已到数量', ot_unreceived: '未到数量', ot_expected: '预计到货日',
     ot_status: '到货状态', ot_overdue: '逾期(天)', ot_total_lines: '明细行数', ot_total_amount: '订单总额',
     ot_total_received: '已到金额', ot_total_unreceived: '未到金额',
+    nav_users: '用户管理',
+    login_title: '登录', login_user: '用户名', login_pass: '密码', login_btn: '登 录', login_default_hint: '初始账号：admin / admin123',
+    change_password: '修改密码', old_password: '原密码', new_password: '新密码', confirm_password: '确认新密码',
+    pwd_min_len: '至少6位', pwd_not_match: '两次输入的密码不一致', pwd_changed: '密码已修改', session_expired: '登录已过期，请重新登录',
+    user_title: '用户管理', user_desc: '管理系统用户与角色权限', user_add: '新增用户', user_edit: '编辑用户',
+    user_username: '用户名', user_name: '姓名', user_role: '角色', user_status: '状态', user_last_login: '最近登录',
+    user_password: '密码', user_password_hint: '新增时必填，编辑时留空表示不修改', user_reset_pwd: '重置密码',
+    role_admin: '管理员', role_manager: '主管', role_operator: '操作员', role_viewer: '只读',
+    status_active: '启用', status_disabled: '停用',
+    cf_delete_user: '确定删除用户', cf_delete_user_msg: '删除后该用户将无法登录。',
+    no_perm: '无权限访问该页面', no_perm_msg: '您的角色无权访问此页面，请联系管理员。',
   },
   en: {
     appName: 'Inventory System', appSub: 'In/Out Tracking', loading: 'Loading...',
@@ -156,6 +167,17 @@ const I18N = {
     ot_received_qty: 'Received Qty', ot_unreceived: 'Unreceived', ot_expected: 'Expected Date',
     ot_status: 'Status', ot_overdue: 'Overdue (days)', ot_total_lines: 'Lines', ot_total_amount: 'Total Amount',
     ot_total_received: 'Received Amount', ot_total_unreceived: 'Unreceived Amount',
+    nav_users: 'Users',
+    login_title: 'Login', login_user: 'Username', login_pass: 'Password', login_btn: 'Log In', login_default_hint: 'Default: admin / admin123',
+    change_password: 'Change Password', old_password: 'Current Password', new_password: 'New Password', confirm_password: 'Confirm Password',
+    pwd_min_len: 'min 6 chars', pwd_not_match: 'Passwords do not match', pwd_changed: 'Password changed', session_expired: 'Session expired, please log in again',
+    user_title: 'User Management', user_desc: 'Manage system users and role permissions', user_add: 'Add User', user_edit: 'Edit User',
+    user_username: 'Username', user_name: 'Name', user_role: 'Role', user_status: 'Status', user_last_login: 'Last Login',
+    user_password: 'Password', user_password_hint: 'Required for new users; leave blank to keep unchanged when editing', user_reset_pwd: 'Reset Password',
+    role_admin: 'Admin', role_manager: 'Manager', role_operator: 'Operator', role_viewer: 'Viewer',
+    status_active: 'Active', status_disabled: 'Disabled',
+    cf_delete_user: 'Delete user', cf_delete_user_msg: 'This user will no longer be able to log in.',
+    no_perm: 'No Permission', no_perm_msg: 'Your role does not have access to this page. Please contact the administrator.',
   }
 };
 
@@ -163,6 +185,8 @@ const I18N = {
 const App = {
   currentPage: 'dashboard',
   params: null,
+  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  token: localStorage.getItem('token') || '',
   lang: localStorage.getItem('lang') || 'zh',
   theme: localStorage.getItem('theme') || 'light',
   charts: [],
@@ -172,10 +196,80 @@ const App = {
   },
 
   async init() {
+    // 未登录 → 跳转登录页
+    if (!this.token) { location.href = '/login.html'; return; }
     document.documentElement.setAttribute('data-theme', this.theme);
+    try {
+      // 校验 token 有效性
+      const me = await this.api('/api/auth/me');
+      this.user = me;
+      localStorage.setItem('user', JSON.stringify(me));
+    } catch (e) {
+      this.logout();
+      return;
+    }
+    // 强制改密
+    if (this.user && this.user.must_change_pwd) {
+      this.showChangePwdModal(true);
+      return;
+    }
     await this.loadParams();
     this.router();
     window.addEventListener('hashchange', () => this.router());
+  },
+
+  logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    location.href = '/login.html';
+  },
+
+  // 权限检查：can(模块, 操作)
+  can(module, action) {
+    if (!this.user || !this.user.grants) return false;
+    const g = this.user.grants[module];
+    return Array.isArray(g) && g.includes(action);
+  },
+
+  showChangePwdModal(force) {
+    const body = `<div class="form-grid" style="max-width:400px;margin:0 auto">
+      <div class="form-group" style="grid-column:1/-1">
+        <label>${this.t('old_password')} *</label>
+        <input id="cp_old" type="password" oninput="App.clearFieldError('cp_old')">
+        <div class="form-error" id="cp_old_error"></div>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>${this.t('new_password')} * <span style="font-size:11px;color:var(--text-muted)">(${this.t('pwd_min_len')})</span></label>
+        <input id="cp_new" type="password" oninput="App.clearFieldError('cp_new')">
+        <div class="form-error" id="cp_new_error"></div>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>${this.t('confirm_password')} *</label>
+        <input id="cp_confirm" type="password" oninput="App.clearFieldError('cp_confirm')">
+        <div class="form-error" id="cp_confirm_error"></div>
+      </div>
+    </div>`;
+    this.showModal(`<h3>${this.t('change_password')}</h3>`, body, this.t('save'), async () => {
+      if (!this.validateForm({
+        cp_old: [{ rule: 'required' }],
+        cp_new: [{ rule: 'required' }, { rule: 'minlen', param: 6 }],
+        cp_confirm: [{ rule: 'required' }],
+      })) return;
+      const np = document.getElementById('cp_new').value;
+      const cp = document.getElementById('cp_confirm').value;
+      if (np !== cp) { this.setFieldError('cp_confirm', this.t('pwd_not_match')); return; }
+      try {
+        await this.api('/api/auth/change-password', 'POST', {
+          oldPassword: document.getElementById('cp_old').value,
+          newPassword: np,
+        });
+        this.closeModal();
+        this.user.must_change_pwd = false;
+        localStorage.setItem('user', JSON.stringify(this.user));
+        this.toast(this.t('pwd_changed'));
+        if (force) { await this.loadParams(); this.router(); window.addEventListener('hashchange', () => this.router()); }
+      } catch (e) { this.toast(e.message, 'error'); }
+    });
   },
 
   toggleTheme() {
@@ -215,6 +309,11 @@ const App = {
   router() {
     const hash = location.hash.slice(1) || 'dashboard';
     this.currentPage = hash;
+    // 权限拦截：无 view 权限的页面不允许访问
+    if (!this.can(hash, 'view') && hash !== 'dashboard') {
+      this.currentPage = 'dashboard';
+      this.toast(this.t('no_perm_msg'), 'error');
+    }
     this.render();
   },
 
@@ -225,7 +324,8 @@ const App = {
       stockSummary: () => this.renderStockSummary(), query: () => this.renderQuery(),
       ledger: () => this.renderLedger(), locationStock: () => this.renderLocationStock(),
       orders: () => this.renderOrders(), suppliers: () => this.renderSuppliers(),
-      settings: () => this.renderSettings(), orderTracking: () => this.renderOrderTracking()
+      settings: () => this.renderSettings(), orderTracking: () => this.renderOrderTracking(),
+      users: () => this.renderUsers(),
     };
     (pages[this.currentPage] || pages.dashboard).call(this);
   },
@@ -242,16 +342,32 @@ const App = {
         { key: 'stockSummary', icon: '📦', label: this.t('nav_stock') }, { key: 'materials', icon: '🏷', label: this.t('nav_materials') },
         { key: 'suppliers', icon: '🚚', label: this.t('nav_suppliers') }, { key: 'ledger', icon: '📒', label: this.t('nav_ledger') },
         { key: 'locationStock', icon: '📍', label: this.t('nav_location') }, { key: 'settings', icon: '⚙', label: this.t('nav_settings') },
+        { key: 'users', icon: '👤', label: this.t('nav_users') },
       ]}
     ];
     let html = `<div class="sidebar-header"><h1>📦 <span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
     nav.forEach(s => {
+      // 按权限过滤
+      const visibleItems = s.items.filter(item => this.can(item.key, 'view'));
+      if (visibleItems.length === 0) return;
       html += `<div class="nav-section-label">${s.section}</div>`;
-      s.items.forEach(item => {
+      visibleItems.forEach(item => {
         html += `<div class="nav-item ${this.currentPage === item.key ? 'active' : ''}" onclick="location.hash='${item.key}'"><span class="nav-icon">${item.icon}</span><span>${item.label}</span></div>`;
       });
     });
     html += '</div>';
+    // 底部用户信息栏
+    if (this.user) {
+      const roleLabel = this.t('role_' + this.user.role);
+      html += `<div class="sidebar-user">
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name">${this.user.name || this.user.username}</span>
+          <span class="sidebar-user-role">${roleLabel}</span>
+        </div>
+        <button class="tool-btn tool-btn-sm" onclick="App.showChangePwdModal(false)" title="${this.t('change_password')}">🔑</button>
+        <button class="tool-btn tool-btn-sm" onclick="App.logout()" title="${this.lang === 'zh' ? '退出' : 'Logout'}">⏻</button>
+      </div>`;
+    }
     return html;
   },
 
@@ -267,8 +383,10 @@ const App = {
 
   async api(url, method = 'GET', body = null) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (this.token) opts.headers['Authorization'] = 'Bearer ' + this.token;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
+    if (res.status === 401) { this.logout(); throw new Error(this.t('session_expired')); }
     if (!res.ok) { const err = await res.json().catch(() => ({ error: this.t('requestFailed') })); throw new Error(err.error || this.t('requestFailed')); }
     return res.json();
   },
@@ -411,6 +529,7 @@ const App = {
         if (r.rule === 'required' && !val) { errorMsg = r.msg || this.t('field_required'); break; }
         if (r.rule === 'number' && val && isNaN(parseFloat(val))) { errorMsg = r.msg || this.t('field_number'); break; }
         if (r.rule === 'positive' && val && parseFloat(val) < 0) { errorMsg = r.msg || this.t('field_positive'); break; }
+        if (r.rule === 'minlen' && val && val.length < (r.param || 0)) { errorMsg = r.msg || this.t('pwd_min_len'); break; }
       }
       if (errorMsg) {
         el.classList.add('error');
@@ -431,6 +550,15 @@ const App = {
     el.classList.remove('error');
     const errorEl = el.parentElement.querySelector('.form-error');
     if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('show'); }
+  },
+
+  // 设置字段错误状态
+  setFieldError(fieldId, msg) {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    el.classList.add('error');
+    const errorEl = el.parentElement.querySelector('.form-error');
+    if (errorEl) { errorEl.textContent = msg; errorEl.classList.add('show'); }
   },
 
   // 生成带 error div 的 form-group（辅助函数）
@@ -465,6 +593,14 @@ const App = {
       if (to && d > to) return false;
       return true;
     });
+  },
+
+  // 生成表格行操作列（编辑/删除链接，按权限显隐）
+  rowActions(module, editCall, deleteCall) {
+    let html = '';
+    if (this.can(module, 'edit')) html += `<span class="action-link" onclick="${editCall}">${this.t('edit')}</span>`;
+    if (this.can(module, 'delete')) html += `<span class="action-link danger" onclick="${deleteCall}">${this.t('delete')}</span>`;
+    return html;
   },
 
   // 生成表格上方工具栏（新增按钮 + 关键字筛选框 + 可选日期段筛选）
@@ -553,7 +689,8 @@ const App = {
 
   // ========== 物料档案 ==========
   async renderMaterials() {
-    const toolbar = this.renderTableToolbar('mat_filter', 'App.onMaterialsFilter()', `<button class="btn btn-primary" onclick="App.editMaterial()">+ ${this.t('mat_add')}</button>`);
+    const addBtn = this.can('materials','create') ? `<button class="btn btn-primary" onclick="App.editMaterial()">+ ${this.t('mat_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('mat_filter', 'App.onMaterialsFilter()', addBtn);
     this.setMain(this.pageWrap('🏷 ' + this.t('mat_title'), this.t('mat_desc'), '', `<div id="materials-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="materials-scroll"></div><div class="data-pager" id="materials-pager"></div></div>`));
     try {
       this._materialsData = await this.api('/api/materials');
@@ -583,7 +720,7 @@ const App = {
     thHtml += `<th>${this.t('mat_status')}</th><th></th>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(12); }
-    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${this.fmtMoney(m.opening_price)}</td><td class="text-right">${m.min_stock}</td><td>${m.default_location || ''}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td><span class="action-link" onclick="App.editMaterial('${m.code}')">${this.t('edit')}</span><span class="action-link danger" onclick="App.deleteMaterial('${m.code}')">${this.t('delete')}</span></td></tr>`).join(''); }
+    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${this.fmtMoney(m.opening_price)}</td><td class="text-right">${m.min_stock}</td><td>${m.default_location || ''}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
     document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('materials-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -639,7 +776,8 @@ const App = {
   // ========== 入库记录 ==========
   async renderInbound() {
     const dateFilter = { fromId: 'in_date_from', toId: 'in_date_to', onChange: 'App.onInboundFilter()' };
-    const toolbar = this.renderTableToolbar('in_filter', 'App.onInboundFilter()', `<button class="btn btn-primary" onclick="App.editInboundBatch()">+ ${this.t('in_add')}</button>`, dateFilter);
+    const addBtn = this.can('inbound','create') ? `<button class="btn btn-primary" onclick="App.editInboundBatch()">+ ${this.t('in_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('in_filter', 'App.onInboundFilter()', addBtn, dateFilter);
     this.setMain(this.pageWrap('📥 ' + this.t('in_title'), this.t('in_desc'), '', `<div id="inbound-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-summary" id="inbound-summary"></div><div class="data-scroll" id="inbound-scroll"></div><div class="data-pager" id="inbound-pager"></div></div>`));
     try {
       this._inboundData = await this.api('/api/inbound');
@@ -678,7 +816,7 @@ const App = {
     const colCount = headers.length + 2;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退库入库' ? `<span class="badge badge-warning">${this.t('in_return')}</span>` : `<span class="badge badge-info">${this.t('in_purchase')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td><td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td><td>${r.contract_no || ''}</td><td>${r.remarks || ''}</td><td><span class="action-link" onclick="App.editInbound(${r.id})">${this.t('edit')}</span><span class="action-link danger" onclick="App.deleteInbound(${r.id})">${this.t('delete')}</span></td></tr>`; }).join(''); }
+    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退库入库' ? `<span class="badge badge-warning">${this.t('in_return')}</span>` : `<span class="badge badge-info">${this.t('in_purchase')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td><td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td><td>${r.contract_no || ''}</td><td>${r.remarks || ''}</td><td>${this.rowActions('inbound', `App.editInbound(${r.id})`, `App.deleteInbound(${r.id})`)}</td></tr>`; }).join(''); }
     const filterActive = (keywords.trim() || dateFrom || dateTo) ? ` | 🔍 ${sorted.length}/${data.length}` : '';
     // 只更新汇总、表格、分页三个区域，工具栏不动
     document.getElementById('inbound-summary').innerHTML = `${sorted.length} ${this.t('in_total_records')} | ${this.t('in_total_qty')}: ${totalQty} | ${this.t('in_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}${filterActive}`;
@@ -843,7 +981,8 @@ const App = {
   // ========== 出库记录 ==========
   async renderOutbound() {
     const dateFilter = { fromId: 'out_date_from', toId: 'out_date_to', onChange: 'App.onOutboundFilter()' };
-    const toolbar = this.renderTableToolbar('out_filter', 'App.onOutboundFilter()', `<button class="btn btn-primary" onclick="App.editOutboundBatch()">+ ${this.t('out_add')}</button>`, dateFilter);
+    const addBtn = this.can('outbound','create') ? `<button class="btn btn-primary" onclick="App.editOutboundBatch()">+ ${this.t('out_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('out_filter', 'App.onOutboundFilter()', addBtn, dateFilter);
     this.setMain(this.pageWrap('📤 ' + this.t('out_title'), this.t('out_desc'), '', `<div id="outbound-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-summary" id="outbound-summary"></div><div class="data-scroll" id="outbound-scroll"></div><div class="data-pager" id="outbound-pager"></div></div>`));
     try {
       this._outboundData = await this.api('/api/outbound');
@@ -882,7 +1021,7 @@ const App = {
     const colCount = headers.length + 2;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退货出库' ? `<span class="badge badge-warning">${this.t('out_return')}</span>` : `<span class="badge badge-info">${this.t('out_normal')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td><td>${r.remarks || ''}</td><td><span class="action-link" onclick="App.editOutbound(${r.id})">${this.t('edit')}</span><span class="action-link danger" onclick="App.deleteOutbound(${r.id})">${this.t('delete')}</span></td></tr>`; }).join(''); }
+    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退货出库' ? `<span class="badge badge-warning">${this.t('out_return')}</span>` : `<span class="badge badge-info">${this.t('out_normal')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td><td>${r.remarks || ''}</td><td>${this.rowActions('outbound', `App.editOutbound(${r.id})`, `App.deleteOutbound(${r.id})`)}</td></tr>`; }).join(''); }
     const filterActive = (keywords.trim() || dateFrom || dateTo) ? ` | 🔍 ${sorted.length}/${data.length}` : '';
     document.getElementById('outbound-summary').innerHTML = `${sorted.length} ${this.t('out_total_records')} | ${this.t('out_total_qty')}: ${totalQty} | ${this.t('out_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}${filterActive}`;
     document.getElementById('outbound-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
@@ -1136,7 +1275,8 @@ const App = {
 
   // ========== 采购订单 ==========
   async renderOrders() {
-    const toolbar = this.renderTableToolbar('ord_filter', 'App.onOrdersFilter()', `<button class="btn btn-primary" onclick="App.editOrder()">+ ${this.t('po_add')}</button>`);
+    const addBtn = this.can('orders','create') ? `<button class="btn btn-primary" onclick="App.editOrder()">+ ${this.t('po_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('ord_filter', 'App.onOrdersFilter()', addBtn);
     this.setMain(this.pageWrap('🛒 ' + this.t('po_title'), this.t('po_desc'), '', `<div id="orders-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="orders-scroll"></div><div class="data-pager" id="orders-pager"></div></div>`));
     try {
       this._ordersData = await this.api('/api/purchase-orders');
@@ -1168,7 +1308,7 @@ const App = {
     const colCount = headers.length + 1;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(o => `<tr><td><strong>${o.po_no}</strong></td><td>${this.fmtDate(o.date)}</td><td>${o.supplier || ''}</td><td>${o.contract_no || ''}</td><td>${o.project || ''}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center">${o.line_count}</td><td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td><td class="text-right">${cur} ${this.fmtMoney(o.received_amount)}</td><td>${this.statusBadge(o.delivery_status)}</td><td class="text-center">${o.overdue_days > 0 ? '<span class="badge badge-danger">' + o.overdue_days + '</span>' : '-'}</td><td>${o.manual_status || this.t('po_status_pending')}</td><td><span class="action-link" onclick="App.viewOrder('${o.po_no}')">${this.t('po_detail')}</span><span class="action-link" onclick="App.editOrder('${o.po_no}')">${this.t('edit')}</span><span class="action-link danger" onclick="App.deleteOrder('${o.po_no}')">${this.t('delete')}</span></td></tr>`).join(''); }
+    else { tbody = pageData.map(o => `<tr><td><strong>${o.po_no}</strong></td><td>${this.fmtDate(o.date)}</td><td>${o.supplier || ''}</td><td>${o.contract_no || ''}</td><td>${o.project || ''}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center">${o.line_count}</td><td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td><td class="text-right">${cur} ${this.fmtMoney(o.received_amount)}</td><td>${this.statusBadge(o.delivery_status)}</td><td class="text-center">${o.overdue_days > 0 ? '<span class="badge badge-danger">' + o.overdue_days + '</span>' : '-'}</td><td>${o.manual_status || this.t('po_status_pending')}</td><td><span class="action-link" onclick="App.viewOrder('${o.po_no}')">${this.t('po_detail')}</span>${this.can('orders','edit') ? `<span class="action-link" onclick="App.editOrder('${o.po_no}')">${this.t('edit')}</span>` : ''}${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrder('${o.po_no}')">${this.t('delete')}</span>` : ''}</td></tr>`).join(''); }
     document.getElementById('orders-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('orders-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -1191,7 +1331,7 @@ const App = {
     if (!o) return this.toast(this.t('orderNotFound'), 'error'); const cur = this.params.currency;
     const inboundByPo = await this.api(`/api/inbound?poNo=${poNo}`); const receivedMap = {};
     inboundByPo.forEach(r => { if (!receivedMap[r.code]) receivedMap[r.code] = 0; receivedMap[r.code] += r.qty; });
-    let html = `<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div><strong>${o.po_no}</strong> | ${o.supplier} | ${this.fmtDate(o.date)} | ${this.t('po_delivery')}: ${this.statusBadge(o.delivery_status)}</div><div>${this.t('po_amount')}: ${cur} ${this.fmtMoney(o.order_amount)} | ${this.t('po_received')}: ${cur} ${this.fmtMoney(o.received_amount)}</div></div><div class="table-wrap"><table><thead><tr><th>${this.t('po_material')}</th><th>${this.t('po_code')}</th><th>${this.t('po_unit')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_order_price')}</th><th>${this.t('po_order_amount')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th><th>${this.t('po_line_status')}</th><th></th></tr></thead><tbody id="order-lines-body">${o.lines.map(l => { const received = receivedMap[l.code] || 0; const status = (o.manual_status === '已关闭' || o.manual_status === '已取消') ? o.manual_status : received === 0 ? '未到货' : received < l.order_qty ? '部分到货' : '已到货'; return `<tr id="ol_${l.id}"><td>${l.material_name || ''}</td><td>${l.code}</td><td>${l.material_unit || ''}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${this.fmtMoney(l.order_price)}</td><td class="text-right">${this.fmtMoney(l.order_amount)}</td><td class="text-right">${received}</td><td class="text-right">${l.order_qty - received}</td><td>${this.statusBadge(status)}</td><td><span class="action-link danger" onclick="App.deleteOrderLine(${l.id})">${this.t('delete')}</span></td></tr>`; }).join('')}</tbody></table></div><div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="App.addOrderLine('${poNo}')">+ ${this.t('po_add_line')}</button></div>`;
+    let html = `<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div><strong>${o.po_no}</strong> | ${o.supplier} | ${this.fmtDate(o.date)} | ${this.t('po_delivery')}: ${this.statusBadge(o.delivery_status)}</div><div>${this.t('po_amount')}: ${cur} ${this.fmtMoney(o.order_amount)} | ${this.t('po_received')}: ${cur} ${this.fmtMoney(o.received_amount)}</div></div><div class="table-wrap"><table><thead><tr><th>${this.t('po_material')}</th><th>${this.t('po_code')}</th><th>${this.t('po_unit')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_order_price')}</th><th>${this.t('po_order_amount')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th><th>${this.t('po_line_status')}</th><th></th></tr></thead><tbody id="order-lines-body">${o.lines.map(l => { const received = receivedMap[l.code] || 0; const status = (o.manual_status === '已关闭' || o.manual_status === '已取消') ? o.manual_status : received === 0 ? '未到货' : received < l.order_qty ? '部分到货' : '已到货'; return `<tr id="ol_${l.id}"><td>${l.material_name || ''}</td><td>${l.code}</td><td>${l.material_unit || ''}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${this.fmtMoney(l.order_price)}</td><td class="text-right">${this.fmtMoney(l.order_amount)}</td><td class="text-right">${received}</td><td class="text-right">${l.order_qty - received}</td><td>${this.statusBadge(status)}</td><td>${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrderLine(${l.id})">${this.t('delete')}</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>${this.can('orders','create') ? `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="App.addOrderLine('${poNo}')">+ ${this.t('po_add_line')}</button></div>` : ''}`;
     this.showModal(`<h3>${this.t('po_lines_title')} - ${poNo}</h3>`, html, this.t('close'), () => { this.closeModal(); this.renderOrders(); });
     this._currentOrder = o;
   },
@@ -1217,7 +1357,8 @@ const App = {
 
   // ========== 供应商档案 ==========
   async renderSuppliers() {
-    const toolbar = this.renderTableToolbar('sup_filter', 'App.onSuppliersFilter()', `<button class="btn btn-primary" onclick="App.editSupplier()">+ ${this.t('sup_add')}</button>`);
+    const addBtn = this.can('suppliers','create') ? `<button class="btn btn-primary" onclick="App.editSupplier()">+ ${this.t('sup_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('sup_filter', 'App.onSuppliersFilter()', addBtn);
     this.setMain(this.pageWrap('🚚 ' + this.t('sup_title'), this.t('sup_desc'), '', `<div id="suppliers-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="suppliers-scroll"></div><div class="data-pager" id="suppliers-pager"></div></div>`));
     try {
       this._suppliersData = await this.api('/api/suppliers');
@@ -1249,7 +1390,7 @@ const App = {
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
       const startIdx = (st.page - 1) * st.pageSize;
-      tbody = pageData.map((s, i) => `<tr><td class="text-center">${startIdx + i + 1}</td><td><strong>${s.name}</strong></td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td><span class="action-link" onclick="App.editSupplier(${s.id})">${this.t('edit')}</span><span class="action-link danger" onclick="App.deleteSupplier(${s.id})">${this.t('delete')}</span></td></tr>`).join('');
+      tbody = pageData.map((s, i) => `<tr><td class="text-center">${startIdx + i + 1}</td><td><strong>${s.name}</strong></td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td>${this.rowActions('suppliers', `App.editSupplier(${s.id})`, `App.deleteSupplier(${s.id})`)}</td></tr>`).join('');
     }
     document.getElementById('suppliers-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('suppliers-pager').innerHTML = this.renderPager(tid, sorted.length);
@@ -1286,7 +1427,22 @@ const App = {
       ];
       sections.forEach(s => {
         const items = data[s.key];
-        html += `<div class="card"><div class="card-title">${s.title}（${items.length}）</div><div class="table-wrap"><table><thead><tr>${s.headers.map(h => `<th>${h}</th>`).join('')}<th></th></tr></thead><tbody>${items.map(item => `<tr>${s.fields.map(f => `<td>${item[f] || ''}</td>`).join('')}<td><span class="action-link danger" onclick="App.deleteParam('${s.key}',${item.id})">${this.t('delete')}</span></td></tr>`).join('')}</tbody></table></div><div style="margin-top:8px;display:flex;gap:8px;align-items:flex-end">${s.fields.map(f => `<div class="form-group"><label>${s.headers[s.fields.indexOf(f)]}</label><input id="add_${s.key}_${f}" placeholder="${s.headers[s.fields.indexOf(f)]}"></div>`).join('')}<button class="btn btn-primary btn-sm" onclick="App.addParam('${s.key}')">+ ${this.t('add')}</button></div></div>`;
+        const canCreate = this.can('settings','create'), canDelete = this.can('settings','delete');
+        const thHtml = s.headers.map(h => '<th>' + h + '</th>').join('') + '<th></th>';
+        const rowsHtml = items.map(item => {
+          const cells = s.fields.map(f => '<td>' + (item[f] || '') + '</td>').join('');
+          const del = canDelete ? '<td><span class="action-link danger" onclick="App.deleteParam(\'' + s.key + '\',' + item.id + ')">' + this.t('delete') + '</span></td>' : '<td></td>';
+          return '<tr>' + cells + del + '</tr>';
+        }).join('');
+        let addRow = '';
+        if (canCreate) {
+          const inputs = s.fields.map(f => {
+            const idx = s.fields.indexOf(f);
+            return '<div class="form-group"><label>' + s.headers[idx] + '</label><input id="add_' + s.key + '_' + f + '" placeholder="' + s.headers[idx] + '"></div>';
+          }).join('');
+          addRow = '<div style="margin-top:8px;display:flex;gap:8px;align-items:flex-end">' + inputs + '<button class="btn btn-primary btn-sm" onclick="App.addParam(\'' + s.key + '\')">+ ' + this.t('add') + '</button></div>';
+        }
+        html += '<div class="card"><div class="card-title">' + s.title + '（' + items.length + '）</div><div class="table-wrap"><table><thead><tr>' + thHtml + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' + addRow + '</div>';
       });
       document.getElementById('settings-content').innerHTML = html;
     } catch (e) { document.getElementById('settings-content').innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
@@ -1355,6 +1511,93 @@ const App = {
     const st = this.getTableState('orderTracking');
     st.page = 1;
     this.renderOrderTrackingTable();
+  },
+
+  // ========== 用户管理 ==========
+  async renderUsers() {
+    const addBtn = this.can('users','create') ? `<button class="btn btn-primary" onclick="App.editUser()">+ ${this.t('user_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('user_filter', 'App.onUsersFilter()', addBtn);
+    this.setMain(this.pageWrap('👤 ' + this.t('user_title'), this.t('user_desc'), '', `<div id="users-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="users-scroll"></div><div class="data-pager" id="users-pager"></div></div>`));
+    try {
+      this._usersData = await this.api('/api/users');
+      this._tableRenderers = this._tableRenderers || {};
+      this._tableRenderers['users'] = () => this.renderUsersTable();
+      this.getTableState('users');
+      this.renderUsersTable();
+    } catch (e) { document.getElementById('users-scroll').innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+  },
+
+  renderUsersTable() {
+    const data = this._usersData || [];
+    const tid = 'users';
+    const st = this.getTableState(tid);
+    const kw = (document.getElementById('user_filter') || {}).value || '';
+    let filtered = data;
+    if (kw.trim()) filtered = this.filterByKeywords(data, kw, ['username','name','role']);
+    const sorted = this.sortData(filtered, st.sortKey, st.sortDir);
+    const pageData = this.paginate(sorted, st.page, st.pageSize);
+    const headers = [
+      ['username', this.t('user_username')], ['name', this.t('user_name')], ['role', this.t('user_role')],
+      ['status', this.t('user_status')], ['last_login', this.t('user_last_login')], ['created_at', this.t('ledger_date')]
+    ];
+    let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
+    thHtml += `<th></th>`;
+    const roleLabel = r => this.t('role_' + r);
+    const statusBadge = s => s === 'active' ? `<span class="badge badge-success">${this.t('status_active')}</span>` : `<span class="badge badge-muted">${this.t('status_disabled')}</span>`;
+    let tbody = '';
+    if (pageData.length === 0) { tbody = this.emptyRow(headers.length + 1); }
+    else { tbody = pageData.map(u => `<tr><td><strong>${u.username}</strong>${u.must_change_pwd ? ' <span class="badge badge-warning">⚠</span>' : ''}</td><td>${u.name || ''}</td><td>${roleLabel(u.role)}</td><td>${statusBadge(u.status)}</td><td>${this.fmtDate(u.last_login) || '-'}</td><td>${this.fmtDate(u.created_at)}</td><td>${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
+    document.getElementById('users-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+    document.getElementById('users-pager').innerHTML = this.renderPager(tid, sorted.length);
+  },
+
+  onUsersFilter() {
+    const st = this.getTableState('users'); st.page = 1;
+    this.renderUsersTable();
+  },
+
+  async editUser(id) {
+    let u = { username: '', name: '', role: 'operator', status: 'active' };
+    if (id) { u = this._usersData.find(d => d.id === id) || u; }
+    const roles = ['admin','manager','operator','viewer'];
+    const roleOpts = roles.map(r => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${this.t('role_' + r)}</option>`).join('');
+    const statusOpts = [['active', this.t('status_active')], ['disabled', this.t('status_disabled')]].map(s => `<option value="${s[0]}" ${s[0] === u.status ? 'selected' : ''}>${s[1]}</option>`).join('');
+    this.showModal(`<h3>${id ? this.t('user_edit') : this.t('user_add')}</h3>`, `<div class="form-grid" style="max-width:500px">
+      <div class="form-group"><label>${this.t('user_username')} *</label><input id="u_username" value="${u.username}" ${id ? 'readonly' : ''} oninput="App.clearFieldError('u_username')"><div class="form-error" id="u_username_error"></div></div>
+      <div class="form-group"><label>${this.t('user_name')}</label><input id="u_name" value="${u.name || ''}"></div>
+      <div class="form-group"><label>${this.t('user_role')} *</label><select id="u_role">${roleOpts}</select></div>
+      <div class="form-group"><label>${this.t('user_status')}</label><select id="u_status">${statusOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>${this.t('user_password')} ${id ? `<span style="font-size:11px;color:var(--text-muted)">(${this.t('user_password_hint')})</span>` : '*'}</label><input id="u_password" type="password" ${id ? 'placeholder="' + this.t('user_password_hint') + '"' : ''} oninput="App.clearFieldError('u_password')"><div class="form-error" id="u_password_error"></div></div>
+    </div>`, this.t('save'), async () => {
+      const body = {
+        name: document.getElementById('u_name').value.trim(),
+        role: document.getElementById('u_role').value,
+        status: document.getElementById('u_status').value,
+      };
+      const pwd = document.getElementById('u_password').value;
+      if (!id) {
+        if (!document.getElementById('u_username').value.trim()) { this.setFieldError('u_username', this.t('field_required')); return; }
+        body.username = document.getElementById('u_username').value.trim();
+        if (!pwd) { this.setFieldError('u_password', this.t('field_required')); return; }
+        body.password = pwd;
+        if (!this.validateForm({ u_username: [{rule:'required'}], u_password: [{rule:'required'},{rule:'minlen',param:6}] })) return;
+      } else {
+        if (pwd) { body.password = pwd; if (pwd.length < 6) { this.setFieldError('u_password', this.t('pwd_min_len')); return; } }
+      }
+      try {
+        await this.api('/api/users' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', body);
+        this.closeModal();
+        this.toast(id ? this.t('updated') : this.t('added'));
+        this.renderUsers();
+      } catch (e) { this.toast(e.message, 'error'); }
+    });
+  },
+
+  deleteUser(id) {
+    this.confirmDialog(this.t('cf_delete_user'), this.t('cf_delete_user_msg'), async () => {
+      try { await this.api('/api/users/' + id, 'DELETE'); this.toast(this.t('deleted')); this.renderUsers(); }
+      catch (e) { this.toast(e.message, 'error'); }
+    });
   },
 
   // ========== 模态框 ==========

@@ -42,12 +42,229 @@ function migrateDB() {
     db.exec("UPDATE inbound SET txn_type = '采购入库' WHERE txn_type = '' OR txn_type IS NULL");
     db.exec("UPDATE outbound SET txn_type = '正常出库' WHERE txn_type = '' OR txn_type IS NULL");
   } catch(e) {}
+
+  // 用户表
+  db.exec(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    role TEXT DEFAULT 'operator',
+    status TEXT DEFAULT 'active',
+    must_change_pwd INTEGER DEFAULT 0,
+    last_login TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+
+  // 初始管理员账号
+  const adminCount = db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c;
+  if (adminCount === 0) {
+    db.prepare(`INSERT INTO users (username, password_hash, name, role, must_change_pwd)
+                VALUES (?,?,?,?,1)`).run('admin', bcrypt.hashSync('admin123', 10), '系统管理员', 'admin');
+    console.log('已创建初始管理员账号: admin / admin123 (首次登录需修改密码)');
+  }
 }
 migrateDB();
+
+// ==================== 角色与权限矩阵 ====================
+// 角色：admin 管理员 / manager 主管 / operator 操作员 / viewer 只读
+// 权限粒度：模块 + 操作（view 查看 / create 新增 / edit 修改 / delete 删除）
+const ROLE_PERMISSIONS = {
+  admin: ['*'],
+  manager: {
+    dashboard: ['view'], inbound: ['view', 'create', 'edit', 'delete'],
+    outbound: ['view', 'create', 'edit', 'delete'], materials: ['view', 'create', 'edit', 'delete'],
+    suppliers: ['view', 'create', 'edit', 'delete'], orders: ['view', 'create', 'edit', 'delete'],
+    orderTracking: ['view'], stockSummary: ['view'], query: ['view'], ledger: ['view'],
+    locationStock: ['view'], settings: ['view'], users: ['view', 'create', 'edit', 'delete'],
+  },
+  operator: {
+    dashboard: ['view'], inbound: ['view', 'create', 'edit'], outbound: ['view', 'create', 'edit'],
+    materials: ['view', 'create', 'edit'], suppliers: ['view'], orders: ['view', 'create'],
+    orderTracking: ['view'], stockSummary: ['view'], query: ['view'], ledger: ['view'],
+    locationStock: ['view'],
+  },
+  viewer: {
+    dashboard: ['view'], inbound: ['view'], outbound: ['view'], materials: ['view'],
+    suppliers: ['view'], orders: ['view'], orderTracking: ['view'], stockSummary: ['view'],
+    query: ['view'], ledger: ['view'], locationStock: ['view'],
+  },
+};
+
+// 计算某角色的授权表（前端据此控制菜单与按钮显隐）
+function grantsOf(role) {
+  const p = ROLE_PERMISSIONS[role];
+  if (!p) return {};
+  if (Array.isArray(p)) {
+    const g = {};
+    ['dashboard', 'inbound', 'outbound', 'materials', 'suppliers', 'orders', 'orderTracking',
+     'stockSummary', 'query', 'ledger', 'locationStock', 'settings', 'users']
+      .forEach(m => g[m] = ['view', 'create', 'edit', 'delete']);
+    return g;
+  }
+  return p;
+}
+
+function canDo(role, module, action) {
+  const p = ROLE_PERMISSIONS[role];
+  if (!p) return false;
+  if (Array.isArray(p)) return p.includes('*');
+  const m = p[module];
+  return Array.isArray(m) && m.includes(action);
+}
+
+// ==================== 鉴权中间件 ====================
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return res.status(401).json({ error: '未登录或登录已过期' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    const u = db.prepare('SELECT id,username,name,role,status,must_change_pwd FROM users WHERE id=?').get(payload.id);
+    if (!u) return res.status(401).json({ error: '用户不存在' });
+    if (u.status !== 'active') return res.status(403).json({ error: '账号已被停用' });
+    req.user = u;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: '登录已过期，请重新登录' });
+  }
+}
+
+function requirePerm(module, action) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: '未登录' });
+    if (!canDo(req.user.role, module, action)) {
+      return res.status(403).json({ error: '权限不足：无该操作权限' });
+    }
+    next();
+  };
+}
+
+// ==================== 用户信息序列化 ====================
+function publicUser(u) {
+  return {
+    id: u.id, username: u.username, name: u.name, role: u.role, status: u.status,
+    must_change_pwd: !!u.must_change_pwd, last_login: u.last_login || '',
+    grants: grantsOf(u.role),
+  };
+}
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ==================== 认证接口（免鉴权） ====================
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: '请输入用户名和密码' });
+  try {
+    const u = db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());
+    if (!u) return res.status(401).json({ error: '用户名或密码错误' });
+    if (!bcrypt.compareSync(String(password), u.password_hash)) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+    if (u.status !== 'active') return res.status(403).json({ error: '账号已被停用，请联系管理员' });
+    db.prepare("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?").run(u.id);
+    const token = jwt.sign({ id: u.id, username: u.username, role: u.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    res.json({ token, user: publicUser(u) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== 以下接口需要登录 ====================
+app.use('/api', (req, res, next) => {
+  if (req.path === '/auth/login') return next();
+  return requireAuth(req, res, next);
+});
+
+// 当前登录用户信息
+app.get('/api/auth/me', (req, res) => {
+  res.json(publicUser(req.user));
+});
+
+// 修改自己的密码
+app.post('/api/auth/change-password', (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: '请填写原密码和新密码' });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+  try {
+    const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
+    if (!bcrypt.compareSync(String(oldPassword), u.password_hash)) {
+      return res.status(400).json({ error: '原密码不正确' });
+    }
+    db.prepare('UPDATE users SET password_hash=?, must_change_pwd=0 WHERE id=?')
+      .run(bcrypt.hashSync(String(newPassword), 10), req.user.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== 用户管理（仅管理员） ====================
+app.get('/api/users', requirePerm('users', 'view'), (req, res) => {
+  const rows = db.prepare(`SELECT id,username,name,role,status,must_change_pwd,last_login,created_at
+                           FROM users ORDER BY id`).all();
+  res.json(rows.map(r => ({ ...r, must_change_pwd: !!r.must_change_pwd })));
+});
+
+app.post('/api/users', requirePerm('users', 'create'), (req, res) => {
+  const { username, password, name, role } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: '请填写用户名和密码' });
+  if (String(password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+  if (!ROLE_PERMISSIONS[role]) return res.status(400).json({ error: '无效的角色' });
+  try {
+    const dup = db.prepare('SELECT id FROM users WHERE username=?').get(String(username).trim());
+    if (dup) return res.status(400).json({ error: '用户名已存在' });
+    const info = db.prepare(`INSERT INTO users (username,password_hash,name,role) VALUES (?,?,?,?)`)
+      .run(String(username).trim(), bcrypt.hashSync(String(password), 10), String(name || '').trim(), role);
+    const u = db.prepare('SELECT id,username,name,role,status,must_change_pwd,last_login,created_at FROM users WHERE id=?').get(info.lastInsertRowid);
+    res.json({ ...u, must_change_pwd: !!u.must_change_pwd });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.put('/api/users/:id', requirePerm('users', 'edit'), (req, res) => {
+  const id = Number(req.params.id);
+  const { name, role, status, password } = req.body || {};
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  if (!u) return res.status(404).json({ error: '用户不存在' });
+  if (role && !ROLE_PERMISSIONS[role]) return res.status(400).json({ error: '无效的角色' });
+  try {
+    // 防止把最后一个管理员降级或停用
+    if (u.role === 'admin' && (role && role !== 'admin' || status === 'disabled')) {
+      const admins = db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin' AND status='active'").get().c;
+      if (admins <= 1) return res.status(400).json({ error: '系统至少需要保留一个启用的管理员' });
+    }
+    if (name !== undefined) db.prepare('UPDATE users SET name=? WHERE id=?').run(String(name).trim(), id);
+    if (role) db.prepare('UPDATE users SET role=? WHERE id=?').run(role, id);
+    if (status) db.prepare('UPDATE users SET status=? WHERE id=?').run(status, id);
+    if (password) {
+      if (String(password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+      db.prepare('UPDATE users SET password_hash=?, must_change_pwd=1 WHERE id=?')
+        .run(bcrypt.hashSync(String(password), 10), id);
+    }
+    const out = db.prepare('SELECT id,username,name,role,status,must_change_pwd,last_login,created_at FROM users WHERE id=?').get(id);
+    res.json({ ...out, must_change_pwd: !!out.must_change_pwd });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/users/:id', requirePerm('users', 'delete'), (req, res) => {
+  const id = Number(req.params.id);
+  if (id === req.user.id) return res.status(400).json({ error: '不能删除当前登录的账号' });
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  if (!u) return res.status(404).json({ error: '用户不存在' });
+  if (u.role === 'admin') {
+    const admins = db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin' AND status='active'").get().c;
+    if (admins <= 1) return res.status(400).json({ error: '系统至少需要保留一个启用的管理员' });
+  }
+  db.prepare('DELETE FROM users WHERE id=?').run(id);
+  res.json({ success: true });
+});
+
 
 // ==================== 辅助函数 ====================
 
@@ -192,7 +409,7 @@ function getOrderLinesForInbound(poNo) {
 // ==================== API 路由 ====================
 
 // --- 仪表盘 ---
-app.get('/api/dashboard', (req, res) => {
+app.get('/api/dashboard', requirePerm('dashboard', 'view'), (req, res) => {
   const summary = getStockSummary();
   const totalItems = summary.length;
   const totalValue = summary.reduce((s, m) => s + m.stock_value, 0);
@@ -277,13 +494,13 @@ app.get('/api/dashboard', (req, res) => {
 });
 
 // --- 物料档案 ---
-app.get('/api/materials', (req, res) => {
+app.get('/api/materials', requirePerm('materials', 'view'), (req, res) => {
   const rows = db.prepare("SELECT * FROM materials ORDER BY code").all();
   res.json(rows);
 });
 
 // 自动生成物料编码（按类别前缀）
-app.get('/api/materials/next-code', (req, res) => {
+app.get('/api/materials/next-code', requirePerm('materials', 'view'), (req, res) => {
   const category = req.query.category;
   if (!category) return res.status(400).json({ error: '请提供类别' });
   try {
@@ -294,7 +511,7 @@ app.get('/api/materials/next-code', (req, res) => {
   }
 });
 
-app.post('/api/materials', (req, res) => {
+app.post('/api/materials', requirePerm('materials', 'create'), (req, res) => {
   const m = req.body;
   try {
     // 如果 code 为空或 'auto'，自动生成
@@ -309,7 +526,7 @@ app.post('/api/materials', (req, res) => {
   }
 });
 
-app.put('/api/materials/:code', (req, res) => {
+app.put('/api/materials/:code', requirePerm('materials', 'edit'), (req, res) => {
   const m = req.body;
   try {
     db.prepare(`UPDATE materials SET name=@name,spec=@spec,category=@category,unit=@unit,
@@ -322,7 +539,7 @@ app.put('/api/materials/:code', (req, res) => {
   }
 });
 
-app.delete('/api/materials/:code', (req, res) => {
+app.delete('/api/materials/:code', requirePerm('materials', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM materials WHERE code=?").run(req.params.code);
     res.json({ success: true });
@@ -332,11 +549,11 @@ app.delete('/api/materials/:code', (req, res) => {
 });
 
 // --- 供应商 ---
-app.get('/api/suppliers', (req, res) => {
+app.get('/api/suppliers', requirePerm('suppliers', 'view'), (req, res) => {
   res.json(db.prepare("SELECT * FROM suppliers ORDER BY name").all());
 });
 
-app.post('/api/suppliers', (req, res) => {
+app.post('/api/suppliers', requirePerm('suppliers', 'create'), (req, res) => {
   try {
     db.prepare("INSERT INTO suppliers (name,contact,phone,remarks) VALUES (@name,@contact,@phone,@remarks)").run(req.body);
     res.json({ success: true });
@@ -345,7 +562,7 @@ app.post('/api/suppliers', (req, res) => {
   }
 });
 
-app.put('/api/suppliers/:id', (req, res) => {
+app.put('/api/suppliers/:id', requirePerm('suppliers', 'edit'), (req, res) => {
   try {
     db.prepare("UPDATE suppliers SET name=@name,contact=@contact,phone=@phone,remarks=@remarks WHERE id=@id").run({ ...req.body, id: req.params.id });
     res.json({ success: true });
@@ -354,7 +571,7 @@ app.put('/api/suppliers/:id', (req, res) => {
   }
 });
 
-app.delete('/api/suppliers/:id', (req, res) => {
+app.delete('/api/suppliers/:id', requirePerm('suppliers', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM suppliers WHERE id=?").run(req.params.id);
     res.json({ success: true });
@@ -364,7 +581,7 @@ app.delete('/api/suppliers/:id', (req, res) => {
 });
 
 // --- 入库记录 ---
-app.get('/api/inbound', (req, res) => {
+app.get('/api/inbound', requirePerm('inbound', 'view'), (req, res) => {
   const { code, startDate, endDate, supplier, handler, poNo, contractNo, keyword, txnType } = req.query;
   let sql = `SELECT i.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM inbound i LEFT JOIN materials m ON i.code = m.code WHERE 1=1`;
@@ -386,7 +603,7 @@ app.get('/api/inbound', (req, res) => {
 });
 
 // 批量入库：支持一次提交多行
-app.post('/api/inbound', (req, res) => {
+app.post('/api/inbound', requirePerm('inbound', 'create'), (req, res) => {
   const body = req.body;
   // 兼容：单行（有 code 字段）或多行（items 数组）
   const items = Array.isArray(body.items) ? body.items : [body];
@@ -419,7 +636,7 @@ app.post('/api/inbound', (req, res) => {
   }
 });
 
-app.put('/api/inbound/:id', (req, res) => {
+app.put('/api/inbound/:id', requirePerm('inbound', 'edit'), (req, res) => {
   const r = req.body;
   try {
     if (!r.txn_type) r.txn_type = '采购入库';
@@ -431,7 +648,7 @@ app.put('/api/inbound/:id', (req, res) => {
   }
 });
 
-app.delete('/api/inbound/:id', (req, res) => {
+app.delete('/api/inbound/:id', requirePerm('inbound', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM inbound WHERE id=?").run(req.params.id);
     res.json({ success: true });
@@ -441,7 +658,7 @@ app.delete('/api/inbound/:id', (req, res) => {
 });
 
 // --- 出库记录 ---
-app.get('/api/outbound', (req, res) => {
+app.get('/api/outbound', requirePerm('outbound', 'view'), (req, res) => {
   const { code, startDate, endDate, destination, receiver, handler, keyword, txnType } = req.query;
   let sql = `SELECT o.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM outbound o LEFT JOIN materials m ON o.code = m.code WHERE 1=1`;
@@ -462,7 +679,7 @@ app.get('/api/outbound', (req, res) => {
 });
 
 // 批量出库：支持一次提交多行
-app.post('/api/outbound', (req, res) => {
+app.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
   const body = req.body;
   const items = Array.isArray(body.items) ? body.items : [body];
   if (items.length === 0) return res.status(400).json({ error: '无数据' });
@@ -493,7 +710,7 @@ app.post('/api/outbound', (req, res) => {
   }
 });
 
-app.put('/api/outbound/:id', (req, res) => {
+app.put('/api/outbound/:id', requirePerm('outbound', 'edit'), (req, res) => {
   const r = req.body;
   try {
     r.cost_price = computeCostPrice(r.code, r.qty, r.date);
@@ -506,7 +723,7 @@ app.put('/api/outbound/:id', (req, res) => {
   }
 });
 
-app.delete('/api/outbound/:id', (req, res) => {
+app.delete('/api/outbound/:id', requirePerm('outbound', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM outbound WHERE id=?").run(req.params.id);
     res.json({ success: true });
@@ -516,7 +733,7 @@ app.delete('/api/outbound/:id', (req, res) => {
 });
 
 // --- 库存汇总 ---
-app.get('/api/stock-summary', (req, res) => {
+app.get('/api/stock-summary', requirePerm('stockSummary', 'view'), (req, res) => {
   const { keyword, category, status } = req.query;
   let summary = getStockSummary();
   if (keyword) {
@@ -534,7 +751,7 @@ app.get('/api/stock-summary', (req, res) => {
 });
 
 // --- 物料台账（单个物料进出库流水） ---
-app.get('/api/ledger/:code', (req, res) => {
+app.get('/api/ledger/:code', requirePerm('ledger', 'view'), (req, res) => {
   const code = req.params.code;
   const { startDate, endDate } = req.query;
 
@@ -607,7 +824,7 @@ app.get('/api/ledger/:code', (req, res) => {
 });
 
 // --- 位置库存 ---
-app.get('/api/location-stock', (req, res) => {
+app.get('/api/location-stock', requirePerm('locationStock', 'view'), (req, res) => {
   const { code, location } = req.query;
   const summary = getStockSummary();
 
@@ -647,7 +864,7 @@ app.get('/api/location-stock', (req, res) => {
 });
 
 // --- 采购订单 ---
-app.get('/api/purchase-orders', (req, res) => {
+app.get('/api/purchase-orders', requirePerm('orders', 'view'), (req, res) => {
   const orders = db.prepare("SELECT * FROM purchase_orders ORDER BY date DESC").all();
   const result = orders.map(po => {
     const lines = db.prepare(`
@@ -691,7 +908,7 @@ app.get('/api/purchase-orders', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/purchase-orders', (req, res) => {
+app.post('/api/purchase-orders', requirePerm('orders', 'create'), (req, res) => {
   const po = req.body;
   try {
     db.prepare("INSERT INTO purchase_orders (po_no,date,supplier,contract_no,project,expected_date,remarks,manual_status) VALUES (@po_no,@date,@supplier,@contract_no,@project,@expected_date,@remarks,@manual_status)").run(po);
@@ -701,7 +918,7 @@ app.post('/api/purchase-orders', (req, res) => {
   }
 });
 
-app.put('/api/purchase-orders/:poNo', (req, res) => {
+app.put('/api/purchase-orders/:poNo', requirePerm('orders', 'edit'), (req, res) => {
   const po = req.body;
   try {
     db.prepare("UPDATE purchase_orders SET date=@date,supplier=@supplier,contract_no=@contract_no,project=@project,expected_date=@expected_date,remarks=@remarks,manual_status=@manual_status WHERE po_no=@po_no").run({ ...po, po_no: req.params.poNo });
@@ -711,7 +928,7 @@ app.put('/api/purchase-orders/:poNo', (req, res) => {
   }
 });
 
-app.delete('/api/purchase-orders/:poNo', (req, res) => {
+app.delete('/api/purchase-orders/:poNo', requirePerm('orders', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM order_lines WHERE po_no=?").run(req.params.poNo);
     db.prepare("DELETE FROM purchase_orders WHERE po_no=?").run(req.params.poNo);
@@ -722,7 +939,7 @@ app.delete('/api/purchase-orders/:poNo', (req, res) => {
 });
 
 // --- 订单明细 ---
-app.post('/api/order-lines', (req, res) => {
+app.post('/api/order-lines', requirePerm('orders', 'create'), (req, res) => {
   const l = req.body;
   try {
     db.prepare("INSERT INTO order_lines (po_no,code,order_qty,order_price,remarks) VALUES (@po_no,@code,@order_qty,@order_price,@remarks)").run(l);
@@ -732,7 +949,7 @@ app.post('/api/order-lines', (req, res) => {
   }
 });
 
-app.put('/api/order-lines/:id', (req, res) => {
+app.put('/api/order-lines/:id', requirePerm('orders', 'edit'), (req, res) => {
   const l = req.body;
   try {
     db.prepare("UPDATE order_lines SET po_no=@po_no,code=@code,order_qty=@order_qty,order_price=@order_price,remarks=@remarks WHERE id=@id").run({ ...l, id: req.params.id });
@@ -742,7 +959,7 @@ app.put('/api/order-lines/:id', (req, res) => {
   }
 });
 
-app.delete('/api/order-lines/:id', (req, res) => {
+app.delete('/api/order-lines/:id', requirePerm('orders', 'delete'), (req, res) => {
   try {
     db.prepare("DELETE FROM order_lines WHERE id=?").run(req.params.id);
     res.json({ success: true });
@@ -752,7 +969,7 @@ app.delete('/api/order-lines/:id', (req, res) => {
 });
 
 // 查询某个订单的明细带已到货数量（给入库选订单用）
-app.get('/api/order-lines/by-po/:poNo', (req, res) => {
+app.get('/api/order-lines/by-po/:poNo', requirePerm('orders', 'view'), (req, res) => {
   try {
     res.json(getOrderLinesForInbound(req.params.poNo));
   } catch (e) {
@@ -761,7 +978,7 @@ app.get('/api/order-lines/by-po/:poNo', (req, res) => {
 });
 
 // 订单明细跟踪（全量查询，支持筛选）
-app.get('/api/order-tracking', (req, res) => {
+app.get('/api/order-tracking', requirePerm('orderTracking', 'view'), (req, res) => {
   const { poNo, supplier, keyword, deliveryStatus } = req.query;
   let sql = `SELECT ol.*, po.date as po_date, po.supplier as po_supplier, po.expected_date, po.manual_status,
     m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
@@ -825,7 +1042,7 @@ app.get('/api/params', (req, res) => {
   res.json({ currency, categories, units, destinations, locations });
 });
 
-app.post('/api/params/:type', (req, res) => {
+app.post('/api/params/:type', requirePerm('settings', 'create'), (req, res) => {
   const { name, prefix } = req.body;
   const type = req.params.type;
   const tableMap = { categories: 'categories', units: 'units', destinations: 'destinations', locations: 'locations' };
@@ -843,7 +1060,7 @@ app.post('/api/params/:type', (req, res) => {
   }
 });
 
-app.delete('/api/params/:type/:id', (req, res) => {
+app.delete('/api/params/:type/:id', requirePerm('settings', 'delete'), (req, res) => {
   const tableMap = { categories: 'categories', units: 'units', destinations: 'destinations', locations: 'locations' };
   const table = tableMap[req.params.type];
   if (!table) return res.status(400).json({ error: '无效类型' });

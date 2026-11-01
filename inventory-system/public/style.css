@@ -99,12 +99,45 @@ body {
   grid-column: 1;
   grid-row: 1;
   margin-top: 75px;
+  margin-bottom: 56px;
   min-width: 0;
   min-height: 0;
   padding: 8px 10px;
   background: var(--sidebar-bg);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.sidebar-user {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--border);
+  height: 48px;
+  box-sizing: border-box;
+}
+.sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-user-role {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .nav-section-label {
