@@ -1,16 +1,19 @@
 # 库存管理系统（Web 版）
 
-由 Excel《库存进出库管理》复刻而来的 Web 库存管理系统。数据库后端 + 网页前端。
+基于 Web 的库存进出库管理系统，从 Excel 管理模式升级为全功能 Web 应用。支持多用户、权限控制、价格隐藏、批量操作、采购订单跟踪等完整业务流程。
 
-## 启动
+## 快速启动
 
 ```bash
 cd inventory-system
-node server.js
+npm install        # 首次安装依赖
+node server.js     # 启动服务
 # 打开 http://localhost:3000
 ```
 
-首次初始化数据库（可选，会清空并重建）：
+首次登录：用户名 `admin`，密码 `admin123`（首次登录强制修改密码）。
+
+重新初始化数据库（会清空所有数据）：
 
 ```bash
 node init-db.js
@@ -20,84 +23,218 @@ node init-db.js
 
 ```
 inventory-system/
-├── server.js          Express 后端，全部 REST API 路由
-├── init-db.js         数据库初始化脚本（从 Excel 提取的种子数据）
-├── inventory.db       SQLite 数据库
+├── server.js              Express 后端（REST API + 鉴权 + 权限中间件 + 业务逻辑）
+├── init-db.js             数据库初始化脚本（建表 + 种子数据）
+├── inventory.db           SQLite 数据库文件
 ├── package.json
-└── public/
-    ├── index.html     入口页面
-    ├── app.js         应用主逻辑：i18n、主题、11 个页面渲染、通用组件函数
-    └── style.css      全部样式（CSS 变量主题系统）
+├── .gitignore
+├── public/
+│   ├── index.html         主应用入口（加载 app.js + Chart.js CDN）
+│   ├── login.html         独立登录页（支持中英文 + 暗色主题）
+│   ├── app.js             前端 SPA 主逻辑（~2100 行）
+│   └── style.css          全部样式（CSS 变量主题系统）
 ```
 
 ## 技术栈
 
-- **后端**：Node.js + Express + SQLite（better-sqlite3）
-- **前端**：原生 HTML / CSS / JavaScript，无框架、无构建步骤
-- **图表**：Chart.js（CDN 引入）
+| 层 | 技术 | 说明 |
+|---|---|---|
+| 后端 | Node.js + Express + SQLite (better-sqlite3) | 同步 API，零构建 |
+| 鉴权 | bcryptjs + jsonwebtoken | JWT 7 天过期，bcrypt 密码加密 |
+| 前端 | 原生 HTML / CSS / JavaScript | 无框架、无打包器，刷新即生效 |
+| 图表 | Chart.js (CDN) | 仪表盘趋势图/分类图/Top5 |
+| 缓存策略 | Cache-Control: no-cache | 静态文件禁缓存，确保浏览器加载最新版本 |
 
-改完前端代码直接刷新浏览器即可生效，无需打包。
+## 功能模块（13 个页面）
 
-## 功能模块
+| 页面 | 说明 | 关键特性 |
+|---|---|---|
+| 仪表盘 | 库存总览、进出库趋势 | 价格权限控制，operator/viewer 隐藏金额图表 |
+| 物料档案 | 物料基础信息 | 编码按类别前缀自动生成，期初价格按权限隐藏 |
+| 入库记录 | 采购入库/采购退货流水 | 批量录入，三级联动选物料，按订单/合同带明细 |
+| 出库记录 | 正常出库/退库出库流水 | 批量录入，三级联动，加权平均成本 |
+| 库存汇总 | 实时库存 + 预警 | 多关键字模糊筛选，价格列按权限隐藏 |
+| 查询中心 | 多条件组合查询 | 三个 tab（库存/入库/出库），排序+分页 |
+| 物料台账 | 单物料进出流水 | 期初/期末/收支汇总 |
+| 位置库存 | 按物料/库位查看分布 | |
+| 采购订单 | 订单 + 明细行 | 到货状态跟踪，逾期天数 |
+| 订单明细跟踪 | 订单行到货详情 | 批量添加采购明细，按状态筛选 |
+| 供应商档案 | 供应商信息 | |
+| 参数设置 | 分类/单位/库位/去向等 | |
+| 用户管理 | 用户 CRUD + 角色分配 | 仅 admin 可见 |
 
-| 页面 | 说明 |
-|------|------|
-| 仪表盘 | 库存总览、进出库趋势图、分类占比、TOP 物料 |
-| 物料档案 | 物料基础信息维护，含期初库存/单价/最低库存/库位 |
-| 入库记录 | 采购入库流水，支持多关键字 + 日期段实时筛选 |
-| 出库记录 | 出库流水，成本单价按加权平均法计算 |
-| 库存汇总 | 实时库存、库存金额、缺货/补货预警 |
-| 查询中心 | 多条件组合查询（物料/日期/供应商/经手人/去向/订单号） |
-| 物料台账 | 单个物料的完整进出流水台账 + 期初/期末结存 |
-| 位置库存 | 按物料或按库位查看分布 |
-| 采购订单 | 订单及明细行，到货状态跟踪、逾期天数统计 |
-| 供应商档案 | 供应商基础信息 |
-| 参数设置 | 物料分类、计量单位、库位、去向等基础参数维护 |
+## 核心设计
 
-## 交互特性
+### 1. 入库/出库类型与负数冲抵
 
-- 中英文实时切换、暗色/亮色主题（记忆用户偏好）
-- 表格点击表头排序、分页（10/15/20/50/全部条）
-- 表单内联校验、错误提示随输入自动消除
-- 删除二次确认弹窗、操作结果 toast 提示
-- 多关键字模糊筛选（空格分隔多个关键字，AND 关系）
-- 日期段范围筛选
-- 数据表格：工具栏与表头固定顶部、分页条固定底部，仅数据区滚动
+| 表 | txn_type | qty | 单号前缀 | 说明 |
+|---|---|---|---|---|
+| inbound | 采购入库 | 正数 | GRN- | 正常入库 |
+| inbound | 采购退货 | **负数** | RET- | 退给供应商，冲减入库 |
+| outbound | 正常出库 | 正数 | GIN- | 正常出库 |
+| outbound | 退库出库 | **负数** | RKB- | 退库回仓，冲减出库 |
+
+- 用户界面输入正数，前后端自动转负数存储
+- 库存公式：`on_hand = opening_qty + SUM(inbound.qty) - SUM(outbound.qty)`
+- 采购退货的 qty 为负 → 冲减入库量
+- 退库出库的 qty 为负 → `-(-out)` → 增加库存
+- `amount`/`cost_amount` 为 GENERATED 列（`qty * price`），自动跟随正负
+- 表格 badge 颜色：正常=蓝色(info)，退库/退货=红色(danger)
+
+### 2. 批量单号
+
+- 一批提交（多行）共享同一个单号
+- 单号格式：`前缀-YYYYMMDD-序号(4位)`，如 `GRN-20261101-0001`
+- 前缀按 txn_type 区分：GRN/GIN（正常）、RET/RKB（退库退货）
+
+### 3. 权限矩阵（方案 A：写死角色）
+
+| 角色 | 权限范围 |
+|---|---|
+| admin | 全部模块全部操作 |
+| manager | 业务全权（入出库/物料/订单/供应商/订单跟踪/参数设置），**不含用户管理** |
+| operator | 只能新增入库和出库（view+create），**不能编辑/删除**已录入记录，不能新增物料/订单 |
+| viewer | 纯只读 |
+
+- 后端：`requirePerm(module, action)` 中间件，32 个业务路由全部挂载
+- 前端：`can(module, action)` 基于 `user.grants` 控制菜单/按钮显隐
+- 价格权限：`canViewPrice()` 仅 admin/manager，隐藏所有价格/金额列
+
+### 4. 价格权限控制
+
+`canViewPrice()` 返回 `true` 时显示价格/金额列，否则隐藏。涉及：
+
+- 仪表盘：总价值指标卡、趋势图、类别图、Top5 图表、超期订单金额列
+- 入库/出库表：单价/金额列 + 汇总总金额
+- 库存汇总：加权均价/库存价值列 + 汇总
+- 查询中心：三个 tab 的价格列
+- 物料台账：单价/金额列
+- 采购订单/订单跟踪：金额列 + 汇总
+- 物料档案：期初价格列 + 编辑表单字段
+- 批量表单：价格输入列
+
+非价格可见用户的表单用 `<input type="hidden" value="0">` 保证提交逻辑不变。
+
+### 5. 前端架构
+
+#### SPA 单文件模式
+- `App` 对象挂载全局，页面通过 `pageWrap()` + `setMain()` 切换
+- 路由：`location.hash` → `router()` → 对应 `renderXxx()` 函数
+
+#### DOM 三段式布局（铁律）
+```
+.data-page (flex column, height:100%)
+  ├── .data-toolbar  (flex-shrink:0) — 新增按钮 + 筛选框，永久不销毁
+  ├── .data-summary  (flex-shrink:0) — 统计汇总行
+  ├── .data-scroll   (flex:1, overflow:auto) — 表格在此独立滚动
+  └── .data-pager    (flex-shrink:0) — 分页条
+```
+
+`renderXxx()` 只渲染一次结构；`renderXxxTable()` 只重设表格区域和分页区域。
+**绝不可重设包含工具栏的容器** —— 否则中文输入法（IME）组合状态被打断。
+
+#### 通用函数
+| 函数 | 说明 |
+|---|---|
+| `getTableState(tableId)` | 获取表格的 sortKey/sortDir/page/pageSize |
+| `sortData(data, key, dir)` | 排序：数字/日期/字符串自动识别 |
+| `sortTh(label, key, tableId)` | 生成可排序表头（点击切换升降序 + 箭头） |
+| `paginate(data, page, pageSize)` | 分页切片 |
+| `renderPager(tableId, total)` | 分页条 HTML |
+| `filterByKeywords(data, kw, fields)` | 多关键字模糊筛选（空格分隔，AND 逻辑） |
+| `filterByDateRange(data, field, from, to)` | 日期段筛选 |
+| `can(module, action)` | 权限检查 |
+| `canViewPrice()` | 价格可见性检查 |
+| `showModal(title, body, btn, onConfirm, onCancel, large)` | 弹窗（large=true 宽弹窗） |
+| `confirmDialog(title, msg, onConfirm, onCancel)` | 确认框 |
+| `rowActions(module, editCall, deleteCall)` | 行操作按钮（按权限显隐） |
+
+#### i18n
+- `I18N` 字典对象，`zh` 和 `en` 两套 key 完全对齐
+- `this.t('key')` 翻译函数
+- 新增任何界面文案时，必须同时补 zh 和 en
+
+#### 主题
+- CSS 变量定义在 `:root`，暗色主题用 `[data-theme="dark"]` 覆盖
+- 偏好存 `localStorage`
+- 切换主题时 Chart.js 图表需销毁重建
+
+### 6. 登录与安全
+
+- 独立登录页 `login.html`，token 存 localStorage
+- `api()` 自动带 `Authorization: Bearer` 头，401 自动跳登录页
+- 首次登录强制改密（`must_change_pwd` 标记）
+- **5 分钟空闲超时**：无操作自动退出登录
+- 保护：不能删除最后一个启用的管理员、不能删除当前登录账号
+
+### 7. 数据库表结构
+
+```sql
+-- 物料档案
+materials (code PK, name, spec, category, unit, opening_qty, opening_price,
+           min_stock, default_location, brand, status)
+
+-- 入库记录（采购入库 + 采购退货）
+inbound (id PK, date, grn_no, code FK, qty, price, amount GENERATED,
+         supplier, handler, location, remarks, po_no, contract_no, txn_type)
+
+-- 出库记录（正常出库 + 退库出库）
+outbound (id PK, date, gin_no, code FK, qty, destination, receiver,
+          handler, location, remarks, cost_price, cost_amount GENERATED, txn_type)
+
+-- 采购订单
+purchase_orders (po_no PK, date, supplier, project, expected_date,
+                 contract_no, manual_status)
+
+-- 采购订单明细行
+order_lines (id PK, po_no FK, code FK, order_qty, order_price, expected_date)
+
+-- 用户
+users (id PK, username UNIQUE, password_hash, name, role, status,
+       must_change_pwd, last_login, created_at)
+
+-- 参数表
+params (key, value)              -- currency, system_name 等
+categories (id, name, prefix)    -- 物料分类 + 编码前缀
+units (id, name)                 -- 计量单位
+locations (id, name)             -- 库位
+destinations (id, name)          -- 出库去向
+```
+
+### 8. 关键 API 端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /api/auth/login | 登录，返回 JWT |
+| GET | /api/auth/me | 获取当前用户信息 + grants |
+| GET | /api/dashboard | 仪表盘聚合数据 |
+| GET/POST/PUT/DELETE | /api/inbound | 入库 CRUD（POST 支持 items 数组批量） |
+| GET/POST/PUT/DELETE | /api/outbound | 出库 CRUD（POST 支持 items 数组批量） |
+| GET | /api/stock-summary | 库存汇总（含 avg_price, stock_value） |
+| GET | /api/order-tracking | 订单明细跟踪 |
+| GET | /api/order-lines/by-po/:poNo | 按采购单号查未到货明细 |
+| GET | /api/order-lines/by-contract/:contractNo | 按合同号查未到货明细 |
+| GET | /api/materials/next-code | 按类别生成物料编码 |
+| GET/POST/PUT/DELETE | /api/users | 用户管理 |
+| GET/POST/PUT/DELETE | /api/materials | 物料档案 CRUD |
+| GET/POST/PUT/DELETE | /api/purchase-orders | 采购订单 CRUD |
+| GET | /api/ledger/:code | 单物料台账流水 |
 
 ## 开发约定
 
-### 前端表格页面的 DOM 结构（重要）
+1. 改动集中在 `public/app.js` 和 `public/style.css`，改完直接刷新浏览器
+2. 验证语法：`node -c public/app.js` 和 `node -c server.js`
+3. 静态文件已禁缓存（`Cache-Control: no-cache`），浏览器会加载最新版本
+4. 本地 SQLite 带 WAL 文件，改数据前注意 `inventory.db-wal`
+5. 数据库迁移在 `migrateDB()` 中自动执行（ALTER TABLE + 数据更新）
 
-数据类页面统一使用 `.data-page` 三段式布局：
+## 依赖
 
+```json
+{
+  "express": "^4.18.2",
+  "better-sqlite3": "^11.0.0",
+  "bcryptjs": "^2.4.3",
+  "jsonwebtoken": "^9.0.0"
+}
 ```
-.data-page (flex column, height:100%)
-  ├── .data-toolbar  (flex-shrink:0)  新增按钮 + 筛选框 + 日期段
-  ├── .data-summary  (flex-shrink:0)  统计汇总行
-  ├── .data-scroll   (flex:1, overflow:auto)  表格，thead sticky 生效
-  └── .data-pager    (flex-shrink:0)  分页条
-```
-
-`renderXxx()` 只渲染一次整体结构；`renderXxxTable()` 只重设 `#xxx-scroll` 与 `#xxx-pager`。
-**不要重设包含工具栏的容器**——中文输入法（IME）的组合状态会被打断，导致无法输入中文。
-
-### i18n
-
-`I18N` 字典里 `zh` 和 `en` 的 key 必须一一对应。新增界面文案时两边都要补。
-
-### 表格状态
-
-`App.tableStates[tableId]` 存 `{ sortKey, sortDir, page, pageSize }`；
-`App._tableRenderers[tableId]` 存重渲染回调，排序/翻页时调用。
-
-### 验证语法
-
-```bash
-node -c public/app.js
-```
-
-## 待办
-
-- 用户管理 + 权限控制（不同用户不同权限）
-  - 后端：users 表 + bcrypt 加密 + JWT 登录
-  - 前端：登录页 + 权限路由 + 按角色显隐菜单/按钮

@@ -43,6 +43,16 @@ function migrateDB() {
     db.exec("UPDATE outbound SET txn_type = '正常出库' WHERE txn_type = '' OR txn_type IS NULL");
   } catch(e) {}
 
+  // 迁移：退库入库 → 采购退货（移到 inbound 表，qty/price 转负数）
+  //        退货出库 → 退库出库（移到 outbound 表，qty 转负数）
+  // 注意：amount/cost_amount 是 GENERATED 列，随 qty*price 自动计算，无需单独更新
+  try {
+    // inbound 表中已有的"退库入库"改为"采购退货"，qty 和 price 转负数（amount 自动跟着变）
+    db.exec("UPDATE inbound SET txn_type = '采购退货', qty = -ABS(qty), price = -ABS(price) WHERE txn_type = '退库入库'");
+    // outbound 表中已有的"退货出库"改为"退库出库"，qty 转负数（cost_amount 自动跟着变）
+    db.exec("UPDATE outbound SET txn_type = '退库出库', qty = -ABS(qty) WHERE txn_type = '退货出库'");
+  } catch(e) { console.log('迁移 txn_type 值更新:', e.message); }
+
   // 用户表
   db.exec(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,19 +79,34 @@ migrateDB();
 // ==================== 角色与权限矩阵 ====================
 // 角色：admin 管理员 / manager 主管 / operator 操作员 / viewer 只读
 // 权限粒度：模块 + 操作（view 查看 / create 新增 / edit 修改 / delete 删除）
+// 规则：
+//   admin — 全部权限
+//   manager — 业务全权（入出库/物料/订单/供应商/订单跟踪/参数设置），不含用户管理
+//   operator — 只能新增入库和出库，不能编辑/删除已录入记录，不能新增物料/订单/供应商
+//   viewer — 纯只读
 const ROLE_PERMISSIONS = {
   admin: ['*'],
   manager: {
-    dashboard: ['view'], inbound: ['view', 'create', 'edit', 'delete'],
-    outbound: ['view', 'create', 'edit', 'delete'], materials: ['view', 'create', 'edit', 'delete'],
-    suppliers: ['view', 'create', 'edit', 'delete'], orders: ['view', 'create', 'edit', 'delete'],
-    orderTracking: ['view'], stockSummary: ['view'], query: ['view'], ledger: ['view'],
-    locationStock: ['view'], settings: ['view'], users: ['view', 'create', 'edit', 'delete'],
+    dashboard: ['view'],
+    inbound: ['view', 'create', 'edit', 'delete'],
+    outbound: ['view', 'create', 'edit', 'delete'],
+    materials: ['view', 'create', 'edit', 'delete'],
+    suppliers: ['view', 'create', 'edit', 'delete'],
+    orders: ['view', 'create', 'edit', 'delete'],
+    orderTracking: ['view', 'create', 'edit', 'delete'],
+    stockSummary: ['view'], query: ['view'], ledger: ['view'],
+    locationStock: ['view'],
+    settings: ['view', 'create', 'edit', 'delete'],
   },
   operator: {
-    dashboard: ['view'], inbound: ['view', 'create', 'edit'], outbound: ['view', 'create', 'edit'],
-    materials: ['view', 'create', 'edit'], suppliers: ['view'], orders: ['view', 'create'],
-    orderTracking: ['view'], stockSummary: ['view'], query: ['view'], ledger: ['view'],
+    dashboard: ['view'],
+    inbound: ['view', 'create'],
+    outbound: ['view', 'create'],
+    materials: ['view'],
+    suppliers: ['view'],
+    orders: ['view'],
+    orderTracking: ['view'],
+    stockSummary: ['view'], query: ['view'], ledger: ['view'],
     locationStock: ['view'],
   },
   viewer: {
@@ -151,7 +176,15 @@ function publicUser(u) {
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// 静态文件禁用缓存，确保浏览器每次加载最新 JS/CSS
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filepath) => {
+    if (filepath.endsWith('.js') || filepath.endsWith('.css') || filepath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
+  }
+}));
 
 // ==================== 认证接口（免鉴权） ====================
 app.post('/api/auth/login', (req, res) => {
@@ -351,15 +384,20 @@ function computeCostPrice(code, qty, date) {
 }
 
 // 生成单号
-function genGrnNo(date) {
+// 生成单号（批量共享一个单号）
+// 入库：采购入库 GRN-，采购退货 RET-
+// 出库：正常出库 GIN-，退库出库 RKB-
+function genGrnNo(date, txnType) {
   const d = date.replace(/-/g, '');
-  const count = db.prepare("SELECT COUNT(*) as c FROM inbound WHERE grn_no LIKE ?").get(`GRN-${d}%`).c;
-  return `GRN-${d}-${String(count + 1).padStart(3, '0')}`;
+  const prefix = txnType === '采购退货' ? 'RET' : 'GRN';
+  const count = db.prepare("SELECT COUNT(*) as c FROM inbound WHERE grn_no LIKE ?").get(`${prefix}-${d}%`).c;
+  return `${prefix}-${d}-${String(count + 1).padStart(4, '0')}`;
 }
-function genGinNo(date) {
+function genGinNo(date, txnType) {
   const d = date.replace(/-/g, '');
-  const count = db.prepare("SELECT COUNT(*) as c FROM outbound WHERE gin_no LIKE ?").get(`GIN-${d}%`).c;
-  return `GIN-${d}-${String(count + 1).padStart(3, '0')}`;
+  const prefix = txnType === '退库出库' ? 'RKB' : 'GIN';
+  const count = db.prepare("SELECT COUNT(*) as c FROM outbound WHERE gin_no LIKE ?").get(`${prefix}-${d}%`).c;
+  return `${prefix}-${d}-${String(count + 1).padStart(4, '0')}`;
 }
 
 // 自动生成物料编码：按类别前缀 + 序号
@@ -384,15 +422,18 @@ function genMaterialCode(category) {
     if (!isNaN(n) && n > maxSeq) maxSeq = n;
   });
   const nextSeq = maxSeq + 1;
-  // 编码格式：前缀 + 3位序号（不足补零）
-  return `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  // 编码格式：前缀 + 4位序号（不足补零）
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`;
 }
 
 // 获取订单明细（用于入库时选择订单带出明细）
 function getOrderLinesForInbound(poNo) {
   const lines = db.prepare(`
-    SELECT ol.*, m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
-    FROM order_lines ol LEFT JOIN materials m ON ol.code = m.code
+    SELECT ol.*, po.manual_status,
+           m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
+    FROM order_lines ol
+    LEFT JOIN purchase_orders po ON ol.po_no = po.po_no
+    LEFT JOIN materials m ON ol.code = m.code
     WHERE ol.po_no=? ORDER BY ol.id
   `).all(poNo);
   // 查已入库数量
@@ -403,7 +444,31 @@ function getOrderLinesForInbound(poNo) {
     ...l,
     received_qty: receivedMap[l.code] || 0,
     unreceived_qty: l.order_qty - (receivedMap[l.code] || 0)
-  }));
+  })).filter(l => l.unreceived_qty > 0 && l.manual_status !== '已取消' && l.manual_status !== '已关闭');
+}
+
+// 按合同号获取订单明细（汇总该合同下所有采购订单的明细）
+function getOrderLinesByContract(contractNo) {
+  const lines = db.prepare(`
+    SELECT ol.*, po.po_no, po.supplier, po.manual_status, po.contract_no,
+           m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
+    FROM order_lines ol
+    LEFT JOIN purchase_orders po ON ol.po_no = po.po_no
+    LEFT JOIN materials m ON ol.code = m.code
+    WHERE po.contract_no=? ORDER BY ol.po_no, ol.id
+  `).all(contractNo);
+  // 查已入库数量（按 po_no + code 维度）
+  const receivedMap = {};
+  lines.forEach(l => {
+    if (!receivedMap[l.po_no]) receivedMap[l.po_no] = {};
+    const received = db.prepare("SELECT COALESCE(SUM(qty),0) as v FROM inbound WHERE po_no=? AND code=?").get(l.po_no, l.code).v;
+    receivedMap[l.po_no][l.code] = received;
+  });
+  return lines.map(l => ({
+    ...l,
+    received_qty: (receivedMap[l.po_no] && receivedMap[l.po_no][l.code]) || 0,
+    unreceived_qty: l.order_qty - ((receivedMap[l.po_no] && receivedMap[l.po_no][l.code]) || 0)
+  })).filter(l => l.unreceived_qty > 0 && l.manual_status !== '已取消' && l.manual_status !== '已关闭');
 }
 
 // ==================== API 路由 ====================
@@ -613,10 +678,17 @@ app.post('/api/inbound', requirePerm('inbound', 'create'), (req, res) => {
       VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no,@txn_type)`);
     const tx = db.transaction(() => {
       const results = [];
+      // 一批共享一个单号
+      const firstItem = items.find(r => r.code && r.qty && r.date);
+      if (!firstItem) return results;
+      if (!firstItem.txn_type) firstItem.txn_type = '采购入库';
+      const sharedGrnNo = genGrnNo(firstItem.date, firstItem.txn_type);
       items.forEach(r => {
         if (!r.code || !r.qty || !r.date) return; // 跳过空行
-        if (!r.grn_no) r.grn_no = genGrnNo(r.date);
+        if (!r.grn_no) r.grn_no = sharedGrnNo;
         if (!r.txn_type) r.txn_type = '采购入库';
+        // 采购退货：确保 qty 和 price 为负数
+        if (r.txn_type === '采购退货') { r.qty = -Math.abs(r.qty); r.price = -Math.abs(r.price || 0); }
         if (!r.supplier) r.supplier = '';
         if (!r.handler) r.handler = '';
         if (!r.location) r.location = '';
@@ -640,6 +712,8 @@ app.put('/api/inbound/:id', requirePerm('inbound', 'edit'), (req, res) => {
   const r = req.body;
   try {
     if (!r.txn_type) r.txn_type = '采购入库';
+    // 采购退货：确保 qty 和 price 为负数
+    if (r.txn_type === '采购退货') { r.qty = -Math.abs(r.qty); r.price = -Math.abs(r.price || 0); }
     db.prepare(`UPDATE inbound SET date=@date,grn_no=@grn_no,code=@code,qty=@qty,price=@price,
       supplier=@supplier,handler=@handler,location=@location,remarks=@remarks,po_no=@po_no,contract_no=@contract_no,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
     res.json({ success: true });
@@ -688,10 +762,17 @@ app.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
       VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price,@txn_type)`);
     const tx = db.transaction(() => {
       const results = [];
+      // 一批共享一个单号
+      const firstItem = items.find(r => r.code && r.qty && r.date);
+      if (!firstItem) return results;
+      if (!firstItem.txn_type) firstItem.txn_type = '正常出库';
+      const sharedGinNo = genGinNo(firstItem.date, firstItem.txn_type);
       items.forEach(r => {
         if (!r.code || !r.qty || !r.date) return; // 跳过空行
-        if (!r.gin_no) r.gin_no = genGinNo(r.date);
+        if (!r.gin_no) r.gin_no = sharedGinNo;
         if (!r.txn_type) r.txn_type = '正常出库';
+        // 退库出库：确保 qty 为负数
+        if (r.txn_type === '退库出库') r.qty = -Math.abs(r.qty);
         if (!r.destination) r.destination = '';
         if (!r.receiver) r.receiver = '';
         if (!r.handler) r.handler = '';
@@ -713,8 +794,10 @@ app.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
 app.put('/api/outbound/:id', requirePerm('outbound', 'edit'), (req, res) => {
   const r = req.body;
   try {
-    r.cost_price = computeCostPrice(r.code, r.qty, r.date);
     if (!r.txn_type) r.txn_type = '正常出库';
+    // 退库出库：确保 qty 为负数
+    if (r.txn_type === '退库出库') r.qty = -Math.abs(r.qty);
+    r.cost_price = computeCostPrice(r.code, r.qty, r.date);
     db.prepare(`UPDATE outbound SET date=@date,gin_no=@gin_no,code=@code,qty=@qty,destination=@destination,
       receiver=@receiver,handler=@handler,location=@location,remarks=@remarks,cost_price=@cost_price,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
     res.json({ success: true });
@@ -972,6 +1055,14 @@ app.delete('/api/order-lines/:id', requirePerm('orders', 'delete'), (req, res) =
 app.get('/api/order-lines/by-po/:poNo', requirePerm('orders', 'view'), (req, res) => {
   try {
     res.json(getOrderLinesForInbound(req.params.poNo));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/order-lines/by-contract/:contractNo', requirePerm('orders', 'view'), (req, res) => {
+  try {
+    res.json(getOrderLinesByContract(req.params.contractNo));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

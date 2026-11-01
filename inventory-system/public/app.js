@@ -50,6 +50,8 @@ const I18N = {
     po_detail: '明细', po_lines_title: '订单明细', po_material: '物料', po_code: '编码', po_unit: '单位', po_order_qty: '订购数量',
     po_order_price: '订单单价', po_order_amount: '订单金额', po_received_qty: '已到货数量', po_unreceived: '未到数量', po_line_status: '到货状态',
     po_add_line: '添加明细行', po_status_pending: '进行中', po_status_closed: '已关闭', po_status_cancelled: '已取消',
+    po_batch_add: '添加采购明细', po_batch_title: '批量添加采购明细', po_batch_desc: '选择采购单号或合同号，批量录入明细行',
+    po_batch_submit: '批量提交', po_select_source: '选择来源', po_no_lines_yet: '暂无明细',
     sup_title: '供应商档案', sup_desc: '入库时从下拉选择，避免同一供应商写成几种名字', sup_add: '新增供应商', sup_edit: '编辑供应商',
     sup_name: '供应商名称', sup_contact: '联系人', sup_phone: '电话', sup_remarks: '备注', sup_seq: '序号',
     set_title: '参数设置', set_desc: '物料类别、计量单位、领用去向、存放位置等基础参数', set_categories: '物料类别', set_units: '计量单位',
@@ -64,12 +66,15 @@ const I18N = {
     quick_filter: '多关键字模糊筛选（空格分隔）', quick_filter_ph: '输入关键字筛选，空格分隔多个...',
     // 新增项
     nav_orderTracking: '订单明细',
-    in_txn_type: '入库类型', in_purchase: '采购入库', in_return: '退库入库',
-    out_txn_type: '出库类型', out_normal: '正常出库', out_return: '退货出库',
+    in_txn_type: '入库类型', in_purchase: '采购入库', in_return: '采购退货',
+    out_txn_type: '出库类型', out_normal: '正常出库', out_return: '退库出库',
     in_batch_title: '批量入库', in_batch_desc: '可一次添加多行入库记录，选择订单号可自动带出明细',
     in_by_order: '按订单入库', in_by_manual: '手工录入', in_select_order: '选择采购订单',
     in_select_contract: '选择合同号', in_add_row: '添加行', in_remove_row: '删除行', in_batch_submit: '批量提交',
     in_order_lines: '订单明细', in_fill_qty: '填写入库数量',
+    in_source_mode: '入库方式', in_source_po: '按采购单号', in_source_contract: '按合同号', in_source_manual: '手工录入',
+    in_no_pending_orders: '没有待到货的订单', in_no_contracts: '没有合同号',
+    mat_level_category: '类别', mat_level_name: '名称', mat_level_spec: '规格', mat_level_brand: '品牌',
     out_batch_title: '批量出库', out_batch_desc: '可一次添加多行出库记录',
     out_add_row: '添加行', out_remove_row: '删除行', out_batch_submit: '批量提交',
     mat_code_auto: '自动生成', mat_code_hint: '选择类别后自动按前缀编号',
@@ -83,7 +88,7 @@ const I18N = {
     nav_users: '用户管理',
     login_title: '登录', login_user: '用户名', login_pass: '密码', login_btn: '登 录', login_default_hint: '初始账号：admin / admin123',
     change_password: '修改密码', old_password: '原密码', new_password: '新密码', confirm_password: '确认新密码',
-    pwd_min_len: '至少6位', pwd_not_match: '两次输入的密码不一致', pwd_changed: '密码已修改', session_expired: '登录已过期，请重新登录',
+    pwd_min_len: '至少6位', pwd_not_match: '两次输入的密码不一致', pwd_changed: '密码已修改', session_expired: '登录已过期，请重新登录', session_timeout: '5分钟无操作，已自动退出登录',
     user_title: '用户管理', user_desc: '管理系统用户与角色权限', user_add: '新增用户', user_edit: '编辑用户',
     user_username: '用户名', user_name: '姓名', user_role: '角色', user_status: '状态', user_last_login: '最近登录',
     user_password: '密码', user_password_hint: '新增时必填，编辑时留空表示不修改', user_reset_pwd: '重置密码',
@@ -137,6 +142,8 @@ const I18N = {
     po_detail: 'Detail', po_lines_title: 'Order Lines', po_material: 'Material', po_code: 'Code', po_unit: 'Unit', po_order_qty: 'Order Qty',
     po_order_price: 'Order Price', po_order_amount: 'Order Amount', po_received_qty: 'Received Qty', po_unreceived: 'Unreceived', po_line_status: 'Status',
     po_add_line: 'Add Line', po_status_pending: 'In Progress', po_status_closed: 'Closed', po_status_cancelled: 'Cancelled',
+    po_batch_add: 'Add Order Lines', po_batch_title: 'Batch Add Order Lines', po_batch_desc: 'Select PO or contract, add multiple lines at once',
+    po_batch_submit: 'Submit Batch', po_select_source: 'Select Source', po_no_lines_yet: 'No lines yet',
     sup_title: 'Supplier Directory', sup_desc: 'Select from dropdown during inbound to ensure consistency', sup_add: 'Add Supplier', sup_edit: 'Edit Supplier',
     sup_name: 'Supplier Name', sup_contact: 'Contact', sup_phone: 'Phone', sup_remarks: 'Remarks', sup_seq: 'No',
     set_title: 'Settings', set_desc: 'Categories, units, destinations, locations and other parameters', set_categories: 'Categories', set_units: 'Units',
@@ -151,12 +158,15 @@ const I18N = {
     quick_filter: 'Multi-keyword filter (space separated)', quick_filter_ph: 'Type keywords to filter, space separated...',
     // New items
     nav_orderTracking: 'Order Tracking',
-    in_txn_type: 'Inbound Type', in_purchase: 'Purchase', in_return: 'Return In',
+    in_txn_type: 'Inbound Type', in_purchase: 'Purchase', in_return: 'Purchase Return',
     out_txn_type: 'Outbound Type', out_normal: 'Normal', out_return: 'Return Out',
     in_batch_title: 'Batch Inbound', in_batch_desc: 'Add multiple inbound records at once; select PO to auto-fill lines',
     in_by_order: 'By PO', in_by_manual: 'Manual', in_select_order: 'Select PO',
     in_select_contract: 'Select Contract', in_add_row: 'Add Row', in_remove_row: 'Remove', in_batch_submit: 'Submit Batch',
     in_order_lines: 'Order Lines', in_fill_qty: 'Enter Qty',
+    in_source_mode: 'Inbound Mode', in_source_po: 'By PO No', in_source_contract: 'By Contract No', in_source_manual: 'Manual',
+    in_no_pending_orders: 'No pending orders', in_no_contracts: 'No contracts',
+    mat_level_category: 'Category', mat_level_name: 'Name', mat_level_spec: 'Spec', mat_level_brand: 'Brand',
     out_batch_title: 'Batch Outbound', out_batch_desc: 'Add multiple outbound records at once',
     out_add_row: 'Add Row', out_remove_row: 'Remove', out_batch_submit: 'Submit Batch',
     mat_code_auto: 'Auto', mat_code_hint: 'Auto-generated by category prefix',
@@ -170,7 +180,7 @@ const I18N = {
     nav_users: 'Users',
     login_title: 'Login', login_user: 'Username', login_pass: 'Password', login_btn: 'Log In', login_default_hint: 'Default: admin / admin123',
     change_password: 'Change Password', old_password: 'Current Password', new_password: 'New Password', confirm_password: 'Confirm Password',
-    pwd_min_len: 'min 6 chars', pwd_not_match: 'Passwords do not match', pwd_changed: 'Password changed', session_expired: 'Session expired, please log in again',
+    pwd_min_len: 'min 6 chars', pwd_not_match: 'Passwords do not match', pwd_changed: 'Password changed', session_expired: 'Session expired, please log in again', session_timeout: 'Auto logged out after 5 minutes of inactivity',
     user_title: 'User Management', user_desc: 'Manage system users and role permissions', user_add: 'Add User', user_edit: 'Edit User',
     user_username: 'Username', user_name: 'Name', user_role: 'Role', user_status: 'Status', user_last_login: 'Last Login',
     user_password: 'Password', user_password_hint: 'Required for new users; leave blank to keep unchanged when editing', user_reset_pwd: 'Reset Password',
@@ -208,6 +218,8 @@ const App = {
       this.logout();
       return;
     }
+    // 启动空闲超时（5分钟无操作自动退出）
+    this.startIdleTimer();
     // 强制改密：先加载 params 和渲染基础布局，再弹出改密弹窗
     if (this.user && this.user.must_change_pwd) {
       await this.loadParams();
@@ -218,6 +230,23 @@ const App = {
     await this.loadParams();
     this.router();
     window.addEventListener('hashchange', () => this.router());
+  },
+
+  // 空闲超时：5分钟无操作自动退出
+  _idleTimeout: 5 * 60 * 1000, // 5分钟
+  _idleTimer: null,
+  startIdleTimer() {
+    this.resetIdleTimer();
+    ['mousemove','keydown','click','scroll','touchstart'].forEach(evt => {
+      document.addEventListener(evt, () => this.resetIdleTimer(), { passive: true });
+    });
+  },
+  resetIdleTimer() {
+    if (this._idleTimer) clearTimeout(this._idleTimer);
+    this._idleTimer = setTimeout(() => {
+      this.toast(this.t('session_timeout'), 'error');
+      this.logout();
+    }, this._idleTimeout);
   },
 
   logout() {
@@ -231,6 +260,10 @@ const App = {
     if (!this.user || !this.user.grants) return false;
     const g = this.user.grants[module];
     return Array.isArray(g) && g.includes(action);
+  },
+  // 价格权限：只有 admin 和 manager 可以看到价格/金额
+  canViewPrice() {
+    return this.user && (this.user.role === 'admin' || this.user.role === 'manager');
   },
 
   showChangePwdModal(force) {
@@ -402,15 +435,15 @@ const App = {
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
   },
 
-  confirmDialog(title, msg, onConfirm) {
+  confirmDialog(title, msg, onConfirm, onCancel) {
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
     overlay.innerHTML = `<div class="confirm-box"><div class="confirm-icon">${this.t('cf_warning')}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn btn-danger" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
-    const close = () => overlay.remove();
+    const close = () => { overlay.remove(); if (onCancel) onCancel(); };
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     document.getElementById('cf-cancel').onclick = close;
-    document.getElementById('cf-ok').onclick = () => { close(); onConfirm(); };
+    document.getElementById('cf-ok').onclick = () => { overlay.remove(); onConfirm(); };
   },
 
   statusBadge(status) {
@@ -645,26 +678,34 @@ const App = {
   async renderDashboard() {
     this.setMain(this.pageWrap('🏠 ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
     try {
-      const data = await this.api('/api/dashboard'); const cur = data.currency; let html = '';
+      const data = await this.api('/api/dashboard'); const cur = data.currency; const vp = this.canViewPrice(); let html = '';
       html += `<div class="metric-grid">
         <div class="metric-card"><div class="metric-label">🔖 ${this.t('dash_total_items')}</div><div class="metric-value">${data.total_items}</div><div class="metric-sub">${this.t('dash_items_sub')}</div></div>
-        <div class="metric-card metric-success"><div class="metric-label">💰 ${this.t('dash_total_value')}</div><div class="metric-value">${cur} ${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>
+        ${vp ? `<div class="metric-card metric-success"><div class="metric-label">💰 ${this.t('dash_total_value')}</div><div class="metric-value">${cur} ${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>
         <div class="metric-card metric-info"><div class="metric-label">📥 ${this.t('dash_month_in')}</div><div class="metric-value">${cur} ${this.fmtMoney(data.month_in_amount)}</div><div class="metric-sub">${this.t('dash_month_in_sub')}</div></div>
-        <div class="metric-card metric-warning"><div class="metric-label">📤 ${this.t('dash_month_out')}</div><div class="metric-value">${cur} ${this.fmtMoney(data.month_out_amount)}</div><div class="metric-sub">${this.t('dash_month_out_sub')}</div></div>
+        <div class="metric-card metric-warning"><div class="metric-label">📤 ${this.t('dash_month_out')}</div><div class="metric-value">${cur} ${this.fmtMoney(data.month_out_amount)}</div><div class="metric-sub">${this.t('dash_month_out_sub')}</div></div>` : ''}
         <div class="metric-card"><div class="metric-label">🧾 ${this.t('dash_month_txn')}</div><div class="metric-value">${data.month_txn_count}</div><div class="metric-sub">${this.t('dash_txn_sub')}</div></div>
         <div class="metric-card metric-danger"><div class="metric-label">⚠ ${this.t('dash_alerts')}</div><div class="metric-value">${data.alert_count}</div><div class="metric-sub">${this.t('dash_alerts_sub')}</div></div></div>`;
-      html += `<div class="chart-grid"><div class="card"><div class="card-title">${this.t('dash_trend')}</div><div class="chart-container"><canvas id="trendChart"></canvas></div></div><div class="card"><div class="card-title">${this.t('dash_category')}</div><div class="chart-container"><canvas id="categoryChart"></canvas></div></div></div>`;
-      html += `<div class="card"><div class="card-title">${this.t('dash_top5')}</div><div class="chart-container"><canvas id="topChart"></canvas></div></div>`;
+      if (vp) html += `<div class="chart-grid"><div class="card"><div class="card-title">${this.t('dash_trend')}</div><div class="chart-container"><canvas id="trendChart"></canvas></div></div><div class="card"><div class="card-title">${this.t('dash_category')}</div><div class="chart-container"><canvas id="categoryChart"></canvas></div></div></div>`;
+      if (vp) html += `<div class="card"><div class="card-title">${this.t('dash_top5')}</div><div class="chart-container"><canvas id="topChart"></canvas></div></div>`;
       if (data.alerts.length > 0) {
         html += `<div class="card"><div class="card-title">⚠ ${this.t('dash_alert_list')} — ${data.alert_count} ${this.t('stock_items')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th></tr></thead><tbody>${data.alerts.map(a => `<tr><td>${a.code}</td><td>${a.name}</td><td>${a.spec || ''}</td><td class="text-right">${a.on_hand}</td><td class="text-right">${a.min_stock}</td><td>${this.statusBadge(a.stock_status)}</td></tr>`).join('')}</tbody></table></div></div>`;
       }
       if (data.overdue_orders.length > 0) {
-        html += `<div class="card"><div class="card-title">🛒 ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th><th>${this.t('po_amount')}</th></tr></thead><tbody>${data.overdue_orders.map(o => `<tr><td>${o.po_no}</td><td>${o.supplier}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${o.overdue_days}</span></td><td>${this.statusBadge(o.delivery_status)}</td><td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td></tr>`).join('')}</tbody></table></div></div>`;
+        html += `<div class="card"><div class="card-title">🛒 ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th>${vp ? `<th>${this.t('po_amount')}</th>` : ''}</tr></thead><tbody>${data.overdue_orders.map(o => `<tr><td>${o.po_no}</td><td>${o.supplier}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${o.overdue_days}</span></td><td>${this.statusBadge(o.delivery_status)}</td>${vp ? `<td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>`;
       }
       document.getElementById('dashboard-content').innerHTML = html;
-      this.renderTrendChart(data.months_trend); this.renderCategoryChart(data.category_values); this.renderTopChart(data.top_items);
+      this.renderCharts(data, vp);
     } catch (e) {
       document.getElementById('dashboard-content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠</div><p>${e.message}</p></div>`;
+    }
+  },
+
+  renderCharts(data, vp) {
+    if (vp) {
+      this.renderTrendChart(data.months_trend);
+      this.renderCategoryChart(data.category_values);
+      this.renderTopChart(data.top_items);
     }
   },
 
@@ -710,6 +751,7 @@ const App = {
     const tid = 'materials';
     const st = this.getTableState(tid);
     const keywords = document.getElementById('mat_filter')?.value || '';
+    const vp = this.canViewPrice();
     const filterFields = ['code','name','spec','category','unit','opening_qty','opening_price','min_stock','default_location','brand','status'];
     const filtered = this.filterByKeywords(data, keywords, filterFields);
     const sorted = this.sortData(filtered, st.sortKey, st.sortDir);
@@ -717,14 +759,15 @@ const App = {
     const headers = [
       ['code', this.t('mat_code')], ['name', this.t('mat_name')], ['spec', this.t('mat_spec')],
       ['category', this.t('mat_category')], ['unit', this.t('mat_unit')], ['opening_qty', this.t('mat_opening_qty')],
-      ['opening_price', this.t('mat_opening_price')], ['min_stock', this.t('mat_min_stock')],
+      ...vp ? [['opening_price', this.t('mat_opening_price')]] : [],
+      ['min_stock', this.t('mat_min_stock')],
       ['default_location', this.t('mat_location')], ['brand', this.t('mat_brand')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
     thHtml += `<th>${this.t('mat_status')}</th><th></th>`;
     let tbody = '';
-    if (pageData.length === 0) { tbody = this.emptyRow(12); }
-    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${this.fmtMoney(m.opening_price)}</td><td class="text-right">${m.min_stock}</td><td>${m.default_location || ''}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
+    if (pageData.length === 0) { tbody = this.emptyRow(vp ? 12 : 11); }
+    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.opening_price)}</td>` : ''}<td class="text-right">${m.min_stock}</td><td>${m.default_location || ''}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
     document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('materials-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -741,7 +784,7 @@ const App = {
       <div class="form-group"><label>${this.t('mat_category')} *</label><select id="m_category" onchange="App.onMaterialCategoryChange()"><option value="">${this.t('please_select')}</option>${sel(cats, m.category)}</select><div class="form-error" id="m_category_error"></div></div>
       <div class="form-group"><label>${this.t('mat_unit')} *</label><select id="m_unit" onchange="App.clearFieldError('m_unit')"><option value="">${this.t('please_select')}</option>${sel(units, m.unit)}</select><div class="form-error" id="m_unit_error"></div></div>
       <div class="form-group"><label>${this.t('mat_opening_qty')}</label><input id="m_opening_qty" type="number" step="0.01" value="${m.opening_qty}"></div>
-      <div class="form-group"><label>${this.t('mat_opening_price')}</label><input id="m_opening_price" type="number" step="0.01" value="${m.opening_price}"></div>
+      ${this.canViewPrice() ? `<div class="form-group"><label>${this.t('mat_opening_price')}</label><input id="m_opening_price" type="number" step="0.01" value="${m.opening_price}"></div>` : '<input id="m_opening_price" type="hidden" value="0">'}
       <div class="form-group"><label>${this.t('mat_min_stock')}</label><input id="m_min_stock" type="number" step="0.01" value="${m.min_stock}"></div>
       <div class="form-group"><label>${this.t('mat_location')}</label><select id="m_default_location"><option value="">${this.t('none')}</option>${sel(locs, m.default_location)}</select></div>
       <div class="form-group"><label>${this.t('mat_brand')}</label><input id="m_brand" value="${m.brand || ''}"></div>
@@ -795,6 +838,7 @@ const App = {
     const data = this._inboundData;
     if (!data) return;
     const cur = this.params.currency;
+    const vp = this.canViewPrice();
     const tid = 'inbound';
     const st = this.getTableState(tid);
     // 读取筛选值
@@ -811,8 +855,9 @@ const App = {
     const headers = [
       ['date', this.t('in_date')], ['grn_no', this.t('in_grn')], ['txn_type', this.t('in_txn_type')],
       ['code', this.t('mat_code')], ['material_name', this.t('mat_name')], ['material_spec', this.t('mat_spec')], ['material_brand', this.t('mat_brand')],
-      ['material_unit', this.t('mat_unit')], ['qty', this.t('in_qty')], ['price', this.t('in_price')],
-      ['amount', this.t('in_total_amount')], ['supplier', this.t('in_supplier')], ['handler', this.t('in_handler')],
+      ['material_unit', this.t('mat_unit')], ['qty', this.t('in_qty')],
+      ...vp ? [['price', this.t('in_price')], ['amount', this.t('in_total_amount')]] : [],
+      ['supplier', this.t('in_supplier')], ['handler', this.t('in_handler')],
       ['location', this.t('in_location')], ['po_no', this.t('in_po_no')], ['contract_no', this.t('in_contract')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
@@ -820,10 +865,9 @@ const App = {
     const colCount = headers.length + 2;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退库入库' ? `<span class="badge badge-warning">${this.t('in_return')}</span>` : `<span class="badge badge-info">${this.t('in_purchase')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td><td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td><td>${r.contract_no || ''}</td><td>${r.remarks || ''}</td><td>${this.rowActions('inbound', `App.editInbound(${r.id})`, `App.deleteInbound(${r.id})`)}</td></tr>`; }).join(''); }
+    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '采购退货' ? `<span class="badge badge-danger">${this.t('in_return')}</span>` : `<span class="badge badge-info">${this.t('in_purchase')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td>` : ''}<td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td><td>${r.contract_no || ''}</td><td>${r.remarks || ''}</td><td>${this.rowActions('inbound', `App.editInbound(${r.id})`, `App.deleteInbound(${r.id})`)}</td></tr>`; }).join(''); }
     const filterActive = (keywords.trim() || dateFrom || dateTo) ? ` | 🔍 ${sorted.length}/${data.length}` : '';
-    // 只更新汇总、表格、分页三个区域，工具栏不动
-    document.getElementById('inbound-summary').innerHTML = `${sorted.length} ${this.t('in_total_records')} | ${this.t('in_total_qty')}: ${totalQty} | ${this.t('in_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}${filterActive}`;
+    document.getElementById('inbound-summary').innerHTML = `${sorted.length} ${this.t('in_total_records')} | ${this.t('in_total_qty')}: ${totalQty}${vp ? ` | ${this.t('in_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}` : ''}${filterActive}`;
     document.getElementById('inbound-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('inbound-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -842,19 +886,48 @@ const App = {
     const locs = this.params.locations.map(l => l.name);
     const today = new Date().toISOString().slice(0, 10);
 
-    const matOptions = materials.map(m => `<option value="${m.code}">${m.name} ${m.spec || ''} ${m.brand || ''} (${m.code})</option>`).join('');
+    // #1: 只显示未到货和部分到货的订单
+    const pendingOrders = orders.filter(o => o.delivery_status === '未到货' || o.delivery_status === '部分到货');
+    // #1: 合同号下拉 — 从所有采购订单中提取去重的合同号
+    const contractNos = [...new Set(orders.map(o => o.contract_no).filter(Boolean))].sort();
     const supOptions = suppliers.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
-    const poOptions = orders.map(o => `<option value="${o.po_no}">${o.po_no}</option>`).join('');
+    const poOptions = pendingOrders.length > 0
+      ? pendingOrders.map(o => `<option value="${o.po_no}">${o.po_no} (${o.delivery_status})</option>`).join('')
+      : `<option value="" disabled>${this.t('in_no_pending_orders')}</option>`;
+    const contractOptions = contractNos.length > 0
+      ? contractNos.map(c => `<option value="${c}">${c}</option>`).join('')
+      : `<option value="" disabled>${this.t('in_no_contracts')}</option>`;
     const locOptions = locs.map(l => `<option value="${l}">${l}</option>`).join('');
+
+    // #4: 物料三级联动数据准备
+    this._materialsCache = materials;
+    this._inboundOrders = orders;
+    const vp = this.canViewPrice();
+    const categories = [...new Set(materials.map(m => m.category).filter(Boolean))].sort();
 
     this.showModal(`<h3>${this.t('in_batch_title')}</h3>`, `<div style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">${this.t('in_batch_desc')}</div>
       <div class="form-grid">
         <div class="form-group"><label>${this.t('in_date')} *</label><input id="ib_date" type="date" value="${today}"></div>
-        <div class="form-group"><label>${this.t('in_txn_type')} *</label><select id="ib_txn_type"><option value="采购入库">${this.t('in_purchase')}</option><option value="退库入库">${this.t('in_return')}</option></select></div>
+        <div class="form-group"><label>${this.t('in_txn_type')} *</label><select id="ib_txn_type"><option value="采购入库">${this.t('in_purchase')}</option><option value="采购退货">${this.t('in_return')}</option></select></div>
         <div class="form-group"><label>${this.t('in_supplier')}</label><select id="ib_supplier"><option value="">${this.t('none')}</option>${supOptions}</select></div>
         <div class="form-group"><label>${this.t('in_handler')}</label><input id="ib_handler" value=""></div>
         <div class="form-group"><label>${this.t('in_location')}</label><select id="ib_location"><option value="">${this.t('none')}</option>${locOptions}</select></div>
-        <div class="form-group" style="grid-column:span 2"><label>${this.t('in_po_no')} / ${this.t('in_contract')}</label><div style="display:flex;gap:8px"><select id="ib_po_no" onchange="App.loadOrderLinesForInbound()" style="flex:1"><option value="">${this.t('in_by_manual')}</option>${poOptions}</select><input id="ib_contract_no" placeholder="${this.t('in_contract')}" style="flex:1"></div></div>
+        <div class="form-group" style="grid-column:span 2">
+          <label>${this.t('in_source_mode')}</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="ib_source_mode" onchange="App.onInboundSourceModeChange()" style="width:140px">
+              <option value="manual">${this.t('in_source_manual')}</option>
+              <option value="po">${this.t('in_source_po')}</option>
+              <option value="contract">${this.t('in_source_contract')}</option>
+            </select>
+            <div id="ib_po_wrap" style="display:none;flex:1">
+              <select id="ib_po_no" onchange="App.loadOrderLinesForInbound()" style="width:100%"><option value="">${this.t('in_select_order')}</option>${poOptions}</select>
+            </div>
+            <div id="ib_contract_wrap" style="display:none;flex:1">
+              <select id="ib_contract_no" onchange="App.loadOrderLinesForInboundByContract()" style="width:100%"><option value="">${this.t('in_select_contract')}</option>${contractOptions}</select>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="ib_order_lines" style="display:none;margin-bottom:12px"></div>
       <div class="card" style="margin-top:12px;padding:12px">
@@ -863,7 +936,7 @@ const App = {
           <button class="btn btn-outline btn-sm" onclick="App.addInboundRow()">+ ${this.t('in_add_row')}</button>
         </div>
         <div class="table-wrap"><table id="ib_table"><thead><tr>
-          <th>${this.t('in_material')}</th><th>${this.t('mat_spec')}</th><th>${this.t('mat_brand')}</th><th>${this.t('in_qty')} *</th><th>${this.t('in_price')}</th><th>${this.t('in_remarks')}</th><th></th>
+          <th>${this.t('mat_level_category')}</th><th>${this.t('mat_level_name')}</th><th>${this.t('mat_level_spec')}</th><th>${this.t('mat_level_brand')}</th><th>${this.t('in_qty')} *</th>${vp ? `<th>${this.t('in_price')}</th>` : ''}<th>${this.t('in_remarks')}</th><th></th>
         </tr></thead><tbody id="ib_rows"></tbody></table></div>
       </div>`, this.t('in_batch_submit'), async () => {
       const date = document.getElementById('ib_date').value;
@@ -872,17 +945,21 @@ const App = {
       const handler = document.getElementById('ib_handler').value.trim();
       const location = document.getElementById('ib_location').value;
       const poNo = document.getElementById('ib_po_no').value;
-      const contractNo = document.getElementById('ib_contract_no').value.trim();
+      const contractNo = document.getElementById('ib_contract_no').value;
       if (!date) { this.toast(this.t('field_required'), 'error'); return; }
       // 收集行数据
       const rows = document.querySelectorAll('#ib_rows tr');
       const items = [];
       rows.forEach(tr => {
-        const code = tr.querySelector('.ib-code').value;
+        const code = tr.getAttribute('data-code') || '';
         const qty = parseFloat(tr.querySelector('.ib-qty').value) || 0;
         const price = parseFloat(tr.querySelector('.ib-price').value) || 0;
         const remarks = tr.querySelector('.ib-remarks').value.trim();
-        if (code && qty > 0) items.push({ date, code, qty, price, supplier, handler, location, remarks, po_no: poNo, contract_no: contractNo, txn_type: txnType });
+        if (code && qty > 0) {
+          const actualQty = txnType === '采购退货' ? -qty : qty;
+          const actualPrice = txnType === '采购退货' ? -price : price;
+          items.push({ date, code, qty: actualQty, price: actualPrice, supplier, handler, location, remarks, po_no: poNo, contract_no: contractNo, txn_type: txnType });
+        }
       });
       if (items.length === 0) { this.toast(this.t('fillRequired'), 'error'); return; }
       try {
@@ -891,51 +968,109 @@ const App = {
         this.toast(this.t('added') + ' (' + items.length + ')');
         this.renderInbound();
       } catch (e) { this.toast(e.message, 'error'); }
-    });
+    }, null, true); // large modal
 
+    // #4: 缓存物料数据供三级联动使用
+    this._materialsCache = materials;
+    this._inboundMatCategories = categories;
     // 默认加3个空行
-    this._inboundMatOptions = matOptions;
     this.addInboundRow();
     this.addInboundRow();
     this.addInboundRow();
   },
 
+  // #1: 入库方式切换
+  onInboundSourceModeChange() {
+    const mode = document.getElementById('ib_source_mode').value;
+    document.getElementById('ib_po_wrap').style.display = mode === 'po' ? 'flex' : 'none';
+    document.getElementById('ib_contract_wrap').style.display = mode === 'contract' ? 'flex' : 'none';
+    // 切换模式时清空订单明细区域
+    const c = document.getElementById('ib_order_lines');
+    if (c) { c.style.display = 'none'; c.innerHTML = ''; }
+  },
+
+  // #4: 批量入库行 — 三级联动物料选择（类别→名称→规格品牌）
   addInboundRow(code = '', qty = '', price = '', remarks = '', spec = '', brand = '') {
-    const matOptions = this._inboundMatOptions || '';
+    const cats = this._inboundMatCategories || [];
+    const materials = this._materialsCache || [];
     const tbody = document.getElementById('ib_rows');
     if (!tbody) return;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><select class="ib-code" style="width:200px" onchange="App.onInboundRowMaterialChange(this)"><option value="">${this.t('please_select')}</option>${matOptions}</select></td><td class="ib-spec" style="font-size:12px;color:var(--text-muted)">${spec}</td><td class="ib-brand" style="font-size:12px;color:var(--text-muted)">${brand}</td><td><input class="ib-qty" type="number" step="0.01" value="${qty}" style="width:80px"></td><td><input class="ib-price" type="number" step="0.01" value="${price}" style="width:90px"></td><td><input class="ib-remarks" value="${remarks}" style="width:120px"></td><td><span class="action-link danger" onclick="this.parentElement.parentElement.remove()">${this.t('in_remove_row')}</span></td>`;
-    if (code) { tr.querySelector('.ib-code').value = code; }
+    tr.setAttribute('data-code', code);
+    // 查找预选物料的 category 和 name
+    const mat = code ? materials.find(m => m.code === code) : null;
+    const preCat = mat ? mat.category : '';
+    const preName = mat ? mat.name : '';
+
+    // 第一级：类别
+    const catOpts = cats.map(c => `<option value="${c}" ${c === preCat ? 'selected' : ''}>${c}</option>`).join('');
+    // 第二级：名称（基于选中的类别筛选）
+    const names = preCat ? [...new Set(materials.filter(m => m.category === preCat).map(m => m.name))] : [];
+    const nameOpts = names.map(n => `<option value="${n}" ${n === preName ? 'selected' : ''}>${n}</option>`).join('');
+    // 第三级：规格品牌（基于选中的类别+名称筛选）
+    const specs = (preCat && preName) ? materials.filter(m => m.category === preCat && m.name === preName) : [];
+    const specOpts = specs.map(m => {
+      const label = `${m.spec || '-'} / ${m.brand || '-'} (${m.code})`;
+      return `<option value="${m.code}" ${m.code === code ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    const vp = this.canViewPrice();
+    tr.innerHTML = `<td><select class="ib-cat" onchange="App.onInboundRowCatChange(this)" style="width:120px"><option value="">${this.t('please_select')}</option>${catOpts}</select></td>
+      <td><select class="ib-name" onchange="App.onInboundRowNameChange(this)" style="width:140px" ${!preCat ? 'disabled' : ''}><option value="">${this.t('please_select')}</option>${nameOpts}</select></td>
+      <td><select class="ib-spec-sel" onchange="App.onInboundRowSpecChange(this)" style="width:200px" ${!preName ? 'disabled' : ''}><option value="">${this.t('please_select')}</option>${specOpts}</select></td>
+      <td class="ib-brand" style="font-size:12px;color:var(--text-muted)">${brand}</td>
+      <td><input class="ib-qty" type="number" step="0.01" value="${qty}" style="width:80px"></td>
+      ${vp ? `<td><input class="ib-price" type="number" step="0.01" value="${price}" style="width:90px"></td>` : '<td class="ib-price" style="display:none"><input class="ib-price" type="hidden" value="0"></td>'}
+      <td><input class="ib-remarks" value="${remarks}" style="width:120px"></td>
+      <td><span class="action-link danger" onclick="this.parentElement.parentElement.remove()">${this.t('in_remove_row')}</span></td>`;
     tbody.appendChild(tr);
   },
 
-  onInboundRowMaterialChange(selEl) {
-    // 选了物料后自动带出规格和品牌（从 option 文本中不好取，从已加载的数据取）
-    const code = selEl.value;
-    // 用 async 拉一次物料列表（已有缓存更好）
-    if (!this._materialsCache) {
-      this.api('/api/materials').then(list => {
-        this._materialsCache = list;
-        this._fillInboundRowSpec(selEl, code);
-      });
-    } else {
-      this._fillInboundRowSpec(selEl, code);
-    }
+  onInboundRowCatChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const cat = selEl.value;
+    const materials = this._materialsCache || [];
+    const names = cat ? [...new Set(materials.filter(m => m.category === cat).map(m => m.name))] : [];
+    const nameSel = tr.querySelector('.ib-name');
+    nameSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    nameSel.disabled = !cat;
+    // 重置第三级
+    const specSel = tr.querySelector('.ib-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>`;
+    specSel.disabled = true;
+    tr.querySelector('.ib-brand').textContent = '';
+    tr.setAttribute('data-code', '');
   },
 
-  _fillInboundRowSpec(selEl, code) {
-    const m = (this._materialsCache || []).find(x => x.code === code);
+  onInboundRowNameChange(selEl) {
     const tr = selEl.parentElement.parentElement;
+    const cat = tr.querySelector('.ib-cat').value;
+    const name = selEl.value;
+    const materials = this._materialsCache || [];
+    const specs = (cat && name) ? materials.filter(m => m.category === cat && m.name === name) : [];
+    const specSel = tr.querySelector('.ib-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + specs.map(m => {
+      const label = `${m.spec || '-'} / ${m.brand || '-'} (${m.code})`;
+      return `<option value="${m.code}">${label}</option>`;
+    }).join('');
+    specSel.disabled = !name;
+    tr.querySelector('.ib-brand').textContent = '';
+    tr.setAttribute('data-code', '');
+  },
+
+  onInboundRowSpecChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const code = selEl.value;
+    const m = (this._materialsCache || []).find(x => x.code === code);
     if (m) {
-      tr.querySelector('.ib-spec').textContent = m.spec || '';
       tr.querySelector('.ib-brand').textContent = m.brand || '';
+      tr.setAttribute('data-code', code);
       // 如果单价为空，带出期初单价作为默认
       const priceInput = tr.querySelector('.ib-price');
       if (!priceInput.value) priceInput.value = m.opening_price || '';
     } else {
-      tr.querySelector('.ib-spec').textContent = '';
       tr.querySelector('.ib-brand').textContent = '';
+      tr.setAttribute('data-code', '');
     }
   },
 
@@ -945,9 +1080,65 @@ const App = {
     if (!poNo) { container.style.display = 'none'; container.innerHTML = ''; return; }
     try {
       const lines = await this.api(`/api/order-lines/by-po/${encodeURIComponent(poNo)}`);
+      // 选采购单号时自动关联合同号
+      const orders = this._inboundOrders || [];
+      const order = orders.find(o => o.po_no === poNo);
+      if (order && order.contract_no) {
+        const conSel = document.getElementById('ib_contract_no');
+        if (conSel) conSel.value = order.contract_no;
+      }
       if (lines.length === 0) { container.style.display = 'none'; return; }
+      // 缓存行数据
+      this._inboundOrderLines = lines;
       container.style.display = 'block';
-      container.innerHTML = `<div class="card" style="padding:10px"><div style="font-weight:600;margin-bottom:6px">${this.t('in_order_lines')} — ${poNo}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th><th>${this.t('po_order_price')}</th><th></th></tr></thead><tbody>${lines.map(l => { const canReceive = l.unreceived_qty > 0 && l.manual_status !== '已取消' && l.manual_status !== '已关闭'; return `<tr><td>${l.code}</td><td>${l.material_name || ''} ${l.material_spec || ''}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${l.received_qty}</td><td class="text-right">${l.unreceived_qty}</td><td class="text-right">${this.fmtMoney(l.order_price)}</td><td>${canReceive ? `<button class="btn btn-primary btn-sm" onclick="App.addInboundRow('${l.code}','${l.unreceived_qty}','${l.order_price}','','${l.material_spec || ''}','${l.material_brand || ''}')">${this.t('in_fill_qty')}</button>` : '<span class="badge badge-muted">'+this.t('st_arrived')+'</span>'}</td></tr>`; }).join('')}</tbody></table></div></div>`;
+      let rowsHtml = '';
+      const vp = this.canViewPrice();
+      lines.forEach((l, i) => {
+        rowsHtml += `<tr><td>${l.code}</td><td>${l.material_name || ''} ${l.material_spec || ''}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${l.received_qty}</td><td class="text-right">${l.unreceived_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(l.order_price)}</td>` : ''}<td><button class="btn btn-primary btn-sm" data-fill="${i}">${this.t('in_fill_qty')}</button></td></tr>`;
+      });
+      container.innerHTML = `<div class="card" style="padding:10px"><div style="font-weight:600;margin-bottom:6px">${this.t('in_order_lines')} — ${poNo}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th>${vp ? `<th>${this.t('po_order_price')}</th>` : ''}<th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div></div>`;
+      // 绑定点击事件
+      container.querySelectorAll('[data-fill]').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.getAttribute('data-fill'));
+          const l = this._inboundOrderLines[idx];
+          if (l) this.addInboundRow(l.code, l.unreceived_qty, l.order_price, '', l.material_spec || '', l.material_brand || '');
+        };
+      });
+    } catch(e) { container.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`; }
+  },
+
+  // #1: 按合同号带出未到货明细
+  async loadOrderLinesForInboundByContract() {
+    const contractNo = document.getElementById('ib_contract_no').value;
+    const container = document.getElementById('ib_order_lines');
+    if (!contractNo) { container.style.display = 'none'; container.innerHTML = ''; return; }
+    try {
+      const lines = await this.api(`/api/order-lines/by-contract/${encodeURIComponent(contractNo)}`);
+      if (lines.length === 0) { container.style.display = 'none'; return; }
+      this._inboundOrderLines = lines;
+      container.style.display = 'block';
+      let rowsHtml = '';
+      const vp = this.canViewPrice();
+      lines.forEach((l, i) => {
+        rowsHtml += `<tr><td>${l.code}</td><td>${l.material_name || ''} ${l.material_spec || ''}</td><td>${l.po_no}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${l.received_qty}</td><td class="text-right">${l.unreceived_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(l.order_price)}</td>` : ''}<td><button class="btn btn-primary btn-sm" data-fill="${i}">${this.t('in_fill_qty')}</button></td></tr>`;
+      });
+      container.innerHTML = `<div class="card" style="padding:10px"><div style="font-weight:600;margin-bottom:6px">${this.t('in_order_lines')} — ${this.t('in_contract')}: ${contractNo}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('in_po_no')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th>${vp ? `<th>${this.t('po_order_price')}</th>` : ''}<th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div></div>`;
+      // 绑定点击事件
+      container.querySelectorAll('[data-fill]').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.getAttribute('data-fill'));
+          const l = this._inboundOrderLines[idx];
+          if (l) {
+            this.addInboundRow(l.code, l.unreceived_qty, l.order_price, '', l.material_spec || '', l.material_brand || '');
+            // 点击填写时自动关联采购单号
+            if (l.po_no) {
+              const poSel = document.getElementById('ib_po_no');
+              if (poSel) poSel.value = l.po_no;
+            }
+          }
+        };
+      });
     } catch(e) { container.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`; }
   },
 
@@ -963,19 +1154,24 @@ const App = {
     const locSel = locs.map(l => `<option value="${l}" ${l === r.location ? 'selected' : ''}>${l}</option>`).join('');
     this.showModal(`<h3>${id ? this.t('in_edit') : this.t('in_add')}</h3>`, `<div class="form-grid">
       <div class="form-group"><label>${this.t('in_date')} *</label><input id="i_date" type="date" value="${this.fmtDate(r.date)}" oninput="App.clearFieldError('i_date')"><div class="form-error" id="i_date_error"></div></div>
-      <div class="form-group"><label>${this.t('in_txn_type')}</label><select id="i_txn_type"><option value="采购入库" ${r.txn_type === '采购入库' ? 'selected' : ''}>${this.t('in_purchase')}</option><option value="退库入库" ${r.txn_type === '退库入库' ? 'selected' : ''}>${this.t('in_return')}</option></select></div>
+      <div class="form-group"><label>${this.t('in_txn_type')}</label><select id="i_txn_type"><option value="采购入库" ${r.txn_type === '采购入库' ? 'selected' : ''}>${this.t('in_purchase')}</option><option value="采购退货" ${r.txn_type === '采购退货' ? 'selected' : ''}>${this.t('in_return')}</option></select></div>
       <div class="form-group"><label>${this.t('in_grn')} (${this.t('in_grn_auto')})</label><input id="i_grn_no" value="${r.grn_no}" placeholder="${this.t('in_grn_ph')}"></div>
       <div class="form-group"><label>${this.t('in_material')} *</label><select id="i_code" onchange="App.clearFieldError('i_code')"><option value="">${this.t('please_select')}</option>${matSel}</select><div class="form-error" id="i_code_error"></div></div>
       <div class="form-group"><label>${this.t('in_qty')} *</label><input id="i_qty" type="number" step="0.01" value="${r.qty}" oninput="App.clearFieldError('i_qty')"><div class="form-error" id="i_qty_error"></div></div>
-      <div class="form-group"><label>${this.t('in_price')} *</label><input id="i_price" type="number" step="0.01" value="${r.price}" oninput="App.clearFieldError('i_price')"><div class="form-error" id="i_price_error"></div></div>
+      <div class="form-group">${this.canViewPrice() ? `<label>${this.t('in_price')}</label><input id="i_price" type="number" step="0.01" value="${r.price}" oninput="App.clearFieldError('i_price')"><div class="form-error" id="i_price_error"></div>` : `<input id="i_price" type="hidden" value="0">`}</div>
       <div class="form-group"><label>${this.t('in_supplier')}</label><select id="i_supplier"><option value="">${this.t('none')}</option>${supSel}</select></div>
       <div class="form-group"><label>${this.t('in_handler')}</label><input id="i_handler" value="${r.handler || ''}"></div>
       <div class="form-group"><label>${this.t('in_location')}</label><select id="i_location"><option value="">${this.t('none')}</option>${locSel}</select></div>
       <div class="form-group"><label>${this.t('in_po_no')}</label><select id="i_po_no"><option value="">${this.t('none')}</option>${poSel}</select></div>
       <div class="form-group"><label>${this.t('in_contract')}</label><input id="i_contract_no" value="${r.contract_no || ''}"></div>
       <div class="form-group" style="grid-column:span 2"><label>${this.t('in_remarks')}</label><input id="i_remarks" value="${r.remarks || ''}"></div></div>`, id ? this.t('save') : this.t('add'), async () => {
-      if (!this.validateForm({ i_date: [{rule:'required'}], i_code: [{rule:'required'}], i_qty: [{rule:'required'},{rule:'number'}], i_price: [{rule:'required'},{rule:'number'}] })) return;
-      const body = { date: document.getElementById('i_date').value, grn_no: document.getElementById('i_grn_no').value.trim(), code: document.getElementById('i_code').value, qty: parseFloat(document.getElementById('i_qty').value) || 0, price: parseFloat(document.getElementById('i_price').value) || 0, supplier: document.getElementById('i_supplier').value, handler: document.getElementById('i_handler').value.trim(), location: document.getElementById('i_location').value, po_no: document.getElementById('i_po_no').value, contract_no: document.getElementById('i_contract_no').value.trim(), remarks: document.getElementById('i_remarks').value.trim(), txn_type: document.getElementById('i_txn_type').value };
+      if (!this.validateForm({ i_date: [{rule:'required'}], i_code: [{rule:'required'}], i_qty: [{rule:'required'},{rule:'number'}] })) return;
+      const txnType = document.getElementById('i_txn_type').value;
+      let qty = parseFloat(document.getElementById('i_qty').value) || 0;
+      let price = parseFloat(document.getElementById('i_price').value) || 0;
+      // 采购退货：qty 和 price 转负数
+      if (txnType === '采购退货') { qty = -Math.abs(qty); price = -Math.abs(price); }
+      const body = { date: document.getElementById('i_date').value, grn_no: document.getElementById('i_grn_no').value.trim(), code: document.getElementById('i_code').value, qty, price, supplier: document.getElementById('i_supplier').value, handler: document.getElementById('i_handler').value.trim(), location: document.getElementById('i_location').value, po_no: document.getElementById('i_po_no').value, contract_no: document.getElementById('i_contract_no').value.trim(), remarks: document.getElementById('i_remarks').value.trim(), txn_type: txnType };
       try { await this.api('/api/inbound' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', body); this.closeModal(); this.toast(id ? this.t('updated') : this.t('added')); this.renderInbound(); } catch (e) { this.toast(e.message, 'error'); }
     });
   },
@@ -1000,6 +1196,7 @@ const App = {
     const data = this._outboundData;
     if (!data) return;
     const cur = this.params.currency;
+    const vp = this.canViewPrice();
     const tid = 'outbound';
     const st = this.getTableState(tid);
     // 读取筛选值
@@ -1018,16 +1215,16 @@ const App = {
       ['code', this.t('mat_code')], ['material_name', this.t('mat_name')], ['material_spec', this.t('mat_spec')], ['material_brand', this.t('mat_brand')],
       ['material_unit', this.t('mat_unit')], ['qty', this.t('out_qty')], ['destination', this.t('out_destination')],
       ['receiver', this.t('out_receiver')], ['handler', this.t('out_handler')], ['location', this.t('out_location')],
-      ['cost_price', this.t('out_cost_price')], ['cost_amount', this.t('out_cost_amount')]
+      ...vp ? [['cost_price', this.t('out_cost_price')], ['cost_amount', this.t('out_cost_amount')]] : []
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
     thHtml += `<th>${this.t('out_remarks')}</th><th></th>`;
     const colCount = headers.length + 2;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退货出库' ? `<span class="badge badge-warning">${this.t('out_return')}</span>` : `<span class="badge badge-info">${this.t('out_normal')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td><td>${r.remarks || ''}</td><td>${this.rowActions('outbound', `App.editOutbound(${r.id})`, `App.deleteOutbound(${r.id})`)}</td></tr>`; }).join(''); }
+    else { tbody = pageData.map(r => { const txnBadge = r.txn_type === '退库出库' ? `<span class="badge badge-danger">${this.t('out_return')}</span>` : `<span class="badge badge-info">${this.t('out_normal')}</span>`; return `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${txnBadge}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td>${vp ? `<td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td>` : ''}<td>${r.remarks || ''}</td><td>${this.rowActions('outbound', `App.editOutbound(${r.id})`, `App.deleteOutbound(${r.id})`)}</td></tr>`; }).join(''); }
     const filterActive = (keywords.trim() || dateFrom || dateTo) ? ` | 🔍 ${sorted.length}/${data.length}` : '';
-    document.getElementById('outbound-summary').innerHTML = `${sorted.length} ${this.t('out_total_records')} | ${this.t('out_total_qty')}: ${totalQty} | ${this.t('out_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}${filterActive}`;
+    document.getElementById('outbound-summary').innerHTML = `${sorted.length} ${this.t('out_total_records')} | ${this.t('out_total_qty')}: ${totalQty}${vp ? ` | ${this.t('out_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)}` : ''}${filterActive}`;
     document.getElementById('outbound-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('outbound-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -1045,14 +1242,18 @@ const App = {
     const locs = this.params.locations.map(l => l.name);
     const today = new Date().toISOString().slice(0, 10);
 
-    const matOptions = materials.map(m => `<option value="${m.code}">${m.name} ${m.spec || ''} ${m.brand || ''} (${m.code})</option>`).join('');
     const destOptions = dests.map(d => `<option value="${d}">${d}</option>`).join('');
     const locOptions = locs.map(l => `<option value="${l}">${l}</option>`).join('');
+
+    // #4: 物料三级联动数据准备
+    this._materialsCache = materials;
+    this._outboundMatCategories = [...new Set(materials.map(m => m.category).filter(Boolean))].sort();
+    const vp = this.canViewPrice();
 
     this.showModal(`<h3>${this.t('out_batch_title')}</h3>`, `<div style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">${this.t('out_batch_desc')}</div>
       <div class="form-grid">
         <div class="form-group"><label>${this.t('out_date')} *</label><input id="ob_date" type="date" value="${today}"></div>
-        <div class="form-group"><label>${this.t('out_txn_type')} *</label><select id="ob_txn_type"><option value="正常出库">${this.t('out_normal')}</option><option value="退货出库">${this.t('out_return')}</option></select></div>
+        <div class="form-group"><label>${this.t('out_txn_type')} *</label><select id="ob_txn_type"><option value="正常出库">${this.t('out_normal')}</option><option value="退库出库">${this.t('out_return')}</option></select></div>
         <div class="form-group"><label>${this.t('out_destination')}</label><select id="ob_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
         <div class="form-group"><label>${this.t('out_receiver')}</label><input id="ob_receiver" value=""></div>
         <div class="form-group"><label>${this.t('out_handler')}</label><input id="ob_handler" value=""></div>
@@ -1064,7 +1265,7 @@ const App = {
           <button class="btn btn-outline btn-sm" onclick="App.addOutboundRow()">+ ${this.t('out_add_row')}</button>
         </div>
         <div class="table-wrap"><table id="ob_table"><thead><tr>
-          <th>${this.t('out_material')}</th><th>${this.t('mat_spec')}</th><th>${this.t('mat_brand')}</th><th>${this.t('out_qty')} *</th><th>${this.t('out_cost_price')}</th><th>${this.t('out_remarks')}</th><th></th>
+          <th>${this.t('mat_level_category')}</th><th>${this.t('mat_level_name')}</th><th>${this.t('mat_level_spec')}</th><th>${this.t('mat_level_brand')}</th><th>${this.t('out_qty')} *</th>${vp ? `<th>${this.t('out_cost_price')}</th>` : ''}<th>${this.t('out_remarks')}</th><th></th>
         </tr></thead><tbody id="ob_rows"></tbody></table></div>
       </div>
       <div style="margin-top:8px;padding:8px 12px;background:var(--primary-light);border-radius:6px;font-size:12px;color:var(--text-muted)">💡 ${this.t('out_cost_hint')}</div>`, this.t('out_batch_submit'), async () => {
@@ -1078,10 +1279,13 @@ const App = {
       const rows = document.querySelectorAll('#ob_rows tr');
       const items = [];
       rows.forEach(tr => {
-        const code = tr.querySelector('.ob-code').value;
+        const code = tr.getAttribute('data-code') || '';
         const qty = parseFloat(tr.querySelector('.ob-qty').value) || 0;
         const remarks = tr.querySelector('.ob-remarks').value.trim();
-        if (code && qty > 0) items.push({ date, code, qty, destination, receiver, handler, location, remarks, txn_type: txnType });
+        if (code && qty > 0) {
+          const actualQty = txnType === '退库出库' ? -qty : qty;
+          items.push({ date, code, qty: actualQty, destination, receiver, handler, location, remarks, txn_type: txnType });
+        }
       });
       if (items.length === 0) { this.toast(this.t('fillRequired'), 'error'); return; }
       try {
@@ -1090,35 +1294,87 @@ const App = {
         this.toast(this.t('added') + ' (' + items.length + ')');
         this.renderOutbound();
       } catch (e) { this.toast(e.message, 'error'); }
-    });
+    }, null, true); // large modal
 
-    this._outboundMatOptions = matOptions;
-    this._materialsCache = materials;
     this.addOutboundRow();
     this.addOutboundRow();
     this.addOutboundRow();
   },
 
+  // #4: 批量出库行 — 三级联动物料选择（类别→名称→规格品牌）
   addOutboundRow(code = '', qty = '', remarks = '', spec = '', brand = '') {
-    const matOptions = this._outboundMatOptions || '';
+    const cats = this._outboundMatCategories || [];
+    const materials = this._materialsCache || [];
     const tbody = document.getElementById('ob_rows');
     if (!tbody) return;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><select class="ob-code" style="width:200px" onchange="App.onOutboundRowMaterialChange(this)"><option value="">${this.t('please_select')}</option>${matOptions}</select></td><td class="ob-spec" style="font-size:12px;color:var(--text-muted)">${spec}</td><td class="ob-brand" style="font-size:12px;color:var(--text-muted)">${brand}</td><td><input class="ob-qty" type="number" step="0.01" value="${qty}" style="width:80px"></td><td class="ob-cost" style="font-size:12px;color:var(--text-muted)">-</td><td><input class="ob-remarks" value="${remarks}" style="width:120px"></td><td><span class="action-link danger" onclick="this.parentElement.parentElement.remove()">${this.t('out_remove_row')}</span></td>`;
-    if (code) { tr.querySelector('.ob-code').value = code; }
+    tr.setAttribute('data-code', code);
+    const mat = code ? materials.find(m => m.code === code) : null;
+    const preCat = mat ? mat.category : '';
+    const preName = mat ? mat.name : '';
+
+    const catOpts = cats.map(c => `<option value="${c}" ${c === preCat ? 'selected' : ''}>${c}</option>`).join('');
+    const names = preCat ? [...new Set(materials.filter(m => m.category === preCat).map(m => m.name))] : [];
+    const nameOpts = names.map(n => `<option value="${n}" ${n === preName ? 'selected' : ''}>${n}</option>`).join('');
+    const specs = (preCat && preName) ? materials.filter(m => m.category === preCat && m.name === preName) : [];
+    const specOpts = specs.map(m => {
+      const label = `${m.spec || '-'} / ${m.brand || '-'} (${m.code})`;
+      return `<option value="${m.code}" ${m.code === code ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    const vp = this.canViewPrice();
+    tr.innerHTML = `<td><select class="ob-cat" onchange="App.onOutboundRowCatChange(this)" style="width:120px"><option value="">${this.t('please_select')}</option>${catOpts}</select></td>
+      <td><select class="ob-name" onchange="App.onOutboundRowNameChange(this)" style="width:140px" ${!preCat ? 'disabled' : ''}><option value="">${this.t('please_select')}</option>${nameOpts}</select></td>
+      <td><select class="ob-spec-sel" onchange="App.onOutboundRowSpecChange(this)" style="width:200px" ${!preName ? 'disabled' : ''}><option value="">${this.t('please_select')}</option>${specOpts}</select></td>
+      <td class="ob-brand" style="font-size:12px;color:var(--text-muted)">${brand}</td>
+      <td><input class="ob-qty" type="number" step="0.01" value="${qty}" style="width:80px"></td>
+      ${vp ? `<td class="ob-cost" style="font-size:12px;color:var(--text-muted)">-</td>` : ''}
+      <td><input class="ob-remarks" value="${remarks}" style="width:120px"></td>
+      <td><span class="action-link danger" onclick="this.parentElement.parentElement.remove()">${this.t('out_remove_row')}</span></td>`;
     tbody.appendChild(tr);
   },
 
-  onOutboundRowMaterialChange(selEl) {
+  onOutboundRowCatChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const cat = selEl.value;
+    const materials = this._materialsCache || [];
+    const names = cat ? [...new Set(materials.filter(m => m.category === cat).map(m => m.name))] : [];
+    const nameSel = tr.querySelector('.ob-name');
+    nameSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    nameSel.disabled = !cat;
+    const specSel = tr.querySelector('.ob-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>`;
+    specSel.disabled = true;
+    tr.querySelector('.ob-brand').textContent = '';
+    tr.setAttribute('data-code', '');
+  },
+
+  onOutboundRowNameChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const cat = tr.querySelector('.ob-cat').value;
+    const name = selEl.value;
+    const materials = this._materialsCache || [];
+    const specs = (cat && name) ? materials.filter(m => m.category === cat && m.name === name) : [];
+    const specSel = tr.querySelector('.ob-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + specs.map(m => {
+      const label = `${m.spec || '-'} / ${m.brand || '-'} (${m.code})`;
+      return `<option value="${m.code}">${label}</option>`;
+    }).join('');
+    specSel.disabled = !name;
+    tr.querySelector('.ob-brand').textContent = '';
+    tr.setAttribute('data-code', '');
+  },
+
+  onOutboundRowSpecChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
     const code = selEl.value;
     const m = (this._materialsCache || []).find(x => x.code === code);
-    const tr = selEl.parentElement.parentElement;
     if (m) {
-      tr.querySelector('.ob-spec').textContent = m.spec || '';
       tr.querySelector('.ob-brand').textContent = m.brand || '';
+      tr.setAttribute('data-code', code);
     } else {
-      tr.querySelector('.ob-spec').textContent = '';
       tr.querySelector('.ob-brand').textContent = '';
+      tr.setAttribute('data-code', '');
     }
   },
 
@@ -1132,7 +1388,7 @@ const App = {
     const locSel = locs.map(l => `<option value="${l}" ${l === r.location ? 'selected' : ''}>${l}</option>`).join('');
     this.showModal(`<h3>${id ? this.t('out_edit') : this.t('out_add')}</h3>`, `<div class="form-grid">
       <div class="form-group"><label>${this.t('out_date')} *</label><input id="o_date" type="date" value="${this.fmtDate(r.date)}" oninput="App.clearFieldError('o_date')"><div class="form-error" id="o_date_error"></div></div>
-      <div class="form-group"><label>${this.t('out_txn_type')}</label><select id="o_txn_type"><option value="正常出库" ${r.txn_type === '正常出库' ? 'selected' : ''}>${this.t('out_normal')}</option><option value="退货出库" ${r.txn_type === '退货出库' ? 'selected' : ''}>${this.t('out_return')}</option></select></div>
+      <div class="form-group"><label>${this.t('out_txn_type')}</label><select id="o_txn_type"><option value="正常出库" ${r.txn_type === '正常出库' ? 'selected' : ''}>${this.t('out_normal')}</option><option value="退库出库" ${r.txn_type === '退库出库' ? 'selected' : ''}>${this.t('out_return')}</option></select></div>
       <div class="form-group"><label>${this.t('out_gin')} (${this.t('out_gin_auto')})</label><input id="o_gin_no" value="${r.gin_no}" placeholder="${this.t('in_grn_ph')}"></div>
       <div class="form-group"><label>${this.t('out_material')} *</label><select id="o_code" onchange="App.clearFieldError('o_code')"><option value="">${this.t('please_select')}</option>${matSel}</select><div class="form-error" id="o_code_error"></div></div>
       <div class="form-group"><label>${this.t('out_qty')} *</label><input id="o_qty" type="number" step="0.01" value="${r.qty}" oninput="App.clearFieldError('o_qty')"><div class="form-error" id="o_qty_error"></div></div>
@@ -1143,7 +1399,11 @@ const App = {
       <div class="form-group" style="grid-column:span 2"><label>${this.t('out_remarks')}</label><input id="o_remarks" value="${r.remarks || ''}"></div></div>
       <div style="margin-top:8px;padding:8px 12px;background:var(--primary-light);border-radius:6px;font-size:12px;color:var(--text-muted)">💡 ${this.t('out_cost_hint')}</div>`, id ? this.t('save') : this.t('add'), async () => {
       if (!this.validateForm({ o_date: [{rule:'required'}], o_code: [{rule:'required'}], o_qty: [{rule:'required'},{rule:'number'},{rule:'positive'}] })) return;
-      const body = { date: document.getElementById('o_date').value, gin_no: document.getElementById('o_gin_no').value.trim(), code: document.getElementById('o_code').value, qty: parseFloat(document.getElementById('o_qty').value) || 0, destination: document.getElementById('o_destination').value, receiver: document.getElementById('o_receiver').value.trim(), handler: document.getElementById('o_handler').value.trim(), location: document.getElementById('o_location').value, remarks: document.getElementById('o_remarks').value.trim(), txn_type: document.getElementById('o_txn_type').value };
+      const txnType = document.getElementById('o_txn_type').value;
+      let qty = parseFloat(document.getElementById('o_qty').value) || 0;
+      // 退库出库：qty 转负数
+      if (txnType === '退库出库') qty = -Math.abs(qty);
+      const body = { date: document.getElementById('o_date').value, gin_no: document.getElementById('o_gin_no').value.trim(), code: document.getElementById('o_code').value, qty, destination: document.getElementById('o_destination').value, receiver: document.getElementById('o_receiver').value.trim(), handler: document.getElementById('o_handler').value.trim(), location: document.getElementById('o_location').value, remarks: document.getElementById('o_remarks').value.trim(), txn_type: txnType };
       try { await this.api('/api/outbound' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', body); this.closeModal(); this.toast(id ? this.t('updated') : this.t('added')); this.renderOutbound(); } catch (e) { this.toast(e.message, 'error'); }
     });
   },
@@ -1152,16 +1412,9 @@ const App = {
 
   // ========== 库存汇总 ==========
   async renderStockSummary() {
-    this.setMain(this.pageWrap('📦 ' + this.t('stock_title'), this.t('stock_desc'), '', `<div class="data-page"><div class="data-toolbar"><div class="filter-bar" style="margin:0;padding:0;background:none;box-shadow:none"><div class="form-group"><label>${this.t('stock_keyword')}</label><input id="s_keyword" placeholder="${this.t('mat_code')}/${this.t('mat_name')}" oninput="App.filterStock()"></div><div class="form-group"><label>${this.t('stock_category')}</label><select id="s_category" onchange="App.filterStock()"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}</select></div><div class="form-group"><label>${this.t('stock_status')}</label><select id="s_status" onchange="App.filterStock()"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div></div></div><div class="data-summary" id="stock-summary"></div><div class="data-scroll" id="stock-scroll"></div><div class="data-pager" id="stock-pager"></div></div>`));
-    this.stockData = null; await this.filterStock();
-  },
-
-  async filterStock() {
-    const keyword = document.getElementById('s_keyword')?.value || '', category = document.getElementById('s_category')?.value || '', status = document.getElementById('s_status')?.value || '';
-    const params = new URLSearchParams();
-    if (keyword) params.set('keyword', keyword); if (category) params.set('category', category); if (status) params.set('status', status);
+    this.setMain(this.pageWrap('📦 ' + this.t('stock_title'), this.t('stock_desc'), '', `<div class="data-page"><div class="data-toolbar"><div class="filter-bar" style="margin:0;padding:0;background:none;box-shadow:none"><div class="form-group"><label>${this.t('stock_keyword')}</label><input id="s_keyword" placeholder="${this.t('quick_filter_ph')}" oninput="App.renderStockTable()"></div><div class="form-group"><label>${this.t('stock_category')}</label><select id="s_category" onchange="App.renderStockTable()"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}</select></div><div class="form-group"><label>${this.t('stock_status')}</label><select id="s_status" onchange="App.renderStockTable()"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div></div></div><div class="data-summary" id="stock-summary"></div><div class="data-scroll" id="stock-scroll"></div><div class="data-pager" id="stock-pager"></div></div>`));
     try {
-      this._stockData = await this.api('/api/stock-summary?' + params.toString());
+      this._stockData = await this.api('/api/stock-summary');
       this._tableRenderers = this._tableRenderers || {};
       this._tableRenderers['stock'] = () => this.renderStockTable();
       this.renderStockTable();
@@ -1172,9 +1425,18 @@ const App = {
     const data = this._stockData;
     if (!data) return;
     const cur = this.params.currency;
+    const vp = this.canViewPrice();
     const tid = 'stock';
     const st = this.getTableState(tid);
-    const sorted = this.sortData(data, st.sortKey, st.sortDir);
+    // 多关键字 + 类别 + 状态筛选（前端）
+    const keywords = document.getElementById('s_keyword')?.value || '';
+    const category = document.getElementById('s_category')?.value || '';
+    const status = document.getElementById('s_status')?.value || '';
+    const filterFields = ['code','name','spec','category','unit','brand','stock_status','on_hand','min_stock','opening_qty','total_in','total_out'];
+    let filtered = this.filterByKeywords(data, keywords, filterFields);
+    if (category) filtered = filtered.filter(m => m.category === category);
+    if (status) filtered = filtered.filter(m => m.stock_status === status);
+    const sorted = this.sortData(filtered, st.sortKey, st.sortDir);
     const pageData = this.paginate(sorted, st.page, st.pageSize);
     const totalValue = sorted.reduce((s, m) => s + m.stock_value, 0);
     const alerts = sorted.filter(m => m.stock_status === '补货' || m.stock_status === '缺货').length;
@@ -1182,62 +1444,156 @@ const App = {
       ['code', this.t('mat_code')], ['name', this.t('mat_name')], ['spec', this.t('mat_spec')],
       ['category', this.t('mat_category')], ['unit', this.t('mat_unit')], ['opening_qty', this.t('stock_opening')],
       ['total_in', this.t('stock_total_in')], ['total_out', this.t('stock_total_out')], ['on_hand', this.t('stock_on_hand')],
-      ['min_stock', this.t('stock_min')], ['stock_status', this.t('mat_status')], ['avg_price', this.t('stock_avg_price')],
-      ['stock_value', this.t('stock_value')], ['brand', this.t('mat_brand')]
+      ['min_stock', this.t('stock_min')], ['stock_status', this.t('mat_status')],
+      ...vp ? [['avg_price', this.t('stock_avg_price')], ['stock_value', this.t('stock_value')]] : [],
+      ['brand', this.t('mat_brand')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
     const colCount = headers.length;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${m.total_in}</td><td class="text-right">${m.total_out}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td><td class="text-right">${this.fmtMoney(m.avg_price)}</td><td class="text-right">${cur} ${this.fmtMoney(m.stock_value)}</td><td>${m.brand || ''}</td></tr>`).join(''); }
-    document.getElementById('stock-summary').innerHTML = `${this.t('stock_types')}: ${sorted.length} | ${this.t('stock_total_value')}: ${cur} ${this.fmtMoney(totalValue)} | ${this.t('stock_alerts')}: ${alerts} ${this.t('stock_items')}`;
+    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${m.total_in}</td><td class="text-right">${m.total_out}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.avg_price)}</td><td class="text-right">${cur} ${this.fmtMoney(m.stock_value)}</td>` : ''}<td>${m.brand || ''}</td></tr>`).join(''); }
+    document.getElementById('stock-summary').innerHTML = `${this.t('stock_types')}: ${sorted.length}${vp ? ` | ${this.t('stock_total_value')}: ${cur} ${this.fmtMoney(totalValue)}` : ''} | ${this.t('stock_alerts')}: ${alerts} ${this.t('stock_items')}`;
     document.getElementById('stock-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('stock-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
 
   // ========== 查询中心 ==========
   async renderQuery() {
-    this.setMain(this.pageWrap('🔍 ' + this.t('q_title'), this.t('q_desc'), '', `<div class="data-page"><div class="data-toolbar"><div class="filter-bar" style="margin:0;padding:10px;background:none;box-shadow:none"><div class="form-group"><label>${this.t('q_keyword')}</label><input id="q_keyword" placeholder="${this.t('mat_code')}/${this.t('mat_name')}"></div><div class="form-group"><label>${this.t('q_start')}</label><input id="q_start" type="date"></div><div class="form-group"><label>${this.t('q_end')}</label><input id="q_end" type="date"></div><div class="form-group"><label>${this.t('q_supplier')}</label><input id="q_supplier"></div><div class="form-group"><label>${this.t('q_handler')}</label><input id="q_handler"></div><div class="form-group"><label>${this.t('q_destination')}</label><select id="q_destination"><option value="">${this.t('q_no_limit')}</option>${this.params.destinations.map(d => `<option value="${d.name}">${d.name}</option>`).join('')}</select></div><div class="form-group"><label>${this.t('q_po_no')}</label><input id="q_po_no"></div><div class="form-group"><label>${this.t('q_contract')}</label><input id="q_contract_no"></div><div class="form-group"><button class="btn btn-primary" onclick="App.runQuery()">${this.t('search')}</button><button class="btn btn-outline" onclick="App.clearQuery()">${this.t('clear')}</button></div></div></div><div class="data-summary" id="query-tabs" style="display:none"><button class="btn btn-primary btn-sm" onclick="App.showQueryResult('stock')">${this.t('q_result_stock')}</button><button class="btn btn-outline btn-sm" onclick="App.showQueryResult('inbound')">${this.t('q_result_in')}</button><button class="btn btn-outline btn-sm" onclick="App.showQueryResult('outbound')">${this.t('q_result_out')}</button></div><div class="data-scroll" id="query-content"><div class="empty-state"><div class="empty-state-icon">🔍</div><p>${this.t('q_empty')}</p></div></div><div class="data-pager" id="query-pager"></div></div>`));
+    this.setMain(this.pageWrap('🔍 ' + this.t('q_title'), this.t('q_desc'), '', `<div class="data-page">
+      <div class="data-toolbar">
+        <div class="filter-bar" style="margin:0;padding:10px;background:none;box-shadow:none">
+          <div class="form-group"><label>${this.t('q_keyword')}</label><input id="q_keyword" placeholder="${this.t('quick_filter_ph')}"></div>
+          <div class="form-group"><label>${this.t('q_start')}</label><input id="q_start" type="date"></div>
+          <div class="form-group"><label>${this.t('q_end')}</label><input id="q_end" type="date"></div>
+          <div class="form-group"><label>${this.t('q_supplier')}</label><input id="q_supplier"></div>
+          <div class="form-group"><label>${this.t('q_handler')}</label><input id="q_handler"></div>
+          <div class="form-group"><label>${this.t('q_destination')}</label><select id="q_destination"><option value="">${this.t('q_no_limit')}</option>${this.params.destinations.map(d => `<option value="${d.name}">${d.name}</option>`).join('')}</select></div>
+          <div class="form-group"><label>${this.t('q_po_no')}</label><input id="q_po_no"></div>
+          <div class="form-group"><label>${this.t('q_contract')}</label><input id="q_contract_no"></div>
+        </div>
+        <div class="query-btn-row" style="display:flex;gap:10px;padding:0 10px 10px">
+          <button class="btn btn-primary" onclick="App.runQuery()">${this.t('search')}</button>
+          <button class="btn btn-outline" onclick="App.clearQuery()">${this.t('clear')}</button>
+        </div>
+      </div>
+      <div class="data-summary" id="query-tabs" style="display:none">
+        <button class="btn btn-primary btn-sm" onclick="App.showQueryResult('stock')">${this.t('q_result_stock')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.showQueryResult('inbound')">${this.t('q_result_in')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.showQueryResult('outbound')">${this.t('q_result_out')}</button>
+      </div>
+      <div class="data-scroll" id="query-content"><div class="empty-state"><div class="empty-state-icon">🔍</div><p>${this.t('q_empty')}</p></div></div>
+      <div class="data-pager" id="query-pager"></div>
+    </div>`));
     this.queryResults = null;
+    this._queryTab = 'stock';
   },
 
   async runQuery() {
     const keyword = document.getElementById('q_keyword').value.trim(), startDate = document.getElementById('q_start').value, endDate = document.getElementById('q_end').value, supplier = document.getElementById('q_supplier').value.trim(), handler = document.getElementById('q_handler').value.trim(), destination = document.getElementById('q_destination').value, poNo = document.getElementById('q_po_no').value.trim(), contractNo = document.getElementById('q_contract_no').value.trim();
+    // keyword 不传后端，前端 filterByKeywords 多关键字模糊匹配
     const params = new URLSearchParams();
-    if (keyword) params.set('keyword', keyword); if (startDate) params.set('startDate', startDate); if (endDate) params.set('endDate', endDate);
+    if (startDate) params.set('startDate', startDate); if (endDate) params.set('endDate', endDate);
     if (supplier) params.set('supplier', supplier); if (handler) params.set('handler', handler); if (poNo) params.set('poNo', poNo); if (contractNo) params.set('contractNo', contractNo);
     try {
-      const stockParams = new URLSearchParams(); if (keyword) stockParams.set('keyword', keyword);
-      const stock = await this.api('/api/stock-summary?' + stockParams.toString()); const inbound = await this.api('/api/inbound?' + params.toString());
+      const stock = await this.api('/api/stock-summary');
+      const inbound = await this.api('/api/inbound?' + params.toString());
       const outParams = new URLSearchParams();
-      if (keyword) outParams.set('keyword', keyword); if (startDate) outParams.set('startDate', startDate); if (endDate) outParams.set('endDate', endDate); if (handler) outParams.set('handler', handler); if (destination) outParams.set('destination', destination);
+      if (startDate) outParams.set('startDate', startDate); if (endDate) outParams.set('endDate', endDate); if (handler) outParams.set('handler', handler); if (destination) outParams.set('destination', destination);
       const outbound = await this.api('/api/outbound?' + outParams.toString());
-      this.queryResults = { stock, inbound, outbound }; document.getElementById('query-tabs').style.display = 'block'; this.showQueryResult('stock');
+      // 前端多关键字筛选
+      this._queryKeyword = keyword;
+      this.queryResults = { stock, inbound, outbound };
+      document.getElementById('query-tabs').style.display = 'block';
+      // 重置三个 tab 的表格状态
+      ['queryStock','queryInbound','queryOutbound'].forEach(tid => { this.tableStates[tid] = { sortKey: '', sortDir: 'asc', page: 1, pageSize: 15 }; });
+      this.showQueryResult('stock');
     } catch (e) { this.toast(e.message, 'error'); }
   },
 
   clearQuery() {
     ['q_keyword','q_start','q_end','q_supplier','q_handler','q_po_no','q_contract_no'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('q_destination').value = ''; document.getElementById('query-tabs').style.display = 'none';
+    document.getElementById('q_destination').value = '';
+    document.getElementById('query-tabs').style.display = 'none';
     document.getElementById('query-content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><p>${this.t('q_empty')}</p></div>`;
+    document.getElementById('query-pager').innerHTML = '';
     this.queryResults = null;
   },
 
   showQueryResult(tab) {
     const tabs = document.querySelectorAll('#query-tabs button'); const tabMap = { stock: 0, inbound: 1, outbound: 2 };
     tabs.forEach((b, i) => { b.className = i === tabMap[tab] ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'; });
-    if (!this.queryResults) return; const cur = this.params.currency; let html = '';
+    this._queryTab = tab;
+    if (!this.queryResults) return;
+    const cur = this.params.currency; const vp = this.canViewPrice();
+    const tid = 'query' + tab.charAt(0).toUpperCase() + tab.slice(1);
+    // 注册重渲染回调（排序/翻页时调用）
+    this._tableRenderers = this._tableRenderers || {};
+    this._tableRenderers[tid] = () => this.showQueryResult(tab);
+    const st = this.getTableState(tid);
+
     if (tab === 'stock') {
-      const data = this.queryResults.stock;
-      html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_stock_match')}: ${data.length} ${this.t('q_types')}</div><div class="card"><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('mat_brand')}</th><th>${this.t('mat_category')}</th><th>${this.t('mat_unit')}</th><th>${this.t('stock_opening')}</th><th>${this.t('stock_total_in')}</th><th>${this.t('stock_total_out')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th><th>${this.t('stock_value')}</th></tr></thead><tbody>${data.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.brand || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${m.total_in}</td><td class="text-right">${m.total_out}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td><td class="text-right">${cur} ${this.fmtMoney(m.stock_value)}</td></tr>`).join('')}</tbody></table></div></div>`;
+      const kw = this._queryKeyword || '';
+      const filterFields = ['code','name','spec','brand','category','unit','stock_status'];
+      let data = this.filterByKeywords(this.queryResults.stock, kw, filterFields);
+      const sorted = this.sortData(data, st.sortKey, st.sortDir);
+      const pageData = this.paginate(sorted, st.page, st.pageSize);
+      const headers = [
+        ['code', this.t('mat_code')], ['name', this.t('mat_name')], ['spec', this.t('mat_spec')],
+        ['brand', this.t('mat_brand')], ['category', this.t('mat_category')], ['unit', this.t('mat_unit')],
+        ['opening_qty', this.t('stock_opening')], ['total_in', this.t('stock_total_in')], ['total_out', this.t('stock_total_out')],
+        ['on_hand', this.t('stock_on_hand')], ['min_stock', this.t('stock_min')],
+      ];
+      let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
+      thHtml += `<th>${this.t('mat_status')}</th>`;
+      if (vp) thHtml += this.sortTh(this.t('stock_value'), 'stock_value', tid);
+      let tbody = '';
+      if (pageData.length === 0) { tbody = this.emptyRow(headers.length + 2 + (vp ? 1 : 0)); }
+      else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.brand || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td><td class="text-right">${m.total_in}</td><td class="text-right">${m.total_out}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td>${vp ? `<td class="text-right">${cur} ${this.fmtMoney(m.stock_value)}</td>` : ''}</tr>`).join(''); }
+      const html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_stock_match')}: ${data.length} ${this.t('q_types')}</div><div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+      document.getElementById('query-content').innerHTML = html;
+      document.getElementById('query-pager').innerHTML = this.renderPager(tid, sorted.length);
+
     } else if (tab === 'inbound') {
-      const data = this.queryResults.inbound;
-      html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_in_match')}: ${data.length} ${this.t('q_records')}</div><div class="card"><div class="table-wrap"><table><thead><tr><th>${this.t('in_date')}</th><th>${this.t('in_grn')}</th><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_brand')}</th><th>${this.t('in_qty')}</th><th>${this.t('in_price')}</th><th>${this.t('in_total_amount')}</th><th>${this.t('in_supplier')}</th><th>${this.t('in_handler')}</th><th>${this.t('in_location')}</th><th>${this.t('in_po_no')}</th></tr></thead><tbody>${data.map(r => `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_brand || ''}</td><td class="text-right">${r.qty}</td><td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td><td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+      const kw = this._queryKeyword || '';
+      const filterFields = ['date','grn_no','code','material_name','material_spec','material_brand','supplier','handler','location','po_no','contract_no','txn_type','remarks'];
+      let data = this.filterByKeywords(this.queryResults.inbound, kw, filterFields);
+      const sorted = this.sortData(data, st.sortKey, st.sortDir);
+      const pageData = this.paginate(sorted, st.page, st.pageSize);
+      const headers = [
+        ['date', this.t('in_date')], ['grn_no', this.t('in_grn')], ['code', this.t('mat_code')],
+        ['material_name', this.t('mat_name')], ['material_brand', this.t('mat_brand')], ['qty', this.t('in_qty')],
+        ...vp ? [['price', this.t('in_price')], ['amount', this.t('in_total_amount')]] : [],
+        ['supplier', this.t('in_supplier')], ['handler', this.t('in_handler')], ['location', this.t('in_location')], ['po_no', this.t('in_po_no')],
+      ];
+      let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
+      let tbody = '';
+      if (pageData.length === 0) { tbody = this.emptyRow(headers.length); }
+      else { tbody = pageData.map(r => `<tr><td>${this.fmtDate(r.date)}</td><td>${r.grn_no}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_brand || ''}</td><td class="text-right">${r.qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td>` : ''}<td>${r.supplier || ''}</td><td>${r.handler || ''}</td><td>${r.location || ''}</td><td>${r.po_no || ''}</td></tr>`).join(''); }
+      const html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_in_match')}: ${data.length} ${this.t('q_records')}</div><div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+      document.getElementById('query-content').innerHTML = html;
+      document.getElementById('query-pager').innerHTML = this.renderPager(tid, sorted.length);
+
     } else {
-      const data = this.queryResults.outbound;
-      html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_out_match')}: ${data.length} ${this.t('q_records')}</div><div class="card"><div class="table-wrap"><table><thead><tr><th>${this.t('out_date')}</th><th>${this.t('out_gin')}</th><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_brand')}</th><th>${this.t('out_qty')}</th><th>${this.t('out_destination')}</th><th>${this.t('out_receiver')}</th><th>${this.t('out_handler')}</th><th>${this.t('out_cost_price')}</th><th>${this.t('out_cost_amount')}</th></tr></thead><tbody>${data.map(r => `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_brand || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td><td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td></tr>`).join('')}</tbody></table></div></div>`;
+      const kw = this._queryKeyword || '';
+      const filterFields = ['date','gin_no','code','material_name','material_spec','material_brand','destination','receiver','handler','txn_type','remarks'];
+      let data = this.filterByKeywords(this.queryResults.outbound, kw, filterFields);
+      const sorted = this.sortData(data, st.sortKey, st.sortDir);
+      const pageData = this.paginate(sorted, st.page, st.pageSize);
+      const headers = [
+        ['date', this.t('out_date')], ['gin_no', this.t('out_gin')], ['code', this.t('mat_code')],
+        ['material_name', this.t('mat_name')], ['material_brand', this.t('mat_brand')], ['qty', this.t('out_qty')],
+        ['destination', this.t('out_destination')], ['receiver', this.t('out_receiver')], ['handler', this.t('out_handler')],
+        ...vp ? [['cost_price', this.t('out_cost_price')], ['cost_amount', this.t('out_cost_amount')]] : [],
+      ];
+      let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
+      let tbody = '';
+      if (pageData.length === 0) { tbody = this.emptyRow(headers.length); }
+      else { tbody = pageData.map(r => `<tr><td>${this.fmtDate(r.date)}</td><td>${r.gin_no}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_brand || ''}</td><td class="text-right">${r.qty}</td><td>${r.destination || ''}</td><td>${r.receiver || ''}</td><td>${r.handler || ''}</td>${vp ? `<td class="text-right">${this.fmtMoney(r.cost_price)}</td><td class="text-right">${this.fmtMoney(r.cost_amount)}</td>` : ''}</tr>`).join(''); }
+      const html = `<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted)">${this.t('q_out_match')}: ${data.length} ${this.t('q_records')}</div><div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+      document.getElementById('query-content').innerHTML = html;
+      document.getElementById('query-pager').innerHTML = this.renderPager(tid, sorted.length);
     }
-    document.getElementById('query-content').innerHTML = html;
   },
 
   // ========== 物料台账 ==========
@@ -1252,9 +1608,9 @@ const App = {
     const startDate = document.getElementById('l_start').value, endDate = document.getElementById('l_end').value; const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate); if (endDate) params.set('endDate', endDate);
     try {
-      const data = await this.api(`/api/ledger/${code}?${params.toString()}`); const cur = this.params.currency;
+      const data = await this.api(`/api/ledger/${code}?${params.toString()}`); const cur = this.params.currency; const vp = this.canViewPrice();
       let html = `<div class="metric-grid"><div class="metric-card"><div class="metric-label">${this.t('ledger_code')}</div><div class="metric-value" style="font-size:18px">${data.material.code}</div></div><div class="metric-card"><div class="metric-label">${this.t('ledger_name')}</div><div class="metric-value" style="font-size:18px">${data.material.name}</div></div><div class="metric-card metric-info"><div class="metric-label">${this.t('ledger_opening')}</div><div class="metric-value">${data.opening_qty}</div></div><div class="metric-card metric-success"><div class="metric-label">${this.t('ledger_total_in')}</div><div class="metric-value">${data.total_in}</div></div><div class="metric-card metric-warning"><div class="metric-label">${this.t('ledger_total_out')}</div><div class="metric-value">${data.total_out}</div></div><div class="metric-card metric-danger"><div class="metric-label">${this.t('ledger_closing')}</div><div class="metric-value">${data.closing_qty}</div></div></div>`;
-      html += `<div class="card"><div class="card-title">${this.t('ledger_flow')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('ledger_seq')}</th><th>${this.t('ledger_date')}</th><th>${this.t('ledger_doc')}</th><th>${this.t('ledger_type')}</th><th>${this.t('ledger_in_qty')}</th><th>${this.t('ledger_out_qty')}</th><th>${this.t('ledger_balance')}</th><th>${this.t('ledger_price')}</th><th>${this.t('ledger_amount')}</th><th>${this.t('ledger_party')}</th><th>${this.t('ledger_location')}</th><th>${this.t('in_handler')}</th><th>${this.t('in_remarks')}</th></tr></thead><tbody>${data.rows.map(r => { const tb = r.type === '入库' ? `<span class="badge badge-info">${this.t('nav_inbound')}</span>` : r.type === '出库' ? `<span class="badge badge-warning">${this.t('nav_outbound')}</span>` : `<span class="badge badge-muted">${this.t('stock_opening')}</span>`; return `<tr><td class="text-center">${r.seq}</td><td>${r.date || ''}</td><td>${r.doc_no || ''}</td><td>${tb}</td><td class="text-right">${r.in_qty || ''}</td><td class="text-right">${r.out_qty || ''}</td><td class="text-right"><strong>${r.balance}</strong></td><td class="text-right">${r.price ? this.fmtMoney(r.price) : ''}</td><td class="text-right">${r.amount ? cur + ' ' + this.fmtMoney(r.amount) : ''}</td><td>${r.party || ''}</td><td>${r.location || ''}</td><td>${r.handler || ''}</td><td>${r.remarks || ''}</td></tr>`; }).join('')}</tbody></table></div></div>`;
+      html += `<div class="card"><div class="card-title">${this.t('ledger_flow')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('ledger_seq')}</th><th>${this.t('ledger_date')}</th><th>${this.t('ledger_doc')}</th><th>${this.t('ledger_type')}</th><th>${this.t('ledger_in_qty')}</th><th>${this.t('ledger_out_qty')}</th><th>${this.t('ledger_balance')}</th>${vp ? `<th>${this.t('ledger_price')}</th><th>${this.t('ledger_amount')}</th>` : ''}<th>${this.t('ledger_party')}</th><th>${this.t('ledger_location')}</th><th>${this.t('in_handler')}</th><th>${this.t('in_remarks')}</th></tr></thead><tbody>${data.rows.map(r => { const tb = r.type === '入库' ? `<span class="badge badge-info">${this.t('nav_inbound')}</span>` : r.type === '出库' ? `<span class="badge badge-warning">${this.t('nav_outbound')}</span>` : `<span class="badge badge-muted">${this.t('stock_opening')}</span>`; return `<tr><td class="text-center">${r.seq}</td><td>${r.date || ''}</td><td>${r.doc_no || ''}</td><td>${tb}</td><td class="text-right">${r.in_qty || ''}</td><td class="text-right">${r.out_qty || ''}</td><td class="text-right"><strong>${r.balance}</strong></td>${vp ? `<td class="text-right">${r.price ? this.fmtMoney(r.price) : ''}</td><td class="text-right">${r.amount ? cur + ' ' + this.fmtMoney(r.amount) : ''}</td>` : ''}<td>${r.party || ''}</td><td>${r.location || ''}</td><td>${r.handler || ''}</td><td>${r.remarks || ''}</td></tr>`; }).join('')}</tbody></table></div></div>`;
       document.getElementById('ledger-content').innerHTML = html;
     } catch (e) { document.getElementById('ledger-content').innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
   },
@@ -1294,6 +1650,7 @@ const App = {
     const data = this._ordersData;
     if (!data) return;
     const cur = this.params.currency;
+    const vp = this.canViewPrice();
     const tid = 'orders';
     const st = this.getTableState(tid);
     const keywords = document.getElementById('ord_filter')?.value || '';
@@ -1304,7 +1661,8 @@ const App = {
     const headers = [
       ['po_no', this.t('po_no')], ['date', this.t('po_date')], ['supplier', this.t('po_supplier')],
       ['contract_no', this.t('po_contract')], ['project', this.t('po_project')], ['expected_date', this.t('po_expected')],
-      ['line_count', this.t('po_lines')], ['order_amount', this.t('po_amount')], ['received_amount', this.t('po_received')],
+      ['line_count', this.t('po_lines')],
+      ...vp ? [['order_amount', this.t('po_amount')], ['received_amount', this.t('po_received')]] : [],
       ['delivery_status', this.t('po_delivery')], ['overdue_days', this.t('po_overdue')], ['manual_status', this.t('po_manual')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
@@ -1312,7 +1670,7 @@ const App = {
     const colCount = headers.length + 1;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
-    else { tbody = pageData.map(o => `<tr><td><strong>${o.po_no}</strong></td><td>${this.fmtDate(o.date)}</td><td>${o.supplier || ''}</td><td>${o.contract_no || ''}</td><td>${o.project || ''}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center">${o.line_count}</td><td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td><td class="text-right">${cur} ${this.fmtMoney(o.received_amount)}</td><td>${this.statusBadge(o.delivery_status)}</td><td class="text-center">${o.overdue_days > 0 ? '<span class="badge badge-danger">' + o.overdue_days + '</span>' : '-'}</td><td>${o.manual_status || this.t('po_status_pending')}</td><td><span class="action-link" onclick="App.viewOrder('${o.po_no}')">${this.t('po_detail')}</span>${this.can('orders','edit') ? `<span class="action-link" onclick="App.editOrder('${o.po_no}')">${this.t('edit')}</span>` : ''}${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrder('${o.po_no}')">${this.t('delete')}</span>` : ''}</td></tr>`).join(''); }
+    else { tbody = pageData.map(o => `<tr><td><strong>${o.po_no}</strong></td><td>${this.fmtDate(o.date)}</td><td>${o.supplier || ''}</td><td>${o.contract_no || ''}</td><td>${o.project || ''}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center">${o.line_count}</td>${vp ? `<td class="text-right">${cur} ${this.fmtMoney(o.order_amount)}</td><td class="text-right">${cur} ${this.fmtMoney(o.received_amount)}</td>` : ''}<td>${this.statusBadge(o.delivery_status)}</td><td class="text-center">${o.overdue_days > 0 ? '<span class="badge badge-danger">' + o.overdue_days + '</span>' : '-'}</td><td>${o.manual_status || this.t('po_status_pending')}</td><td>${this.can('orders','edit') ? `<span class="action-link" onclick="App.editOrder('${o.po_no}')">${this.t('edit')}</span>` : ''}${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrder('${o.po_no}')">${this.t('delete')}</span>` : ''}</td></tr>`).join(''); }
     document.getElementById('orders-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('orders-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -1330,27 +1688,145 @@ const App = {
     });
   },
 
-  async viewOrder(poNo) {
-    const data = await this.api('/api/purchase-orders'); const o = data.find(d => d.po_no === poNo);
-    if (!o) return this.toast(this.t('orderNotFound'), 'error'); const cur = this.params.currency;
-    const inboundByPo = await this.api(`/api/inbound?poNo=${poNo}`); const receivedMap = {};
-    inboundByPo.forEach(r => { if (!receivedMap[r.code]) receivedMap[r.code] = 0; receivedMap[r.code] += r.qty; });
-    let html = `<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div><strong>${o.po_no}</strong> | ${o.supplier} | ${this.fmtDate(o.date)} | ${this.t('po_delivery')}: ${this.statusBadge(o.delivery_status)}</div><div>${this.t('po_amount')}: ${cur} ${this.fmtMoney(o.order_amount)} | ${this.t('po_received')}: ${cur} ${this.fmtMoney(o.received_amount)}</div></div><div class="table-wrap"><table><thead><tr><th>${this.t('po_material')}</th><th>${this.t('po_code')}</th><th>${this.t('po_unit')}</th><th>${this.t('po_order_qty')}</th><th>${this.t('po_order_price')}</th><th>${this.t('po_order_amount')}</th><th>${this.t('po_received_qty')}</th><th>${this.t('po_unreceived')}</th><th>${this.t('po_line_status')}</th><th></th></tr></thead><tbody id="order-lines-body">${o.lines.map(l => { const received = receivedMap[l.code] || 0; const status = (o.manual_status === '已关闭' || o.manual_status === '已取消') ? o.manual_status : received === 0 ? '未到货' : received < l.order_qty ? '部分到货' : '已到货'; return `<tr id="ol_${l.id}"><td>${l.material_name || ''}</td><td>${l.code}</td><td>${l.material_unit || ''}</td><td class="text-right">${l.order_qty}</td><td class="text-right">${this.fmtMoney(l.order_price)}</td><td class="text-right">${this.fmtMoney(l.order_amount)}</td><td class="text-right">${received}</td><td class="text-right">${l.order_qty - received}</td><td>${this.statusBadge(status)}</td><td>${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrderLine(${l.id})">${this.t('delete')}</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>${this.can('orders','create') ? `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="App.addOrderLine('${poNo}')">+ ${this.t('po_add_line')}</button></div>` : ''}`;
-    this.showModal(`<h3>${this.t('po_lines_title')} - ${poNo}</h3>`, html, this.t('close'), () => { this.closeModal(); this.renderOrders(); });
-    this._currentOrder = o;
-  },
-
-  async addOrderLine(poNo) {
-    const materials = await this.api('/api/materials');
-    const matSel = materials.map(m => `<option value="${m.code}">${m.name} ${m.spec || ''} ${m.brand || ''} (${m.code})</option>`).join('');
-    this.showModal(`<h3>${this.t('po_add_line')}</h3>`, `<div class="form-grid"><div class="form-group" style="grid-column:span 2"><label>${this.t('in_material')} *</label><select id="al_code" onchange="App.clearFieldError('al_code')"><option value="">${this.t('please_select')}</option>${matSel}</select><div class="form-error" id="al_code_error"></div></div><div class="form-group"><label>${this.t('po_order_qty')} *</label><input id="al_qty" type="number" step="0.01" oninput="App.clearFieldError('al_qty')"><div class="form-error" id="al_qty_error"></div></div><div class="form-group"><label>${this.t('po_order_price')}</label><input id="al_price" type="number" step="0.01"></div></div>`, this.t('add'), async () => {
-      if (!this.validateForm({ al_code: [{rule:'required'}], al_qty: [{rule:'required'},{rule:'number'},{rule:'positive'}] })) return;
-      const body = { po_no: poNo, code: document.getElementById('al_code').value, order_qty: parseFloat(document.getElementById('al_qty').value) || 0, order_price: parseFloat(document.getElementById('al_price').value) || 0, remarks: '' };
-      try { await this.api('/api/order-lines', 'POST', body); this.closeModal(); this.toast(this.t('added')); this.viewOrder(poNo); } catch (e) { this.toast(e.message, 'error'); }
+  async deleteOrderLineById(id) {
+    this.confirmDialog(this.t('cf_delete_line'), '', async () => {
+      try { await this.api('/api/order-lines/' + id, 'DELETE'); this.toast(this.t('deleted')); this.renderOrderTracking(); } catch (e) { this.toast(e.message, 'error'); }
     });
   },
 
-  async deleteOrderLine(id) { this.confirmDialog(this.t('cf_delete_line'), '', async () => { try { await this.api('/api/order-lines/' + id, 'DELETE'); this.toast(this.t('deleted')); if (this._currentOrder) this.viewOrder(this._currentOrder.po_no); } catch (e) { this.toast(e.message, 'error'); } }); },
+  // 批量添加采购明细（对齐批量入库弹窗结构）
+  async editOrderLineBatch() {
+    const materials = await this.api('/api/materials');
+    const orders = await this.api('/api/purchase-orders');
+    this._materialsCache = materials;
+    const vp = this.canViewPrice();
+    this._otOrders = orders;
+    const categories = [...new Set(materials.map(m => m.category).filter(Boolean))].sort();
+    this._otMatCategories = categories;
+
+    // 采购单号下拉 + 合同号下拉
+    const poOptions = orders.map(o => `<option value="${o.po_no}">${o.po_no}</option>`).join('');
+    const contractNos = [...new Set(orders.map(o => o.contract_no).filter(Boolean))].sort();
+    const contractOptions = contractNos.length > 0
+      ? contractNos.map(c => `<option value="${c}">${c}</option>`).join('')
+      : `<option value="" disabled>${this.t('in_no_contracts')}</option>`;
+
+    this.showModal(`<h3>${this.t('po_batch_title')}</h3>`, `<div style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">${this.t('po_batch_desc')}</div>
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:span 2">
+          <label>${this.t('po_select_source')}</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="ol_po_no" style="flex:1"><option value="">${this.t('in_po_no')}</option>${poOptions}</select>
+            <select id="ol_contract_no" style="flex:1"><option value="">${this.t('in_contract')}</option>${contractOptions}</select>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>${this.t('po_lines_title')}</strong>
+          <button class="btn btn-outline btn-sm" onclick="App.addOrderLineRow()">+ ${this.t('in_add_row')}</button>
+        </div>
+        <div class="table-wrap"><table id="ol_table"><thead><tr>
+          <th>${this.t('mat_level_category')}</th><th>${this.t('mat_level_name')}</th><th>${this.t('mat_level_spec')}</th><th>${this.t('po_order_qty')} *</th>${vp ? `<th>${this.t('po_order_price')}</th>` : ''}<th>${this.t('in_remarks')}</th><th></th>
+        </tr></thead><tbody id="ol_rows"></tbody></table></div>
+      </div>`, this.t('po_batch_submit'), async () => {
+      const poNo = document.getElementById('ol_po_no').value;
+      const contractNo = document.getElementById('ol_contract_no').value;
+      if (!poNo && !contractNo) { this.toast(this.t('po_select_source'), 'error'); return; }
+      const rows = document.querySelectorAll('#ol_rows tr');
+      const items = [];
+      rows.forEach(tr => {
+        const code = tr.getAttribute('data-code') || '';
+        const order_qty = parseFloat(tr.querySelector('.ol-qty').value) || 0;
+        const order_price = parseFloat(tr.querySelector('.ol-price').value) || 0;
+        const remarks = tr.querySelector('.ol-remarks').value.trim();
+        if (code && order_qty > 0) {
+          // 如果选了合同号但没选采购单号，查找该合同下的第一个采购单
+          let targetPo = poNo;
+          if (!targetPo && contractNo) {
+            const o = orders.find(o => o.contract_no === contractNo);
+            if (o) targetPo = o.po_no;
+          }
+          items.push({ po_no: targetPo, code, order_qty, order_price, remarks });
+        }
+      });
+      if (items.length === 0) { this.toast(this.t('fillRequired'), 'error'); return; }
+      try {
+        for (const item of items) { await this.api('/api/order-lines', 'POST', item); }
+        this.closeModal();
+        this.toast(this.t('added') + ' (' + items.length + ')');
+        this.renderOrderTracking();
+      } catch (e) { this.toast(e.message, 'error'); }
+    }, null, true); // large modal
+
+    // 默认加3个空行
+    this.addOrderLineRow();
+    this.addOrderLineRow();
+    this.addOrderLineRow();
+  },
+
+  // 采购明细行 — 三级联动物料选择（对齐入库行）
+  addOrderLineRow() {
+    const cats = this._otMatCategories || [];
+    const materials = this._materialsCache || [];
+    const tbody = document.getElementById('ol_rows');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-code', '');
+    const catOpts = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    const vp = this.canViewPrice();
+    tr.innerHTML = `<td><select class="ol-cat" onchange="App.onOrderLineRowCatChange(this)" style="width:120px"><option value="">${this.t('please_select')}</option>${catOpts}</select></td>
+      <td><select class="ol-name" onchange="App.onOrderLineRowNameChange(this)" style="width:140px" disabled><option value="">${this.t('please_select')}</option></select></td>
+      <td><select class="ol-spec-sel" onchange="App.onOrderLineRowSpecChange(this)" style="width:200px" disabled><option value="">${this.t('please_select')}</option></select></td>
+      <td><input class="ol-qty" type="number" step="0.01" value="" style="width:80px"></td>
+      ${vp ? `<td><input class="ol-price" type="number" step="0.01" value="" style="width:90px"></td>` : '<td><input class="ol-price" type="hidden" value="0"></td>'}
+      <td><input class="ol-remarks" value="" style="width:120px"></td>
+      <td><span class="action-link danger" onclick="this.parentElement.parentElement.remove()">${this.t('in_remove_row')}</span></td>`;
+    tbody.appendChild(tr);
+  },
+
+  onOrderLineRowCatChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const cat = selEl.value;
+    const materials = this._materialsCache || [];
+    const names = cat ? [...new Set(materials.filter(m => m.category === cat).map(m => m.name))] : [];
+    const nameSel = tr.querySelector('.ol-name');
+    nameSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    nameSel.disabled = !cat;
+    const specSel = tr.querySelector('.ol-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>`;
+    specSel.disabled = true;
+    tr.setAttribute('data-code', '');
+  },
+
+  onOrderLineRowNameChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const cat = tr.querySelector('.ol-cat').value;
+    const name = selEl.value;
+    const materials = this._materialsCache || [];
+    const specs = (cat && name) ? materials.filter(m => m.category === cat && m.name === name) : [];
+    const specSel = tr.querySelector('.ol-spec-sel');
+    specSel.innerHTML = `<option value="">${this.t('please_select')}</option>` + specs.map(m => {
+      const label = `${m.spec || '-'} / ${m.brand || '-'} (${m.code})`;
+      return `<option value="${m.code}">${label}</option>`;
+    }).join('');
+    specSel.disabled = !name;
+    tr.setAttribute('data-code', '');
+  },
+
+  onOrderLineRowSpecChange(selEl) {
+    const tr = selEl.parentElement.parentElement;
+    const code = selEl.value;
+    const m = (this._materialsCache || []).find(x => x.code === code);
+    if (m) {
+      tr.setAttribute('data-code', code);
+      const priceInput = tr.querySelector('.ol-price');
+      if (!priceInput.value) priceInput.value = m.opening_price || '';
+    } else {
+      tr.setAttribute('data-code', '');
+    }
+  },
+
   async deleteOrder(poNo) { this.confirmDialog(this.t('cf_delete_order') + ' ' + poNo, this.t('cf_delete_order_msg'), async () => { try { await this.api('/api/purchase-orders/' + poNo, 'DELETE'); this.toast(this.t('deleted')); this.renderOrders(); } catch (e) { this.toast(e.message, 'error'); } }); },
 
   onOrdersFilter() {
@@ -1463,7 +1939,8 @@ const App = {
 
   // ========== 订单明细跟踪 ==========
   async renderOrderTracking() {
-    const toolbar = this.renderTableToolbar('ot_filter', 'App.onOrderTrackingFilter()', `<div style="display:flex;gap:8px;align-items:center"><select id="ot_status_filter" onchange="App.onOrderTrackingFilter()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text)"><option value="">${this.t('stock_all')}</option><option value="未到货">${this.t('st_not_arrived')}</option><option value="部分到货">${this.t('st_partial')}</option><option value="已到货">${this.t('st_arrived')}</option></select></div>`);
+    const addBtn = this.can('orders', 'create') ? `<button class="btn btn-primary" onclick="App.editOrderLineBatch()">+ ${this.t('po_batch_add')}</button>` : '';
+    const toolbar = this.renderTableToolbar('ot_filter', 'App.onOrderTrackingFilter()', `<div style="display:flex;gap:8px;align-items:center">${addBtn}<select id="ot_status_filter" onchange="App.onOrderTrackingFilter()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text)"><option value="">${this.t('stock_all')}</option><option value="未到货">${this.t('st_not_arrived')}</option><option value="部分到货">${this.t('st_partial')}</option><option value="已到货">${this.t('st_arrived')}</option></select></div>`);
     this.setMain(this.pageWrap('📋 ' + this.t('ot_title'), this.t('ot_desc'), '', `<div id="ot-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-summary" id="ot-summary"></div><div class="data-scroll" id="ot-scroll"></div><div class="data-pager" id="ot-pager"></div></div>`));
     try {
       this._otData = await this.api('/api/order-tracking');
@@ -1477,6 +1954,7 @@ const App = {
     const data = this._otData;
     if (!data) return;
     const cur = this.params.currency;
+    const vp = this.canViewPrice();
     const tid = 'orderTracking';
     const st = this.getTableState(tid);
     const keywords = document.getElementById('ot_filter')?.value || '';
@@ -1494,19 +1972,21 @@ const App = {
       ['po_no', this.t('ot_po_no')], ['po_date', this.t('ot_po_date')], ['po_supplier', this.t('ot_supplier')],
       ['code', this.t('ot_code')], ['material_name', this.t('ot_material')], ['material_spec', this.t('ot_spec')],
       ['material_brand', this.t('ot_brand')], ['material_unit', this.t('ot_unit')],
-      ['order_qty', this.t('ot_order_qty')], ['order_price', this.t('ot_order_price')],
-      ['order_amount', this.t('ot_order_amount')], ['received_qty', this.t('ot_received_qty')],
+      ['order_qty', this.t('ot_order_qty')],
+      ...vp ? [['order_price', this.t('ot_order_price')], ['order_amount', this.t('ot_order_amount')]] : [],
+      ['received_qty', this.t('ot_received_qty')],
       ['unreceived_qty', this.t('ot_unreceived')], ['expected_date', this.t('ot_expected')],
       ['line_status', this.t('ot_status')], ['overdue_days', this.t('ot_overdue')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
-    const colCount = headers.length;
+    thHtml += `<th></th>`;
+    const colCount = headers.length + 1;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
-      tbody = pageData.map(r => `<tr><td><strong>${r.po_no}</strong></td><td>${this.fmtDate(r.po_date)}</td><td>${r.po_supplier || ''}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.order_qty}</td><td class="text-right">${this.fmtMoney(r.order_price)}</td><td class="text-right">${cur} ${this.fmtMoney(r.order_amount)}</td><td class="text-right">${r.received_qty}</td><td class="text-right"><strong>${r.unreceived_qty}</strong></td><td>${this.fmtDate(r.expected_date)}</td><td>${this.statusBadge(r.line_status)}</td><td class="text-center">${r.overdue_days > 0 ? '<span class="badge badge-danger">' + r.overdue_days + '</span>' : '-'}</td></tr>`).join('');
+      tbody = pageData.map(r => `<tr><td><strong>${r.po_no}</strong></td><td>${this.fmtDate(r.po_date)}</td><td>${r.po_supplier || ''}</td><td>${r.code}</td><td>${r.material_name || ''}</td><td>${r.material_spec || ''}</td><td>${r.material_brand || ''}</td><td>${r.material_unit || ''}</td><td class="text-right">${r.order_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(r.order_price)}</td><td class="text-right">${cur} ${this.fmtMoney(r.order_amount)}</td>` : ''}<td class="text-right">${r.received_qty}</td><td class="text-right"><strong>${r.unreceived_qty}</strong></td><td>${this.fmtDate(r.expected_date)}</td><td>${this.statusBadge(r.line_status)}</td><td class="text-center">${r.overdue_days > 0 ? '<span class="badge badge-danger">' + r.overdue_days + '</span>' : '-'}</td><td>${this.can('orders','delete') ? `<span class="action-link danger" onclick="App.deleteOrderLineById(${r.id})">${this.t('delete')}</span>` : ''}</td></tr>`).join('');
     }
-    document.getElementById('ot-summary').innerHTML = `${this.t('ot_total_lines')}: ${totalLines} | ${this.t('ot_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)} | ${this.t('ot_total_received')}: ${cur} ${this.fmtMoney(totalReceived)} | ${this.t('ot_total_unreceived')}: ${cur} ${this.fmtMoney(totalUnreceived)}`;
+    document.getElementById('ot-summary').innerHTML = `${this.t('ot_total_lines')}: ${totalLines}${vp ? ` | ${this.t('ot_total_amount')}: ${cur} ${this.fmtMoney(totalAmount)} | ${this.t('ot_total_received')}: ${cur} ${this.fmtMoney(totalReceived)} | ${this.t('ot_total_unreceived')}: ${cur} ${this.fmtMoney(totalUnreceived)}` : ''}`;
     document.getElementById('ot-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('ot-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -1605,11 +2085,15 @@ const App = {
   },
 
   // ========== 模态框 ==========
-  showModal(title, bodyHtml, btnText, onConfirm) {
+  showModal(title, bodyHtml, btnText, onConfirm, onCancel, large) {
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'modal-overlay';
-    overlay.innerHTML = `<div class="modal"><div class="modal-header">${title}<button class="modal-close" onclick="App.closeModal()">&times;</button></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer"><button class="btn btn-outline" onclick="App.closeModal()">${this.t('cancel')}</button><button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
+    const modalClass = large ? 'modal modal-lg' : 'modal';
+    overlay.innerHTML = `<div class="${modalClass}"><div class="modal-header">${title}<button class="modal-close" id="modal-close-btn">&times;</button></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer"><button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button><button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
     document.body.appendChild(overlay);
-    overlay.addEventListener('click', e => { if (e.target === overlay) this.closeModal(); });
+    const doCancel = () => { this.closeModal(); if (onCancel) onCancel(); };
+    document.getElementById('modal-close-btn').onclick = doCancel;
+    document.getElementById('modal-cancel-btn').onclick = doCancel;
+    overlay.addEventListener('click', e => { if (e.target === overlay) doCancel(); });
     document.getElementById('modal-confirm-btn').onclick = onConfirm;
   },
 
