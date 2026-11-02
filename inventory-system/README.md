@@ -29,10 +29,26 @@ inventory-system/
 ├── package.json
 ├── .gitignore
 ├── public/
-│   ├── index.html         主应用入口（加载 app.js + Chart.js CDN）
+│   ├── index.html         主应用入口（按顺序加载 js/ 各模块 + Chart.js CDN）
 │   ├── login.html         独立登录页（支持中英文 + 暗色主题）
-│   ├── app.js             前端 SPA 主逻辑（~2100 行）
-│   └── style.css          全部样式（CSS 变量主题系统）
+│   ├── js/                前端 JS 模块（按依赖顺序加载）
+│   │   ├── 00-i18n.js         国际化字典（zh / en）
+│   │   ├── 01-core.js         App 主体 / 状态 / 路由 / API / 权限
+│   │   ├── 02-ui-kit.js       表格排序 / 分页 / 表单校验 / 筛选 / 弹窗
+│   │   ├── 03-dashboard.js    仪表盘与图表
+│   │   ├── 04-materials.js    物料档案
+│   │   ├── 05-inbound.js      入库记录
+│   │   ├── 06-outbound.js     出库记录
+│   │   ├── 07-stock.js        库存汇总 / 台账 / 位置库存
+│   │   ├── 08-orders.js       采购订单 / 订单明细跟踪
+│   │   └── 09-admin.js        供应商 / 参数设置 / 用户管理
+│   ├── css/               样式（按层引入，顺序影响层叠）
+│   │   ├── base.css           CSS 变量 / reset / 框架 / 侧边栏 / 主内容
+│   │   ├── components.css     卡片 / 按钮 / 表格 / 表单 / 模态框 / Toast
+│   │   ├── pages.css          表格优化 / 排序分页 / 响应式
+│   │   └── theme-dark.css     暗色主题覆盖（必须最后引入）
+│   ├── app.js             ⚠️ 旧版备份，已不再引用
+│   └── style.css          ⚠️ 旧版备份，已不再引用
 ```
 
 ## 技术栈
@@ -117,9 +133,22 @@ inventory-system/
 
 ### 5. 前端架构
 
-#### SPA 单文件模式
+#### SPA 多模块模式（2026-11 拆分）
 - `App` 对象挂载全局，页面通过 `pageWrap()` + `setMain()` 切换
 - 路由：`location.hash` → `router()` → 对应 `renderXxx()` 函数
+- **文件按依赖顺序用普通 `<script>` 标签加载**（非 ES Module，保持零构建）
+
+```
+00-i18n.js  →  01-core.js  →  02-ui-kit.js  →  03..09 各业务模块  →  App.init()
+```
+
+拆分约定：
+- `00-i18n.js` 定义 `const I18N = {...}`，全局唯一
+- `01-core.js` 定义 `const App = {...}`，全局唯一，末尾 `window.App = App`
+- 其余模块用 `Object.assign(App, { ...方法... })` 挂载，**`this` 始终指向同一个 App 实例**
+  → 跨模块的 `this.xxx()` 调用无需任何改动
+- 新增模块：建文件 → 写 `Object.assign(App, {...})` → 在 `index.html` 末尾追加 `<script>`
+- CSS 顺序影响层叠：`theme-dark.css` 必须最后引入
 
 #### DOM 三段式布局（铁律）
 ```
@@ -208,8 +237,8 @@ destinations (id, name)          -- 出库去向
 | POST | /api/auth/login | 登录，返回 JWT |
 | GET | /api/auth/me | 获取当前用户信息 + grants |
 | GET | /api/dashboard | 仪表盘聚合数据 |
-| GET/POST/PUT/DELETE | /api/inbound | 入库 CRUD（POST 支持 items 数组批量） |
-| GET/POST/PUT/DELETE | /api/outbound | 出库 CRUD（POST 支持 items 数组批量） |
+| GET/POST/PUT/DELETE | /api/inbound | 入库 CRUD（POST 支持 items 数组批量，**批量行集与校验行集一致**） |
+| GET/POST/PUT/DELETE | /api/outbound | 出库 CRUD（POST 支持 items 数组批量，**带库存校验**） |
 | GET | /api/stock-summary | 库存汇总（含 avg_price, stock_value） |
 | GET | /api/order-tracking | 订单明细跟踪 |
 | GET | /api/order-lines/by-po/:poNo | 按采购单号查未到货明细 |
@@ -220,13 +249,51 @@ destinations (id, name)          -- 出库去向
 | GET/POST/PUT/DELETE | /api/purchase-orders | 采购订单 CRUD |
 | GET | /api/ledger/:code | 单物料台账流水 |
 
+### 9. 出库库存校验规则
+
+出库（POST/PUT `/api/outbound`）在写入前做库存校验，规则如下：
+
+| 规则 | 说明 |
+|---|---|
+| 库存口径 | `可用 = 期初数量 + Σ入库 - Σ出库`（按**物料总量**计算，不按库位，因物料可跨库位调拨） |
+| 超量拒绝 | 可用 < 出库量 → 抛错 `INSUFFICIENT_STOCK`，HTTP 400，响应带 `details` 数组（每行：编码/可用/需求/缺口） |
+| 批量累计 | 同一批次内同物料的多行**累计**后再比较，不会因分行而绕过校验 |
+| 编辑排除自身 | PUT 时排除该记录自身的扣减量，只校验"改动后的净增量"；若同时换了物料，旧扣减仍归属原物料，不计入新物料 |
+| 存量负库存豁免 | 若某物料**本次操作前的真实可用量**已 < 0（历史错账），不再拦截新出库，避免管理员无法修正历史记录 |
+| 强制放行 | 请求带 `force_allow: true` 且当前用户角色为 `admin` / `manager` 时跳过校验；其他角色的 `force_allow` 被静默忽略 |
+
+**豁免口径说明**：豁免判断用的是「本次操作前的真实可用量（含被编辑记录自身的扣减）」，
+而不是「排除自身后的可用额度」。若用后者，一条本身把库存打成负数的记录在编辑时
+可用额度恰好 ≥ 0，会导致负库存物料反而无法被修正。
+
+**批量写入一致性**：POST 的校验与写入基于同一批"有效行"——
+先过滤出 `code + qty + date` 齐全的行（`date` 缺失时回退到顶层 `body.date`），
+再对这一批行做校验和写入，避免"校验时算进需求、写入时却跳过"的不一致。
+一批里若没有任何有效行，直接返回 400 而不是静默成功。
+
+**响应结构**：
+- POST `/api/outbound`、`/api/inbound` 的 `results[]` 每项含 `id`（自增主键）、单号、成本单价
+- PUT `/api/outbound/:id`、`/api/inbound/:id` 缺省的可选字段自动回退到原记录值，
+  不会因少传 `gin_no` / `grn_no` 等参数导致整个编辑失败
+
+前端配合：
+- 出库表单实时显示每个物料的「可用库存」列，超量时标红并给出红框提示
+- admin / manager 收到 `INSUFFICIENT_STOCK` 时弹确认框，可选择「强制放行」
+- operator / viewer 只收到 toast 提示，无法强制放行
+
 ## 开发约定
 
-1. 改动集中在 `public/app.js` 和 `public/style.css`，改完直接刷新浏览器
-2. 验证语法：`node -c public/app.js` 和 `node -c server.js`
+1. 改动集中在 `public/js/<对应模块>.js` 和 `public/css/<对应层>.css`，改完直接刷新浏览器
+2. 验证语法：`node -c public/js/<模块>.js` 和 `node -c server.js`（`node -c` 一次只能校验一个文件）
 3. 静态文件已禁缓存（`Cache-Control: no-cache`），浏览器会加载最新版本
 4. 本地 SQLite 带 WAL 文件，改数据前注意 `inventory.db-wal`
 5. 数据库迁移在 `migrateDB()` 中自动执行（ALTER TABLE + 数据更新）
+6. **`public/app.js` 与 `public/style.css` 已停用**，仅为拆分前的备份，任何改动都不要写进这两个文件
+7. 新增 JS 模块时：文件名前缀数字决定加载顺序（如 `10-xxx.js`），在 `public/index.html` 中按序引入；
+   模块内用 `Object.assign(App, { ... })` 挂载方法，`this` 始终指向全局唯一的 `App`
+8. 新增 CSS 时：按"基础变量 → 组件 → 页面 → 主题"放进对应文件，**`theme-dark.css` 必须最后引入**，
+   否则暗色主题的变量覆盖会失效
+9. 新增界面文案必须同时补 `00-i18n.js` 里的 `zh` 和 `en` 两条，否则切换语言会显示原始 key
 
 ## 依赖
 

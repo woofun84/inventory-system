@@ -66,6 +66,19 @@ function migrateDB() {
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
 
+  // 订单明细增加 contract_no 字段（阶段 A）
+  try {
+    db.exec("ALTER TABLE order_lines ADD COLUMN contract_no TEXT DEFAULT ''");
+    console.log('迁移: order_lines.contract_no 已添加');
+  } catch(e) { /* 字段已存在 */ }
+
+  // 旧数据回填：order_lines 的 contract_no 从 PO 头 contract_no 回填
+  try {
+    db.exec(`UPDATE order_lines SET contract_no = (
+      SELECT contract_no FROM purchase_orders WHERE purchase_orders.po_no = order_lines.po_no
+    ) WHERE contract_no = '' OR contract_no IS NULL`);
+  } catch(e) { console.log('迁移 contract_no 回填:', e.message); }
+
   // 初始管理员账号
   const adminCount = db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c;
   if (adminCount === 0) {
@@ -300,6 +313,119 @@ app.delete('/api/users/:id', requirePerm('users', 'delete'), (req, res) => {
 
 
 // ==================== 辅助函数 ====================
+
+// 计算指定物料的可用库存（总量口径，不分位置）
+// excludeOutboundId: 编辑出库时排除自身
+// excludeInboundId:  编辑入库（尤其采购退货）时排除自身
+function getAvailableStock(code, excludeOutboundId, excludeInboundId) {
+  const m = db.prepare('SELECT opening_qty FROM materials WHERE code=?').get(code);
+  if (!m) return 0;
+
+  let inQty = db.prepare('SELECT COALESCE(SUM(qty),0) as v FROM inbound WHERE code=?').get(code).v;
+  let outQty = db.prepare('SELECT COALESCE(SUM(qty),0) as v FROM outbound WHERE code=?').get(code).v;
+
+  // 编辑出库：排除本条出库记录自身的扣减
+  if (excludeOutboundId) {
+    const old = db.prepare('SELECT code, qty FROM outbound WHERE id=?').get(excludeOutboundId);
+    if (old && old.code === code) outQty -= (old.qty || 0);
+  }
+
+  // 编辑入库：排除本条入库记录自身的贡献（采购退货为负，排除后相当于加回）
+  if (excludeInboundId) {
+    const old = db.prepare('SELECT code, qty FROM inbound WHERE id=?').get(excludeInboundId);
+    if (old && old.code === code) inQty -= (old.qty || 0);
+  }
+
+  return (m.opening_qty || 0) + inQty - outQty;
+}
+
+// 校验一批出库请求是否超出可用库存
+// 同一批次内同一物料的多行需累计扣减
+// 超量时抛出带 stockError 标记的错误，由调用方转成 400 响应
+//
+// 说明（存量负库存豁免）：若某物料在本次操作前可用量已为负，
+// 说明是历史遗留错账。此时不再拦截该物料的出库，
+// 以免管理员无法修正历史记录、也无法继续盘亏出库。
+// 该豁免只对已经为负的物料生效，不会放过「把正常库存出成负数」的情况。
+function validateOutboundStock(items, excludeOutboundId) {
+  // 累计本批次每个物料的出库量
+  const demand = new Map();
+  items.forEach(r => {
+    if (!r.code || !r.qty) return;
+    // 退库出库（qty 为负）是入库性质，不占用库存
+    const qty = Number(r.qty);
+    if (qty <= 0) return;
+    demand.set(r.code, (demand.get(r.code) || 0) + qty);
+  });
+
+  const errors = [];
+  demand.forEach((needQty, code) => {
+    // 「本次操作前的真实可用量」：不含任何排除，用于判断存量负库存豁免
+    const curAvailable = getAvailableStock(code);
+    // 编辑场景：排除本条记录自身的扣减后，可用额度才是这条记录能占用的上限
+    const available = excludeOutboundId ? getAvailableStock(code, excludeOutboundId) : curAvailable;
+    // 历史已是负库存 → 豁免，不再拦截
+    // 注意：豁免判断必须用 curAvailable（真实可用量，含本条记录自身），
+    // 不能用 available（排除自身后）—— 否则编辑一条本就把库存打成负数的记录时，
+    // available 可能恰好 >= 0，导致负库存物料反而无法被修正。
+    if (curAvailable < 0) return;
+    if (needQty > available) {
+      errors.push({
+        code,
+        requested: needQty,
+        available: Math.round(available * 10000) / 10000,
+        shortfall: Math.round((needQty - available) * 10000) / 10000
+      });
+    }
+  });
+
+  if (errors.length > 0) {
+    const e = new Error('库存不足');
+    e.stockError = true;
+    e.details = errors;
+    throw e;
+  }
+}
+
+// 校验一批「采购退货」是否超出可用库存
+// 采购退货 qty 为负，效果等同于出库，需占用库存
+// 同一批次内同物料多行累计；历史负库存豁免；编辑时排除自身
+function validateInboundReturnStock(items, excludeInboundId) {
+  const demand = new Map();
+  items.forEach(r => {
+    if (!r.code || !r.qty) return;
+    const qty = Number(r.qty);
+    // 只校验退货（负数量）；正常入库增加库存，不校验
+    if (qty >= 0) return;
+    const need = Math.abs(qty);
+    demand.set(r.code, (demand.get(r.code) || 0) + need);
+  });
+
+  const errors = [];
+  demand.forEach((needQty, code) => {
+    const curAvailable = getAvailableStock(code); // 真实可用（含本条）
+    const available = excludeInboundId
+      ? getAvailableStock(code, null, excludeInboundId)
+      : curAvailable;
+    // 历史已是负库存 → 豁免
+    if (curAvailable < 0) return;
+    if (needQty > available) {
+      errors.push({
+        code,
+        requested: needQty,
+        available: Math.round(available * 10000) / 10000,
+        shortfall: Math.round((needQty - available) * 10000) / 10000
+      });
+    }
+  });
+
+  if (errors.length > 0) {
+    const e = new Error('库存不足（采购退货）');
+    e.stockError = true;
+    e.details = errors;
+    throw e;
+  }
+}
 
 // 计算库存汇总
 function getStockSummary() {
@@ -671,53 +797,115 @@ app.get('/api/inbound', requirePerm('inbound', 'view'), (req, res) => {
 app.post('/api/inbound', requirePerm('inbound', 'create'), (req, res) => {
   const body = req.body;
   // 兼容：单行（有 code 字段）或多行（items 数组）
-  const items = Array.isArray(body.items) ? body.items : [body];
-  if (items.length === 0) return res.status(400).json({ error: '无数据' });
+  const raw = Array.isArray(body.items) ? body.items : [body];
+  if (raw.length === 0) return res.status(400).json({ error: '无数据' });
+  // 管理员/主管可强制放行超量退货
+  const forceAllow = body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   try {
     const stmt = db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,location,remarks,po_no,contract_no,txn_type)
       VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@location,@remarks,@po_no,@contract_no,@txn_type)`);
+    // 先规整出「有效行」：date 缺失时回退到顶层 body.date（单条提交的形态）
+    const items = raw
+      .filter(r => r && r.code && r.qty)
+      .map(r => ({ ...r, date: r.date || body.date || '' }))
+      .filter(r => r.date);
+    if (items.length === 0) return res.status(400).json({ error: '没有有效的入库行（缺少物料、数量或日期）' });
+
+    // 统一规范化符号
+    const firstItem = items[0];
+    if (!firstItem.txn_type) firstItem.txn_type = '采购入库';
+    const sharedGrnNo = genGrnNo(firstItem.date, firstItem.txn_type);
+    items.forEach(r => {
+      if (!r.grn_no) r.grn_no = sharedGrnNo;
+      if (!r.txn_type) r.txn_type = '采购入库';
+      if (r.txn_type === '采购退货') {
+        r.qty = -Math.abs(Number(r.qty));
+        r.price = -Math.abs(Number(r.price || 0));
+      } else {
+        r.qty = Math.abs(Number(r.qty));
+        r.price = Math.abs(Number(r.price || 0));
+      }
+      if (!r.supplier) r.supplier = '';
+      if (!r.handler) r.handler = '';
+      if (!r.location) r.location = '';
+      if (!r.remarks) r.remarks = '';
+      if (!r.po_no) r.po_no = '';
+      if (!r.contract_no) r.contract_no = '';
+      if (r.price == null || r.price === '') r.price = 0;
+    });
+
     const tx = db.transaction(() => {
+      // 采购退货库存校验（事务内，保证原子性）
+      if (!forceAllow) {
+        validateInboundReturnStock(items);
+      }
       const results = [];
-      // 一批共享一个单号
-      const firstItem = items.find(r => r.code && r.qty && r.date);
-      if (!firstItem) return results;
-      if (!firstItem.txn_type) firstItem.txn_type = '采购入库';
-      const sharedGrnNo = genGrnNo(firstItem.date, firstItem.txn_type);
       items.forEach(r => {
-        if (!r.code || !r.qty || !r.date) return; // 跳过空行
-        if (!r.grn_no) r.grn_no = sharedGrnNo;
-        if (!r.txn_type) r.txn_type = '采购入库';
-        // 采购退货：确保 qty 和 price 为负数
-        if (r.txn_type === '采购退货') { r.qty = -Math.abs(r.qty); r.price = -Math.abs(r.price || 0); }
-        if (!r.supplier) r.supplier = '';
-        if (!r.handler) r.handler = '';
-        if (!r.location) r.location = '';
-        if (!r.remarks) r.remarks = '';
-        if (!r.po_no) r.po_no = '';
-        if (!r.contract_no) r.contract_no = '';
-        if (!r.price) r.price = 0;
-        stmt.run(r);
-        results.push({ grn_no: r.grn_no });
+        const info = stmt.run(r);
+        results.push({ id: Number(info.lastInsertRowid), grn_no: r.grn_no });
       });
       return results;
     });
+
     const results = tx();
-    res.json({ success: true, count: results.length, results });
+    res.json({ success: true, count: results.length, results, forced: forceAllow });
   } catch (e) {
+    if (e.stockError) {
+      return res.status(400).json({
+        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
+        code: 'INSUFFICIENT_STOCK',
+        details: e.details
+      });
+    }
     res.status(400).json({ error: e.message });
   }
 });
 
 app.put('/api/inbound/:id', requirePerm('inbound', 'edit'), (req, res) => {
-  const r = req.body;
+  const body = req.body;
+  const forceAllow = body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   try {
-    if (!r.txn_type) r.txn_type = '采购入库';
-    // 采购退货：确保 qty 和 price 为负数
-    if (r.txn_type === '采购退货') { r.qty = -Math.abs(r.qty); r.price = -Math.abs(r.price || 0); }
+    // 读取原记录：缺失的可选字段回退到原值，避免 SQL 参数缺失导致整个编辑失败
+    const old = db.prepare('SELECT * FROM inbound WHERE id=?').get(req.params.id);
+    if (!old) return res.status(404).json({ error: '入库记录不存在' });
+    const r = {
+      date: body.date || old.date,
+      grn_no: body.grn_no !== undefined ? body.grn_no : old.grn_no,
+      code: body.code || old.code,
+      qty: body.qty !== undefined && body.qty !== '' ? Number(body.qty) : old.qty,
+      price: body.price !== undefined && body.price !== '' ? Number(body.price) : old.price,
+      supplier: body.supplier !== undefined ? body.supplier : old.supplier,
+      handler: body.handler !== undefined ? body.handler : old.handler,
+      location: body.location !== undefined ? body.location : old.location,
+      remarks: body.remarks !== undefined ? body.remarks : old.remarks,
+      po_no: body.po_no !== undefined ? body.po_no : old.po_no,
+      contract_no: body.contract_no !== undefined ? body.contract_no : old.contract_no,
+      txn_type: body.txn_type || old.txn_type || '采购入库'
+    };
+    // 统一符号
+    if (r.txn_type === '采购退货') {
+      r.qty = -Math.abs(Number(r.qty));
+      r.price = -Math.abs(Number(r.price || 0));
+    } else {
+      r.qty = Math.abs(Number(r.qty));
+      r.price = Math.abs(Number(r.price || 0));
+    }
+
+    if (!forceAllow) {
+      validateInboundReturnStock([r], req.params.id);
+    }
+
     db.prepare(`UPDATE inbound SET date=@date,grn_no=@grn_no,code=@code,qty=@qty,price=@price,
       supplier=@supplier,handler=@handler,location=@location,remarks=@remarks,po_no=@po_no,contract_no=@contract_no,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
-    res.json({ success: true });
+    res.json({ success: true, id: Number(req.params.id), forced: forceAllow });
   } catch (e) {
+    if (e.stockError) {
+      return res.status(400).json({
+        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
+        code: 'INSUFFICIENT_STOCK',
+        details: e.details
+      });
+    }
     res.status(400).json({ error: e.message });
   }
 });
@@ -755,53 +943,103 @@ app.get('/api/outbound', requirePerm('outbound', 'view'), (req, res) => {
 // 批量出库：支持一次提交多行
 app.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
   const body = req.body;
-  const items = Array.isArray(body.items) ? body.items : [body];
-  if (items.length === 0) return res.status(400).json({ error: '无数据' });
+  const raw = Array.isArray(body.items) ? body.items : [body];
+  if (raw.length === 0) return res.status(400).json({ error: '无数据' });
+  // 管理员/主管可强制放行超量出库（仅限正常出库，退库出库不受影响）
+  const forceAllow = body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   try {
     const stmt = db.prepare(`INSERT INTO outbound (date,gin_no,code,qty,destination,receiver,handler,location,remarks,cost_price,txn_type)
       VALUES (@date,@gin_no,@code,@qty,@destination,@receiver,@handler,@location,@remarks,@cost_price,@txn_type)`);
+
+    // 先规整出「有效行」：校验与写入必须基于同一批行
+    const items = raw
+      .filter(r => r && r.code && r.qty)
+      .map(r => ({ ...r, date: r.date || body.date || '' }))
+      .filter(r => r.date);
+    if (items.length === 0) return res.status(400).json({ error: '没有有效的出库行（缺少物料、数量或日期）' });
+
+    // 统一规范化：补默认字段 + 退库出库 qty 转负数（校验前完成，保证口径一致）
+    const firstItem = items[0];
+    if (!firstItem.txn_type) firstItem.txn_type = '正常出库';
+    const sharedGinNo = genGinNo(firstItem.date, firstItem.txn_type);
+    items.forEach(r => {
+      if (!r.gin_no) r.gin_no = sharedGinNo;
+      if (!r.txn_type) r.txn_type = '正常出库';
+      if (r.txn_type === '退库出库') r.qty = -Math.abs(Number(r.qty));
+      else r.qty = Math.abs(Number(r.qty)); // 正常出库强制为正，防止脏数据
+      if (!r.destination) r.destination = '';
+      if (!r.receiver) r.receiver = '';
+      if (!r.handler) r.handler = '';
+      if (!r.location) r.location = '';
+      if (!r.remarks) r.remarks = '';
+    });
+
     const tx = db.transaction(() => {
+      // 库存校验放在事务内，保证「校验 → 写入」原子性
+      if (!forceAllow) {
+        validateOutboundStock(items);
+      }
       const results = [];
-      // 一批共享一个单号
-      const firstItem = items.find(r => r.code && r.qty && r.date);
-      if (!firstItem) return results;
-      if (!firstItem.txn_type) firstItem.txn_type = '正常出库';
-      const sharedGinNo = genGinNo(firstItem.date, firstItem.txn_type);
       items.forEach(r => {
-        if (!r.code || !r.qty || !r.date) return; // 跳过空行
-        if (!r.gin_no) r.gin_no = sharedGinNo;
-        if (!r.txn_type) r.txn_type = '正常出库';
-        // 退库出库：确保 qty 为负数
-        if (r.txn_type === '退库出库') r.qty = -Math.abs(r.qty);
-        if (!r.destination) r.destination = '';
-        if (!r.receiver) r.receiver = '';
-        if (!r.handler) r.handler = '';
-        if (!r.location) r.location = '';
-        if (!r.remarks) r.remarks = '';
         r.cost_price = computeCostPrice(r.code, r.qty, r.date);
-        stmt.run(r);
-        results.push({ gin_no: r.gin_no, cost_price: r.cost_price });
+        const info = stmt.run(r);
+        results.push({ id: Number(info.lastInsertRowid), gin_no: r.gin_no, cost_price: r.cost_price });
       });
       return results;
     });
+
     const results = tx();
-    res.json({ success: true, count: results.length, results });
+    res.json({ success: true, count: results.length, results, forced: forceAllow });
   } catch (e) {
+    if (e.stockError) {
+      return res.status(400).json({
+        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
+        code: 'INSUFFICIENT_STOCK',
+        details: e.details
+      });
+    }
     res.status(400).json({ error: e.message });
   }
 });
 
 app.put('/api/outbound/:id', requirePerm('outbound', 'edit'), (req, res) => {
-  const r = req.body;
+  const body = req.body;
+  const forceAllow = body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   try {
-    if (!r.txn_type) r.txn_type = '正常出库';
+    // 读取原记录：缺失的可选字段回退到原值，避免 SQL 参数缺失导致整个编辑失败
+    const old = db.prepare('SELECT * FROM outbound WHERE id=?').get(req.params.id);
+    if (!old) return res.status(404).json({ error: '出库记录不存在' });
+    const r = {
+      date: body.date || old.date,
+      gin_no: body.gin_no !== undefined ? body.gin_no : old.gin_no,
+      code: body.code || old.code,
+      qty: body.qty !== undefined && body.qty !== '' ? Number(body.qty) : old.qty,
+      destination: body.destination !== undefined ? body.destination : old.destination,
+      receiver: body.receiver !== undefined ? body.receiver : old.receiver,
+      handler: body.handler !== undefined ? body.handler : old.handler,
+      location: body.location !== undefined ? body.location : old.location,
+      remarks: body.remarks !== undefined ? body.remarks : old.remarks,
+      txn_type: body.txn_type || old.txn_type || '正常出库'
+    };
     // 退库出库：确保 qty 为负数
     if (r.txn_type === '退库出库') r.qty = -Math.abs(r.qty);
+    // 编辑场景：排除本条记录自身的扣减量后再校验
+    // （若编辑时换了物料，本条记录的旧扣减属于原物料，不会被计入新物料的可用量）
+    if (!forceAllow) {
+      validateOutboundStock([r], req.params.id);
+    }
     r.cost_price = computeCostPrice(r.code, r.qty, r.date);
     db.prepare(`UPDATE outbound SET date=@date,gin_no=@gin_no,code=@code,qty=@qty,destination=@destination,
       receiver=@receiver,handler=@handler,location=@location,remarks=@remarks,cost_price=@cost_price,txn_type=@txn_type WHERE id=@id`).run({ ...r, id: req.params.id });
-    res.json({ success: true });
+    res.json({ success: true, id: Number(req.params.id), forced: forceAllow });
   } catch (e) {
+    if (e.stockError) {
+      return res.status(400).json({
+        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
+        code: 'INSUFFICIENT_STOCK',
+        details: e.details
+      });
+    }
     res.status(400).json({ error: e.message });
   }
 });
@@ -956,6 +1194,9 @@ app.get('/api/purchase-orders', requirePerm('orders', 'view'), (req, res) => {
       WHERE ol.po_no=? ORDER BY ol.id
     `).all(po.po_no);
 
+    const orderQty = lines.reduce((s, l) => s + l.order_qty, 0);
+    const receivedQty = db.prepare("SELECT COALESCE(SUM(qty),0) as v FROM inbound WHERE po_no=?").get(po.po_no).v;
+    // 订单金额仍按金额计算（用于列表展示）
     const orderAmount = lines.reduce((s, l) => s + l.order_amount, 0);
     const receivedAmount = db.prepare("SELECT COALESCE(SUM(amount),0) as v FROM inbound WHERE po_no=?").get(po.po_no).v;
 
@@ -964,9 +1205,9 @@ app.get('/api/purchase-orders', requirePerm('orders', 'view'), (req, res) => {
       deliveryStatus = po.manual_status;
     } else if (lines.length === 0) {
       deliveryStatus = '无明细';
-    } else if (receivedAmount === 0) {
+    } else if (receivedQty === 0) {
       deliveryStatus = '未到货';
-    } else if (receivedAmount < orderAmount) {
+    } else if (receivedQty < orderQty) {
       deliveryStatus = '部分到货';
     } else {
       deliveryStatus = '已到货';
@@ -1013,6 +1254,11 @@ app.put('/api/purchase-orders/:poNo', requirePerm('orders', 'edit'), (req, res) 
 
 app.delete('/api/purchase-orders/:poNo', requirePerm('orders', 'delete'), (req, res) => {
   try {
+    // 检查是否已有入库记录关联
+    const inboundCount = db.prepare("SELECT COUNT(*) as c FROM inbound WHERE po_no=?").get(req.params.poNo).c;
+    if (inboundCount > 0) {
+      return res.status(400).json({ error: '该采购单已有入库记录，无法删除。请先删除关联的入库记录。' });
+    }
     db.prepare("DELETE FROM order_lines WHERE po_no=?").run(req.params.poNo);
     db.prepare("DELETE FROM purchase_orders WHERE po_no=?").run(req.params.poNo);
     res.json({ success: true });
@@ -1022,10 +1268,34 @@ app.delete('/api/purchase-orders/:poNo', requirePerm('orders', 'delete'), (req, 
 });
 
 // --- 订单明细 ---
+// 批量写入订单明细（事务保证原子性）
+app.post('/api/order-lines/batch', requirePerm('orders', 'create'), (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: '无数据' });
+  }
+  try {
+    const stmt = db.prepare(`INSERT INTO order_lines (po_no,code,order_qty,order_price,remarks,contract_no)
+      VALUES (@po_no,@code,@order_qty,@order_price,@remarks,@contract_no)`);
+    const tx = db.transaction(() => {
+      const results = [];
+      items.forEach(r => {
+        const info = stmt.run(r);
+        results.push({ id: Number(info.lastInsertRowid), po_no: r.po_no, code: r.code });
+      });
+      return results;
+    });
+    const results = tx();
+    res.json({ success: true, count: results.length, results });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post('/api/order-lines', requirePerm('orders', 'create'), (req, res) => {
   const l = req.body;
   try {
-    db.prepare("INSERT INTO order_lines (po_no,code,order_qty,order_price,remarks) VALUES (@po_no,@code,@order_qty,@order_price,@remarks)").run(l);
+    db.prepare("INSERT INTO order_lines (po_no,code,order_qty,order_price,remarks,contract_no) VALUES (@po_no,@code,@order_qty,@order_price,@remarks,@contract_no)").run(l);
     res.json({ success: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1035,7 +1305,7 @@ app.post('/api/order-lines', requirePerm('orders', 'create'), (req, res) => {
 app.put('/api/order-lines/:id', requirePerm('orders', 'edit'), (req, res) => {
   const l = req.body;
   try {
-    db.prepare("UPDATE order_lines SET po_no=@po_no,code=@code,order_qty=@order_qty,order_price=@order_price,remarks=@remarks WHERE id=@id").run({ ...l, id: req.params.id });
+    db.prepare("UPDATE order_lines SET po_no=@po_no,code=@code,order_qty=@order_qty,order_price=@order_price,remarks=@remarks,contract_no=@contract_no WHERE id=@id").run({ ...l, id: req.params.id });
     res.json({ success: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1069,8 +1339,9 @@ app.get('/api/order-lines/by-contract/:contractNo', requirePerm('orders', 'view'
 });
 
 // 订单明细跟踪（全量查询，支持筛选）
+// 支持 view=po|contract 维度切换
 app.get('/api/order-tracking', requirePerm('orderTracking', 'view'), (req, res) => {
-  const { poNo, supplier, keyword, deliveryStatus } = req.query;
+  const { poNo, supplier, keyword, deliveryStatus, contractNo, view } = req.query;
   let sql = `SELECT ol.*, po.date as po_date, po.supplier as po_supplier, po.expected_date, po.manual_status,
     m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM order_lines ol
@@ -1079,10 +1350,11 @@ app.get('/api/order-tracking', requirePerm('orderTracking', 'view'), (req, res) 
     WHERE 1=1`;
   const params = [];
   if (poNo) { sql += " AND ol.po_no=?"; params.push(poNo); }
+  if (contractNo) { sql += " AND ol.contract_no=?"; params.push(contractNo); }
   if (supplier) { sql += " AND po.supplier LIKE ?"; params.push('%' + supplier + '%'); }
   if (keyword) {
-    sql += " AND (ol.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ? OR m.brand LIKE ? OR ol.po_no LIKE ?)";
-    params.push('%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%');
+    sql += " AND (ol.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ? OR m.brand LIKE ? OR ol.po_no LIKE ? OR ol.contract_no LIKE ?)";
+    params.push('%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%', '%' + keyword + '%');
   }
   sql += " ORDER BY ol.po_no, ol.id";
   let rows = db.prepare(sql).all(...params);
@@ -1120,7 +1392,20 @@ app.get('/api/order-tracking', requirePerm('orderTracking', 'view'), (req, res) 
     rows = rows.filter(r => r.line_status === deliveryStatus);
   }
 
-  res.json(rows);
+  // 按合同维度汇总（当 view=contract 时）
+  if (view === 'contract') {
+    // 按 contract_no 分组，每组内按 po_no 排序
+    const byContract = {};
+    rows.forEach(r => {
+      const key = r.contract_no || '(无合同)';
+      if (!byContract[key]) byContract[key] = [];
+      byContract[key].push(r);
+    });
+    res.json({ view: 'contract', groups: byContract, rows });
+    return;
+  }
+
+  res.json({ view: 'po', rows });
 });
 
 // --- 参数 ---
