@@ -1,6 +1,0 @@
-node_modules/
-inventory.db
-inventory.db-shm
-inventory.db-wal
-*.log
-.DS_Store
