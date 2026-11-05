@@ -280,6 +280,9 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
   const body = req.body;
   const date = body.date || time.todayLocal();
   const txnType = body.txn_type || '采购入库';
+  if (!['采购入库', '采购退货', '零星入库'].includes(txnType)) {
+    return res.status(400).json({ error: '入库类型不合法', code: 'INVALID_TXN_TYPE' });
+  }
   const docNo = body.doc_no || genInboundDocNo(date, txnType);
   try {
     const exist = db.prepare("SELECT doc_no FROM inbound_docs WHERE doc_no=?").get(docNo);
@@ -383,6 +386,8 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
       // 明细行核销用「本次提交后的」采购单/合同号（头部字段紧随其后更新）
       const effPoNo = req.body.po_no !== undefined ? req.body.po_no : doc.po_no;
       const effContractNo = req.body.contract_no !== undefined ? req.body.contract_no : doc.contract_no;
+      // 明细行供应商用本次提交值，避免先写旧单据头导致列表/明细显示不同步
+      const effSupplier = req.body.supplier !== undefined ? req.body.supplier : doc.supplier;
       lines.forEach(l => {
         if (!l.code || !l.qty) return;
         let qty = Number(l.qty), price = Number(l.price || 0);
@@ -394,7 +399,7 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
         stmt.run({
           date: l.date || doc.date, grn_no: docNo, doc_no: docNo,
           code: l.code, qty, price,
-          supplier: doc.supplier, handler: doc.handler,
+          supplier: effSupplier, handler: doc.handler,
           remarks: l.remarks || '', po_no: poNo,
           contract_no: contractNo, txn_type: doc.txn_type,
           order_line_id: resolveOrderLineId(poNo, l.code, contractNo)
@@ -430,6 +435,11 @@ router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), 
 
   const lines = db.prepare("SELECT * FROM inbound WHERE doc_no=?").all(docNo);
   if (lines.length === 0) return res.status(400).json({ error: '单据没有明细行，无法确认' });
+
+  // 采购入库/采购退货必须有供应商；零星入库允许空供应商，入库冲销跳过该规则
+  if (['采购入库', '采购退货'].includes(doc.txn_type) && !String(doc.supplier || '').trim()) {
+    return res.status(400).json({ error: '采购入库/采购退货必须填写供应商', code: 'SUPPLIER_REQUIRED' });
+  }
 
   const forceAllow = req.body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
 

@@ -71,9 +71,9 @@ Object.assign(App, {
     </div>`;
   },
 
-  // 视图页签按「业务类型」划分：全部 / 采购入库 / 采购退货 / 入库冲销
+  // 视图页签按「业务类型」划分：全部 / 采购入库 / 零星入库 / 采购退货 / 入库冲销
   ibTabDefs() {
-    return [['', this.t('all')], ['采购入库', this.t('in_purchase')], ['采购退货', this.t('in_return')], ['入库冲销', this.t('ibd_rev_type')]];
+    return [['', this.t('all')], ['采购入库', this.t('in_purchase')], ['零星入库', this.t('in_other')], ['采购退货', this.t('in_return')], ['入库冲销', this.t('ibd_rev_type')]];
   },
 
   ibRenderTabs() {
@@ -216,13 +216,15 @@ Object.assign(App, {
   ibTypeBadge(t) {
     if (t === '入库冲销') return `<span class="badge badge-danger">${this.t('ibd_rev_type')}</span>`;
     if (t === '采购退货') return `<span class="badge badge-danger">${this.t('in_return')}</span>`;
-    return `<span class="badge badge-info">${this.t('in_purchase')}</span>`;
+    if (t === '零星入库') return `<span class="badge badge-success">${this.t('in_other')}</span>`;
+    if (t === '采购入库') return `<span class="badge badge-info">${this.t('in_purchase')}</span>`;
+    return `<span class="badge badge-muted">${this.ibEsc(t || this.t('ibd_unknown_type'))}</span>`;
   },
 
   ibTypeLabel(t) {
-    if (t === '入库冲销') return this.t('ibd_rev_type');
-    if (t === '采购退货') return this.t('in_return');
-    return this.t('in_purchase');
+    const keyMap = { '采购入库': 'in_purchase', '采购退货': 'in_return', '零星入库': 'in_other', '入库冲销': 'ibd_rev_type' };
+    if (keyMap[t]) return this.t(keyMap[t]);
+    return t || this.t('ibd_unknown_type');
   },
 
   ibRenderPager(rows) {
@@ -282,7 +284,7 @@ Object.assign(App, {
     const pendingOrders = orders.filter(o => o.has_pending);
     const contracts = await this.api('/api/purchase/contracts').catch(() => []);
     const contractNos = contracts.map(c => c.contract_no).filter(Boolean).sort();
-    const supOptions = suppliers.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    const supOptions = suppliers.map(s => `<option value="${this.ibEsc(s.name)}"></option>`).join('');
     const poOptions = pendingOrders.map(o => `<option value="${o.po_no}">${o.po_no}${o.supplier ? ' · ' + o.supplier : ''}</option>`).join('');
     const contractOptions = contractNos.map(c => `<option value="${c}">${c}</option>`).join('');
 
@@ -297,11 +299,11 @@ Object.assign(App, {
           <div class="form-grid" style="max-width:none">
             <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly></div>
             <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_f_date" type="date" value="${date}"></div>
-            <div class="form-group"><label>${this.t('ibd_type')} *</label><select id="ib_f_txn_type"><option value="采购入库">${this.t('in_purchase')}</option><option value="采购退货">${this.t('in_return')}</option></select></div>
-            <div class="form-group"><label>${this.t('ibd_supplier')}</label><select id="ib_f_supplier"><option value="">${this.t('none')}</option>${supOptions}</select></div>
+            <div class="form-group"><label>${this.t('ibd_type')} *</label><select id="ib_f_txn_type" onchange="App.ibOnTypeChange()"><option value="采购入库">${this.t('in_purchase')}</option><option value="采购退货">${this.t('in_return')}</option><option value="零星入库">${this.t('in_other')}</option></select></div>
+            <div class="form-group"><label id="ib_f_supplier_label">${this.t('ibd_supplier')} *</label><input id="ib_f_supplier" list="ib_sup_list" autocomplete="off"><datalist id="ib_sup_list">${supOptions}</datalist><div class="form-error" id="ib_f_supplier_error"></div></div>
             <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
-            <div class="form-group"><label>${this.t('in_po_no')}</label><select id="ib_f_po_no" onchange="App.ibLoadPendingLines('po')"><option value="">${this.t('none')}</option>${poOptions || `<option value="">${this.t('in_no_pending_orders')}</option>`}</select></div>
-            <div class="form-group"><label>${this.t('in_contract')}</label><select id="ib_f_contract_no" onchange="App.ibLoadPendingLines('contract')"><option value="">${this.t('none')}</option>${contractOptions}</select></div>
+            <div class="form-group" id="ib_f_po_wrap"><label>${this.t('in_po_no')}</label><select id="ib_f_po_no" onchange="App.ibLoadPendingLines('po')"><option value="">${this.t('none')}</option>${poOptions || `<option value="">${this.t('in_no_pending_orders')}</option>`}</select></div>
+            <div class="form-group" id="ib_f_contract_wrap"><label>${this.t('in_contract')}</label><select id="ib_f_contract_no" onchange="App.ibLoadPendingLines('contract')"><option value="">${this.t('none')}</option>${contractOptions}</select></div>
             <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2"></textarea></div>
           </div>
         </div>
@@ -315,13 +317,39 @@ Object.assign(App, {
     this.injectInboundStyles();
   },
 
+  // 入库类型切换：采购入库显示供应商/采购单/合同；零星入库只保留可空的「来源单位」
+  ibOnTypeChange() {
+    const type = document.getElementById('ib_f_txn_type')?.value || '采购入库';
+    const isOther = type === '零星入库';
+    const label = document.getElementById('ib_f_supplier_label');
+    const input = document.getElementById('ib_f_supplier');
+    const poWrap = document.getElementById('ib_f_po_wrap');
+    const ctWrap = document.getElementById('ib_f_contract_wrap');
+    const poEl = document.getElementById('ib_f_po_no');
+    const ctEl = document.getElementById('ib_f_contract_no');
+    const box = document.getElementById('ib-preload');
+    if (label) label.textContent = isOther ? this.t('ibd_source_unit') : this.t('ibd_supplier') + ' *';
+    if (input) {
+      input.placeholder = isOther ? this.t('ibd_source_unit_ph') : '';
+      this.clearFieldError('ib_f_supplier');
+    }
+    if (poWrap) poWrap.style.display = isOther ? 'none' : '';
+    if (ctWrap) ctWrap.style.display = isOther ? 'none' : '';
+    if (isOther) {
+      if (poEl) poEl.value = '';
+      if (ctEl) ctEl.value = '';
+      this._ibPreloadLines = null;
+      if (box) box.innerHTML = '';
+    }
+  },
+
   async createInboundDoc() {
     if (!this.validateForm({ ib_f_date: [{ rule: 'required' }] })) return;
     const body = {
       doc_no: document.getElementById('ib_f_no')?.value || '',
       date: document.getElementById('ib_f_date')?.value,
       txn_type: document.getElementById('ib_f_txn_type')?.value,
-      supplier: document.getElementById('ib_f_supplier')?.value,
+      supplier: document.getElementById('ib_f_supplier')?.value?.trim(),
       handler: document.getElementById('ib_f_handler')?.value.trim(),
       po_no: document.getElementById('ib_f_po_no')?.value,
       contract_no: document.getElementById('ib_f_contract_no')?.value,
@@ -341,6 +369,12 @@ Object.assign(App, {
     const ctEl = document.getElementById('ib_f_contract_no');
     const box = document.getElementById('ib-preload');
     if (!box) return;
+    // 零星入库没有采购单/合同来源，不触发未到货明细预载
+    if (document.getElementById('ib_f_txn_type')?.value === '零星入库') {
+      this._ibPreloadLines = null;
+      box.innerHTML = '';
+      return;
+    }
     // 采购单与合同二选一
     if (src === 'po' && poEl) ctEl.value = '';
     if (src === 'contract' && ctEl) poEl.value = '';
@@ -1134,8 +1168,12 @@ Object.assign(App, {
     // 物料筛选条状态：切换单据时重置
     if (this._ibEditFilterDoc !== docNo) { this._ibMatCat = ''; this._ibMatKw = ''; this._ibEditFilterDoc = docNo; }
 
-    const detail = await this.api('/api/inbound-docs/' + encodeURIComponent(docNo));
+    const [detail, suppliers] = await Promise.all([
+      this.api('/api/inbound-docs/' + encodeURIComponent(docNo)),
+      this.api('/api/suppliers').catch(() => [])
+    ]);
     this._ibDetail = detail;
+    this._ibSupplierList = suppliers || [];
     this._ibEditLines = (detail.lines || []).map(l => ({
       id: l.id,
       code: l.code,
@@ -1164,7 +1202,7 @@ Object.assign(App, {
     } catch (e) {}
     this._inboundStockMap = stockMap;
 
-    const typeLabel = detail.txn_type === '采购退货' ? this.t('in_return') : this.t('in_purchase');
+    const typeLabel = this.ibTypeLabel(detail.txn_type);
 
     this.setMain(this.pageWrap('✏️ ' + detail.doc_no,
       `${this.t('ibd_edit_title')} · ${typeLabel}`, '',
@@ -1193,21 +1231,26 @@ Object.assign(App, {
     const d = this._ibDetail;
     if (!d) return;
     const isDraft = d.status === 'draft';
-    const typeLabel = d.txn_type === '采购退货' ? this.t('in_return') : this.t('in_purchase');
+    const typeLabel = this.ibTypeLabel(d.txn_type);
+    const isOther = d.txn_type === '零星入库';
+    const supOptions = (this._ibSupplierList || []).map(s => `<option value="${this.ibEsc(s.name)}"></option>`).join('');
 
     // 01 单据信息（草稿态可编辑；过账后仅提示不可改）
     const formEl = document.getElementById('ib-edit-form');
     if (formEl) {
       if (isDraft) {
-        // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商 → 经手人 → 采购单号 → 合同号 → 备注(整行)
+        // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商/来源单位 → 经手人 → [采购单号 → 合同号] → 备注(整行)
+        const supLabel = isOther ? this.t('ibd_source_unit') : this.t('ibd_supplier') + ' *';
+        const supPlaceholder = isOther ? this.t('ibd_source_unit_ph') : '';
+        const poFields = isOther ? '' : `
+          <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${this.ibEsc(d.po_no || '')}"></div>
+          <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${this.ibEsc(d.contract_no || '')}"></div>`;
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.ibEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${this.t('ibd_type')}</label><input id="ib_e_type" value="${this.ibEsc(typeLabel)}" readonly></div>
-          <div class="form-group"><label>${this.t('ibd_supplier')}</label><input id="ib_e_supplier" value="${this.ibEsc(d.supplier || '')}"></div>
-          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.ibEsc(d.handler || '')}"></div>
-          <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${this.ibEsc(d.po_no || '')}"></div>
-          <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${this.ibEsc(d.contract_no || '')}"></div>
+          <div class="form-group"><label>${supLabel}</label><input id="ib_e_supplier" list="ib_e_sup_list" autocomplete="off" placeholder="${supPlaceholder}" value="${this.ibEsc(d.supplier || '')}"><datalist id="ib_e_sup_list">${supOptions}</datalist><div class="form-error"></div></div>
+          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.ibEsc(d.handler || '')}"></div>${poFields}
           <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.ibEsc(d.remarks || '')}</textarea></div>
         </div>`;
       } else {
@@ -1466,6 +1509,16 @@ Object.assign(App, {
       return;
     }
 
+    // 采购入库/采购退货在确认过账时必须有供应商；草稿态允许暂空
+    if (['采购入库', '采购退货'].includes(d?.txn_type)) {
+      const supEl = document.getElementById('ib_e_supplier');
+      if (!supEl || !supEl.value.trim()) {
+        if (supEl) this.setFieldError('ib_e_supplier', this.t('ibd_supplier_required'));
+        this.toast(this.t('ibd_supplier_required'), 'error');
+        return;
+      }
+    }
+
     this.confirmDialog(this.t('ibd_confirm'),
       `${this.t('ibd_confirm_hint')}\n\n${this.t('ibd_line_count', { n: lines.length })} | ${this.t('in_total_qty')}: ${lines.reduce((s, l) => s + (Number(l.qty) || 0), 0)}`,
       async () => {
@@ -1507,6 +1560,12 @@ Object.assign(App, {
 
     if (lines.length === 0) {
       this.toast(this.t('ibd_no_lines'), 'error');
+      return;
+    }
+
+    // 采购入库/采购退货在确认过账时必须有供应商
+    if (['采购入库', '采购退货'].includes(d?.txn_type) && !String(d?.supplier || '').trim()) {
+      this.toast(this.t('ibd_supplier_required'), 'error');
       return;
     }
 
