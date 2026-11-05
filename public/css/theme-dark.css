@@ -1,0 +1,96 @@
+/* ==========================================
+   暗色主题 —— 必须最后引入，确保变量覆盖生效
+   ========================================== */
+
+/* ==========================================
+   暗色主题
+   ========================================== */
+[data-theme="dark"] {
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --primary-light: #1e3a5f;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #06b6d4;
+  --bg: #0f172a;
+  --card-bg: #1e293b;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.4);
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #94a3b8;
+  --sidebar-active-bg: #1d4ed8;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover-bg: #1e293b;
+}
+
+/* 暗色主题：表格 */
+[data-theme="dark"] .table-wrap thead th {
+  background: #1e293b;
+  color: #94a3b8;
+  border-bottom-color: #334155;
+}
+[data-theme="dark"] .table-wrap tbody td {
+  border-bottom-color: #1e293b;
+  color: #cbd5e1;
+}
+[data-theme="dark"] .table-wrap tbody tr:nth-child(even) {
+  background-color: rgba(30,41,59,0.5);
+}
+[data-theme="dark"] .table-wrap tbody tr:hover {
+  background-color: rgba(59,130,246,0.1);
+}
+[data-theme="dark"] .table-wrap tbody td:first-child {
+  color: #60a5fa;
+}
+
+/* 暗色主题：状态标签 */
+[data-theme="dark"] .badge-success { background: rgba(34,197,94,0.15); color: #4ade80; }
+[data-theme="dark"] .badge-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+[data-theme="dark"] .badge-danger  { background: rgba(239,68,68,0.15); color: #f87171; }
+[data-theme="dark"] .badge-info    { background: rgba(6,182,212,0.15); color: #22d3ee; }
+[data-theme="dark"] .badge-muted   { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+/* 暗色主题：表单 */
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .form-group textarea {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+[data-theme="dark"] .btn-outline {
+  background: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+[data-theme="dark"] .btn-outline:hover {
+  background: #334155;
+  border-color: var(--primary);
+}
+[data-theme="dark"] .filter-bar {
+  background: var(--card-bg);
+}
+
+/* 暗色主题：Chart.js 文字颜色通过 JS 传入，无需 CSS */
+[data-theme="dark"] .modal {
+  background: var(--card-bg);
+}
+[data-theme="dark"] .modal-header {
+  border-bottom-color: var(--border);
+}
+[data-theme="dark"] .modal-footer {
+  border-top-color: var(--border);
+}
+[data-theme="dark"] .confirm-box {
+  background: var(--card-bg);
+}
+
+/* 主题切换过渡 */
+*, *::before, *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
