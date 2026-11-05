@@ -13,7 +13,10 @@ const router = express.Router();
 
 const SUB_PURCHASE = '采购退货';
 const SUB_STOCK = '领用退库';
+const SUB_REVERSAL = '退货冲销';
 const TXN_STOCK = '退库出库';
+const TXN_INBOUND_REV = '入库冲销';
+const TXN_OUTBOUND_REV = '出库冲销';
 
 // 前端/接口传参归一：支持子类型中文名、英文简写
 function resolveSubType(raw) {
@@ -21,6 +24,7 @@ function resolveSubType(raw) {
   if (!v) return '';
   if (v === SUB_PURCHASE || v === 'purchase') return SUB_PURCHASE;
   if (v === SUB_STOCK || v === TXN_STOCK || v === 'stock') return SUB_STOCK;
+  if (v === SUB_REVERSAL || v === 'reversal') return SUB_REVERSAL;
   return null;
 }
 
@@ -44,7 +48,8 @@ SELECT d.doc_no AS doc_no,
           FROM inbound r
           JOIN inbound_docs rd ON rd.doc_no = r.doc_no
           JOIN inbound i ON CAST(i.id AS TEXT) = r.reversal_of
-         WHERE i.doc_no = d.doc_no AND rd.status = 'posted') AS reversed_qty
+         WHERE i.doc_no = d.doc_no AND rd.status = 'posted') AS reversed_qty,
+       0 AS is_reversal
   FROM inbound_docs d
  WHERE d.txn_type = '${SUB_PURCHASE}'
 UNION ALL
@@ -66,25 +71,76 @@ SELECT d.doc_no AS doc_no,
           FROM outbound r
           JOIN outbound_docs rd ON rd.doc_no = r.doc_no
           JOIN outbound o ON CAST(o.id AS TEXT) = r.reversal_of
-         WHERE o.doc_no = d.doc_no AND rd.status = 'posted') AS reversed_qty
+         WHERE o.doc_no = d.doc_no AND rd.status = 'posted') AS reversed_qty,
+       0 AS is_reversal
   FROM outbound_docs d
- WHERE d.txn_type = '${TXN_STOCK}'`;
+ WHERE d.txn_type = '${TXN_STOCK}'
+UNION ALL
+SELECT d.doc_no AS doc_no,
+       d.date AS date,
+       '${SUB_REVERSAL}' AS sub_type,
+       'inbound' AS ledger,
+       'in' AS direction,
+       COALESCE(o.supplier, '') AS party,
+       COALESCE(d.reversal_of, '') AS ref_no,
+       d.status AS status,
+       COALESCE(d.handler, '') AS handler,
+       COALESCE(d.remarks, '') AS remarks,
+       d.created_at AS created_at,
+       (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no) AS line_count,
+       (SELECT COALESCE(SUM(ABS(i.qty)), 0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_qty,
+       (SELECT COALESCE(SUM(i.amount), 0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_amount,
+       0 AS reversed_qty,
+       1 AS is_reversal
+  FROM inbound_docs d
+  JOIN inbound_docs o ON o.doc_no = d.reversal_of AND o.txn_type = '${SUB_PURCHASE}'
+ WHERE d.txn_type = '${TXN_INBOUND_REV}'
+UNION ALL
+SELECT d.doc_no AS doc_no,
+       d.date AS date,
+       '${SUB_REVERSAL}' AS sub_type,
+       'outbound' AS ledger,
+       'out' AS direction,
+       COALESCE(o.destination, '') AS party,
+       COALESCE(d.reversal_of, '') AS ref_no,
+       d.status AS status,
+       COALESCE(d.handler, '') AS handler,
+       COALESCE(d.remarks, '') AS remarks,
+       d.created_at AS created_at,
+       (SELECT COUNT(*) FROM outbound o2 WHERE o2.doc_no = d.doc_no) AS line_count,
+       (SELECT COALESCE(SUM(ABS(o2.qty)), 0) FROM outbound o2 WHERE o2.doc_no = d.doc_no) AS total_qty,
+       (SELECT COALESCE(SUM(o2.cost_amount), 0) FROM outbound o2 WHERE o2.doc_no = d.doc_no) AS total_amount,
+       0 AS reversed_qty,
+       1 AS is_reversal
+  FROM outbound_docs d
+  JOIN outbound_docs o ON o.doc_no = d.reversal_of AND o.txn_type = '${TXN_STOCK}'
+ WHERE d.txn_type = '${TXN_OUTBOUND_REV}'`;
 
 function withDerived(row) {
   const total = Number(row.total_qty || 0);
   const reversed = Number(row.reversed_qty || 0);
   const remaining = Math.max(0, total - reversed);
+  const isReversal = Number(row.is_reversal || 0) === 1;
   return {
     ...row,
+    is_reversal: isReversal,
     total_qty: total,
     total_amount: Number(row.total_amount || 0),
     reversed_qty: reversed,
     remaining_qty: remaining,
     has_reversal: reversed > 0,
-    can_reverse: row.status === 'posted' && remaining > 0,
+    can_reverse: !isReversal && row.status === 'posted' && remaining > 0,
     can_confirm: row.status === 'draft',
-    can_edit: row.status === 'draft',
+    can_edit: row.status === 'draft' && !isReversal,
   };
+}
+
+// 判定一张冲销单的原单是否属于退货/退库账本
+function isReturnReversal(table, doc) {
+  if (!doc || !doc.reversal_of) return false;
+  const orig = db.prepare(`SELECT txn_type FROM ${table} WHERE doc_no = ?`).get(doc.reversal_of);
+  if (!orig) return false;
+  return orig.txn_type === SUB_PURCHASE || orig.txn_type === TXN_STOCK;
 }
 
 // 聚合列表：支持 type / status / keyword / 日期区间 / 分页
@@ -134,10 +190,17 @@ router.get('/api/returns/docs/:docNo', requirePerm('returns', 'view'), (req, res
   const ob = db.prepare("SELECT * FROM outbound_docs WHERE doc_no = ? AND txn_type = ?").get(docNo, TXN_STOCK);
   if (ob) return sendOutboundDetail(res, ob);
 
+  // 冲销单归原单所属模块：原单是采购退货 / 领用退库时，冲销单也在退货模块可见
+  const ibRev = db.prepare('SELECT * FROM inbound_docs WHERE doc_no = ? AND txn_type = ?').get(docNo, TXN_INBOUND_REV);
+  if (ibRev && isReturnReversal('inbound_docs', ibRev)) return sendInboundDetail(res, ibRev, true);
+
+  const obRev = db.prepare('SELECT * FROM outbound_docs WHERE doc_no = ? AND txn_type = ?').get(docNo, TXN_OUTBOUND_REV);
+  if (obRev && isReturnReversal('outbound_docs', obRev)) return sendOutboundDetail(res, obRev, true);
+
   return res.status(404).json({ error: '退货/退库单据不存在', code: 'RETURN_DOC_NOT_FOUND' });
 });
 
-function sendInboundDetail(res, doc) {
+function sendInboundDetail(res, doc, isReversal) {
   const lines = db.prepare(`SELECT i.*, m.name AS material_name, m.spec AS material_spec,
       m.unit AS material_unit, m.brand AS material_brand
     FROM inbound i LEFT JOIN materials m ON i.code = m.code
@@ -164,22 +227,23 @@ function sendInboundDetail(res, doc) {
 
   res.json({
     ...doc,
-    sub_type: SUB_PURCHASE,
+    sub_type: isReversal ? SUB_REVERSAL : SUB_PURCHASE,
     ledger: 'inbound',
-    direction: 'out',
+    direction: isReversal ? 'in' : 'out',
     party: doc.supplier || '',
-    ref_no: doc.po_no || doc.contract_no || '',
+    ref_no: isReversal ? (doc.reversal_of || '') : (doc.po_no || doc.contract_no || ''),
+    is_reversal: !!isReversal,
     lines,
     logs,
     reversals,
     summary,
-    can_reverse: doc.status === 'posted' && summary.remaining_qty > 0,
+    can_reverse: !isReversal && doc.status === 'posted' && summary.remaining_qty > 0,
     can_confirm: doc.status === 'draft',
-    can_edit: doc.status === 'draft',
+    can_edit: doc.status === 'draft' && !isReversal,
   });
 }
 
-function sendOutboundDetail(res, doc) {
+function sendOutboundDetail(res, doc, isReversal) {
   const lines = db.prepare(`SELECT o.*, m.name AS material_name, m.spec AS material_spec,
       m.unit AS material_unit, m.brand AS material_brand
     FROM outbound o LEFT JOIN materials m ON o.code = m.code
@@ -205,18 +269,19 @@ function sendOutboundDetail(res, doc) {
 
   res.json({
     ...doc,
-    sub_type: SUB_STOCK,
+    sub_type: isReversal ? SUB_REVERSAL : SUB_STOCK,
     ledger: 'outbound',
-    direction: 'in',
+    direction: isReversal ? 'out' : 'in',
     party: doc.destination || '',
-    ref_no: doc.origin_doc_no || '',
+    ref_no: isReversal ? (doc.reversal_of || '') : (doc.origin_doc_no || ''),
+    is_reversal: !!isReversal,
     lines,
     logs,
     reversals,
     summary,
-    can_reverse: doc.status === 'posted' && summary.remaining_qty > 0,
+    can_reverse: !isReversal && doc.status === 'posted' && summary.remaining_qty > 0,
     can_confirm: doc.status === 'draft',
-    can_edit: doc.status === 'draft',
+    can_edit: doc.status === 'draft' && !isReversal,
   });
 }
 

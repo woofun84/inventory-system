@@ -48,6 +48,8 @@ function pickTarget(segs, body) {
 // 采购退货（入库账本）/ 领用退库（出库账本）统一记为 returns，
 // 其余单据类型保持 inbound / outbound；历史审计记录不回溯改写。
 const RETURN_TXN_TYPES = new Set(['采购退货', '退库出库']);
+// 冲销单本身不带业务归属，需沿 reversal_of 找到被冲原单再归口
+const REVERSAL_TXN_TYPES = new Set(['入库冲销', '出库冲销']);
 const DOC_TABLES = { 'inbound-docs': 'inbound_docs', 'outbound-docs': 'outbound_docs' };
 
 function docTxnType(res0, segs, body) {
@@ -62,8 +64,14 @@ function docTxnType(res0, segs, body) {
   if (!docNo && body && body.doc_no) docNo = String(body.doc_no);
   if (!docNo) return '';
   try {
-    const row = db.prepare(`SELECT txn_type FROM ${table} WHERE doc_no=?`).get(docNo);
-    return row ? row.txn_type : '';
+    const row = db.prepare(`SELECT txn_type, reversal_of FROM ${table} WHERE doc_no=?`).get(docNo);
+    if (!row) return '';
+    // 冲销单按「被冲原单所属模块」归口，而不是接口路径
+    if (REVERSAL_TXN_TYPES.has(row.txn_type) && row.reversal_of) {
+      const orig = db.prepare(`SELECT txn_type FROM ${table} WHERE doc_no=?`).get(row.reversal_of);
+      return orig ? orig.txn_type : row.txn_type;
+    }
+    return row.txn_type;
   } catch (e) {
     return '';
   }
