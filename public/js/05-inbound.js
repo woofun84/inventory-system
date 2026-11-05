@@ -286,7 +286,6 @@ Object.assign(App, {
     const poOptions = pendingOrders.map(o => `<option value="${o.po_no}">${o.po_no}${o.supplier ? ' · ' + o.supplier : ''}</option>`).join('');
     const contractOptions = contractNos.map(c => `<option value="${c}">${c}</option>`).join('');
 
-    this._ibView = 'new';
     this.setMain(this.pageWrap('🆕 ' + this.t('ibd_add'), this.t('ibd_create_hint'), '',
       `<div class="data-page" id="ib-new-root">
         <div class="pu-edit-bar">
@@ -294,16 +293,16 @@ Object.assign(App, {
           <span class="badge badge-warning">${this.t('ibd_status_draft')}</span>
         </div>
         <div class="pu-card">
-          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}<small>${this.t('ibd_next_add_lines_hint')}</small></div></div>
+          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
           <div class="form-grid" style="max-width:none">
-            <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly placeholder="保存后生成"></div>
+            <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly></div>
             <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_f_date" type="date" value="${date}"></div>
             <div class="form-group"><label>${this.t('ibd_type')} *</label><select id="ib_f_txn_type"><option value="采购入库">${this.t('in_purchase')}</option><option value="采购退货">${this.t('in_return')}</option></select></div>
             <div class="form-group"><label>${this.t('ibd_supplier')}</label><select id="ib_f_supplier"><option value="">${this.t('none')}</option>${supOptions}</select></div>
             <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
             <div class="form-group"><label>${this.t('in_po_no')}</label><select id="ib_f_po_no" onchange="App.ibLoadPendingLines('po')"><option value="">${this.t('none')}</option>${poOptions || `<option value="">${this.t('in_no_pending_orders')}</option>`}</select></div>
             <div class="form-group"><label>${this.t('in_contract')}</label><select id="ib_f_contract_no" onchange="App.ibLoadPendingLines('contract')"><option value="">${this.t('none')}</option>${contractOptions}</select></div>
-            <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2" placeholder="可填写送货单号、发票号或其他说明"></textarea></div>
+            <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2"></textarea></div>
           </div>
         </div>
         <div id="ib-preload"></div>
@@ -398,11 +397,7 @@ Object.assign(App, {
     style.id = 'inbound-ui-styles';
     style.textContent = `
       .ib-empty-draft{padding:22px;text-align:center;background:var(--info-bg,rgba(14,165,233,.07));border:1px dashed var(--border);border-radius:9px;margin:12px 0}
-      .ib-line-amount{font-variant-numeric:tabular-nums;font-weight:600}
-      #ib-edit-lines input{max-width:100%;box-sizing:border-box}
-      .ib-log-card{margin-top:16px;padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px}
-      .ib-log-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-      .ib-log-title{font-size:15px;font-weight:700;color:var(--text)}
+      .ib-posted-hint{padding:10px;background:var(--info-bg,rgba(14,165,233,.1));border-left:3px solid var(--info,#0ea5e9);border-radius:6px;font-size:12px}
       #ib-root.ib-dense .table-wrap tbody td{padding:4px 10px;height:auto}
       #ib-root.ib-dense .table-wrap thead th{padding:6px 10px;height:auto}
     `;
@@ -892,7 +887,6 @@ Object.assign(App, {
 
   // 打开冲销创建页面
   async showReversalPage(docNo) {
-    this._ibView = 'reversal';
     this._ibDocNo = docNo;
 
     let revInfo;
@@ -926,8 +920,8 @@ Object.assign(App, {
     const rowsHtml = lines.map((l, i) => {
       const checked = 'checked';
       const maxQty = l.remaining;
-      const qtyInput = `<input type="number" step="0.01" min="0" max="${maxQty}" value="${maxQty}" 
-        style="width:80px" data-idx="${i}" class="ib-rev-qty"
+      const qtyInput = `<input type="number" step="0.01" min="0" max="${maxQty}" value="${maxQty}"
+        data-idx="${i}" class="ib-rev-qty"
         oninput="App.onRevQtyChange(${i}, this.value)">`;
       const avail = this._inboundStockMap?.[l.code];
       const availText = avail === undefined || avail === null ? '-' : avail;
@@ -948,11 +942,11 @@ Object.assign(App, {
       </tr>`;
     }).join('');
 
-    // 已有冲销单列表
+    // 已有冲销单列表（独立卡片，与 01/02 卡片同一层级，避免卡片套卡片）
     const existingRevs = revInfo.reversals || [];
     const revListHtml = existingRevs.length > 0
-      ? `<div class="ib-log-card" style="margin-top:16px">
-          <div class="ib-log-head"><div class="ib-log-title">${this.t('ibd_rev_history')}</div></div>
+      ? `<div class="pu-card">
+          <div class="pu-card-title"><span>03</span><div>${this.t('ibd_rev_history')}<small>· ${existingRevs.length}</small></div></div>
           <div class="table-wrap"><table><thead><tr>
             <th>${this.t('ibd_no')}</th><th>${this.t('ibd_date')}</th><th>${this.t('ibd_status')}</th>
             <th>${this.t('ibd_lines')}</th><th>${this.t('ibd_qty')}</th><th>${this.t('ibd_confirmed_by')}</th><th></th>
@@ -978,10 +972,12 @@ Object.assign(App, {
           ${this.ibdStatusBadge(revInfo.status)}
         </div>
         <div class="pu-card">
-          <div class="pu-card-title"><span>01</span><div>${this.t('ibd_rev_section_info')}<small>${this.t('ibd_rev_create_hint')}</small></div></div>
+          <div class="pu-card-title"><span>01</span><div>${this.t('ibd_rev_section_info')}</div></div>
           <div class="form-grid" style="max-width:none">
-            <div class="form-group"><label>${this.t('ibd_date')}</label><input id="ib_rev_date" type="date" value="${date}"></div>
-            <div class="form-group" style="grid-column:span 3"><label>${this.t('ibd_rev_reason')}</label><input id="ib_rev_reason" placeholder="${this.t('ibd_rev_reason_ph')}"></div>
+            <div class="form-group"><label>${this.t('ibd_rev_original')}</label><input id="ib_rev_original" value="${this.ibEsc(docNo)}" readonly></div>
+            <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_rev_date" type="date" value="${date}"></div>
+            <div class="form-group"><label>${this.t('ibd_type')}</label><input value="${this.t('ibd_rev_type')}" readonly></div>
+            <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_rev_reason')}</label><textarea id="ib_rev_reason" rows="2" placeholder="${this.t('ibd_rev_reason_ph')}"></textarea></div>
           </div>
         </div>
         <div class="pu-card">
@@ -1000,9 +996,10 @@ Object.assign(App, {
             <th class="text-right">${this.t('ibd_rev_this_qty')}</th>
           </tr></thead><tbody>${rowsHtml}</tbody></table></div>
           <div class="pu-edit-sum" id="ib-rev-summary"></div>
-          ${revListHtml}
         </div>
+        ${revListHtml}
         <div class="pu-edit-actions">
+          <button class="btn btn-outline" onclick="App.openInboundDoc('${docNo}')">${this.t('cancel')}</button>
           <button class="btn btn-primary" onclick="App.createReversalDoc('${docNo}')">${this.t('ibd_rev_create_btn')}</button>
         </div>
       </div>`));
@@ -1133,7 +1130,6 @@ Object.assign(App, {
   // ========== 入库单据编辑页面（独立页面，非模态窗口） ==========
 
   async editInboundDoc(docNo, preloadLines) {
-    this._ibView = 'edit';
     this._ibDocNo = docNo;
     // 物料筛选条状态：切换单据时重置
     if (this._ibEditFilterDoc !== docNo) { this._ibMatCat = ''; this._ibMatKw = ''; this._ibEditFilterDoc = docNo; }
@@ -1178,7 +1174,7 @@ Object.assign(App, {
           ${this.ibdStatusBadge(detail.status)}
         </div>
         <div class="pu-card">
-          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}<small>${typeLabel}</small></div></div>
+          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
           <div id="ib-edit-form"></div>
         </div>
         <div class="pu-card">
@@ -1197,22 +1193,25 @@ Object.assign(App, {
     const d = this._ibDetail;
     if (!d) return;
     const isDraft = d.status === 'draft';
-    const vp = this.canViewPrice();
+    const typeLabel = d.txn_type === '采购退货' ? this.t('in_return') : this.t('in_purchase');
 
     // 01 单据信息（草稿态可编辑；过账后仅提示不可改）
     const formEl = document.getElementById('ib-edit-form');
     if (formEl) {
       if (isDraft) {
+        // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商 → 经手人 → 采购单号 → 合同号 → 备注(整行)
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
-          <div class="form-group"><label>${this.t('ibd_date')}</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
-          <div class="form-group"><label>${this.t('ibd_supplier')}</label><input id="ib_e_supplier" value="${d.supplier || ''}"></div>
-          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${d.handler || ''}"></div>
-          <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${d.po_no || ''}"></div>
-          <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${d.contract_no || ''}"></div>
-          <div class="form-group" style="grid-column:span 2"><label>${this.t('ibd_remarks')}</label><input id="ib_e_remarks" value="${d.remarks || ''}"></div>
+          <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.ibEsc(d.doc_no)}" readonly></div>
+          <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
+          <div class="form-group"><label>${this.t('ibd_type')}</label><input id="ib_e_type" value="${this.ibEsc(typeLabel)}" readonly></div>
+          <div class="form-group"><label>${this.t('ibd_supplier')}</label><input id="ib_e_supplier" value="${this.ibEsc(d.supplier || '')}"></div>
+          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.ibEsc(d.handler || '')}"></div>
+          <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${this.ibEsc(d.po_no || '')}"></div>
+          <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${this.ibEsc(d.contract_no || '')}"></div>
+          <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.ibEsc(d.remarks || '')}</textarea></div>
         </div>`;
       } else {
-        formEl.innerHTML = `<div style="padding:10px;background:var(--info-bg,rgba(14,165,233,.1));border-radius:6px;font-size:12px">${this.t('ibd_posted_hint')}</div>`;
+        formEl.innerHTML = `<div class="ib-posted-hint">${this.t('ibd_posted_hint')}</div>`;
       }
     }
 
@@ -1244,15 +1243,16 @@ Object.assign(App, {
     const vp = this.canViewPrice();
     const lines = this._ibEditLines || [];
     const mats = this._materialsCache || [];
-    const colCount = 4 + (vp ? 2 : 0);
+    const colCount = 6 + (vp ? 2 : 0);
 
+    // 列序对齐采购编辑页：物料 / 数量 / 单价 / 行金额 / 合同号 / 备注 / 只读参照列 / 删除
     const headHtml = `<tr>
       <th>${this.t('pu_material')}</th>
-      <th class="text-right">${this.t('in_qty')}</th>
-      ${vp ? `<th class="text-right">${this.t('in_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
+      <th>${this.t('in_qty')}</th>
+      ${vp ? `<th>${this.t('in_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
       <th>${this.t('in_contract')}</th>
-      <th class="text-right">${this.t('out_available')}</th>
       <th>${this.t('in_remarks')}</th>
+      <th class="text-right">${this.t('out_available')}</th>
       <th></th>
     </tr>`;
 
@@ -1275,22 +1275,22 @@ Object.assign(App, {
           const qty = Number(l.qty) || 0;
           return `<tr>
             <td>${this.ibLineLabel(l)}</td>
-            <td class="text-right" style="color:${qty < 0 ? 'var(--danger)' : 'var(--text)'}">${this.fmtQty(qty)}</td>
-            ${vp ? `<td class="text-right">${this.fmtMoney(l.price)}</td><td class="text-right">${this.fmtMoney(amt)}</td>` : ''}
+            <td${qty < 0 ? ' style="color:var(--danger)"' : ''}>${this.fmtQty(qty)}</td>
+            ${vp ? `<td>${this.fmtMoney(l.price)}</td><td class="pu-edit-amt">${this.fmtMoney(amt)}</td>` : ''}
             <td style="font-size:12px">${contract}</td>
-            <td class="text-right" style="font-size:12px;color:${availColor}">${availText}</td>
             <td>${l.remarks || ''}</td>
+            <td class="pu-edit-amt" style="color:${availColor}">${availText}</td>
             <td></td>
           </tr>`;
         }
         return `<tr>
           <td style="min-width:220px"><select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select></td>
-          <td style="min-width:100px"><input type="number" step="0.01" min="0" style="text-align:right" value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditSet(${i},'qty',this.value)"></td>
-          ${vp ? `<td style="min-width:100px"><input type="number" step="0.01" min="0" style="text-align:right" value="${l.price === null || l.price === undefined ? '' : l.price}" oninput="App.ibEditSet(${i},'price',this.value)"></td>
+          <td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditSet(${i},'qty',this.value)"></td>
+          ${vp ? `<td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.price === null || l.price === undefined ? '' : l.price}" oninput="App.ibEditSet(${i},'price',this.value)"></td>
           <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
           <td style="min-width:120px;font-size:12px">${contract}</td>
-          <td class="text-right" style="font-size:12px;color:${availColor}">${availText}</td>
           <td style="min-width:140px"><input value="${this.ibEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
+          <td class="pu-edit-amt" style="font-size:12px;color:${availColor}">${availText}</td>
           <td><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
       }).join('');
@@ -1549,20 +1549,6 @@ Object.assign(App, {
     );
   },
 
-  // ========== 作废入库单据 ==========
-  cancelInboundDoc() {
-    const docNo = this._ibDocNo;
-    this.confirmDialog(this.t('ibd_cancel'), this.t('ibd_cancel_hint'), async () => {
-      try {
-        await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/cancel', 'POST', {});
-        this.toast(this.t('ibd_cancel_ok'));
-        await this.openInboundDoc(docNo);
-      } catch (e) {
-        this.toast(e.message, 'error');
-      }
-    });
-  },
-
   // ========== 删除入库单据 ==========
   // 删除草稿：对齐采购模块（二次确认 + 7 秒内可撤销）
   deleteInboundDoc(docNo) {
@@ -1602,7 +1588,6 @@ Object.assign(App, {
 
   // ========== 导航 ==========
   backToInboundList() {
-    this._ibView = 'list';
     this.renderInbound();
   },
 
