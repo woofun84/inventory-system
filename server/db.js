@@ -188,6 +188,13 @@ function migrateDB() {
     try { db.exec("ALTER TABLE outbound ADD COLUMN status TEXT DEFAULT 'posted'"); console.log('迁移: outbound.status 已添加'); } catch(e) {}
     try { db.exec("ALTER TABLE outbound ADD COLUMN reversal_of TEXT DEFAULT ''"); console.log('迁移: outbound.reversal_of 已添加'); } catch(e) {}
     try { db.exec("ALTER TABLE outbound ADD COLUMN reversed_qty REAL DEFAULT 0"); console.log('迁移: outbound.reversed_qty 已添加'); } catch(e) {}
+
+    // 2C：领用退库关联原出库单
+    // outbound_docs.origin_doc_no: 退库出库单指向的原出库单号（普通出库单为空）
+    // outbound.origin_line_id:     退库明细行指向的原出库明细行 ID（0 表示未关联）
+    try { db.exec("ALTER TABLE outbound_docs ADD COLUMN origin_doc_no TEXT DEFAULT ''"); console.log('迁移: outbound_docs.origin_doc_no 已添加'); } catch(e) {}
+    try { db.exec("ALTER TABLE outbound ADD COLUMN origin_line_id INTEGER NOT NULL DEFAULT 0"); console.log('迁移: outbound.origin_line_id 已添加'); } catch(e) {}
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ob_originline ON outbound(origin_line_id)");
     try { db.exec("UPDATE outbound SET status='posted' WHERE status='' OR status IS NULL"); } catch(e) {}
     db.exec("CREATE INDEX IF NOT EXISTS idx_obdoc_rev ON outbound_docs(reversal_of)");
     db.exec("CREATE INDEX IF NOT EXISTS idx_ob_rev ON outbound(reversal_of)");

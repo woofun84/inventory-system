@@ -11,6 +11,9 @@ const {
   validateOutboundStock,
   computeCostPrice,
   getAvailableStock,
+  getReturnableLines,
+  validateReturnAgainstOrigin,
+  loadReturnableOrigin,
 } = require('../services/stock');
 const docno = require('../services/docno');
 const time = require('../services/time');
@@ -171,9 +174,9 @@ function logOutboundDoc(docNo, action, operator, detail) {
     .run(docNo, action, operator || '', detail || '');
 }
 
-// 出库单据列表（支持按状态/关键字/日期/类型筛选）
+// 出库单据列表（支持按状态/关键字/日期/类型筛选；excludeType 用于列表排除某类单据）
 router.get('/api/outbound-docs', requirePerm('outbound', 'view'), (req, res) => {
-  const { status, keyword, dateFrom, dateTo, txnType } = req.query;
+  const { status, keyword, dateFrom, dateTo, txnType, excludeType } = req.query;
   let sql = `SELECT d.*,
     (SELECT COUNT(*) FROM outbound o WHERE o.doc_no = d.doc_no) as line_count,
     (SELECT COALESCE(SUM(qty),0) FROM outbound o WHERE o.doc_no = d.doc_no) as total_qty,
@@ -182,6 +185,13 @@ router.get('/api/outbound-docs', requirePerm('outbound', 'view'), (req, res) => 
   const params = [];
   if (status) { sql += " AND d.status=?"; params.push(status); }
   if (txnType) { sql += " AND d.txn_type=?"; params.push(txnType); }
+  if (excludeType) {
+    const types = String(excludeType).split(',').map(s => s.trim()).filter(Boolean);
+    if (types.length) {
+      sql += ' AND d.txn_type NOT IN (' + types.map(() => '?').join(',') + ')';
+      params.push(...types);
+    }
+  }
   if (dateFrom) { sql += " AND d.date>=?"; params.push(dateFrom); }
   if (dateTo) { sql += " AND d.date<?"; params.push(dateTo + ' 23:59:59'); }
   if (keyword) {
@@ -206,38 +216,56 @@ router.post('/api/outbound-docs', requirePerm('outbound', 'create'), (req, res) 
   const date = body.date || time.todayLocal();
   const txnType = body.txn_type || '正常出库';
   const docNo = body.doc_no || genOutboundDocNo(date, txnType);
+  // 2C：只有领用退库允许关联原出库单；其他类型忽略该字段
+  const originDocNo = txnType === '退库出库' ? String(body.origin_doc_no || '').trim() : '';
   try {
     const exist = db.prepare("SELECT doc_no FROM outbound_docs WHERE doc_no=?").get(docNo);
     if (exist) return res.status(400).json({ error: '单据号已存在: ' + docNo });
 
-    db.prepare(`INSERT INTO outbound_docs (doc_no, date, txn_type, destination, receiver, handler, status, remarks, created_by)
-      VALUES (@doc_no, @date, @txn_type, @destination, @receiver, @handler, 'draft', @remarks, @created_by)`)
-      .run({
-        doc_no: docNo, date, txn_type: txnType,
-        destination: body.destination || '', receiver: body.receiver || '',
-        handler: body.handler || '', remarks: body.remarks || '',
-        created_by: req.user?.name || req.user?.username || ''
-      });
+    if (originDocNo) loadReturnableOrigin(originDocNo);
 
-    // 如果带了明细行，一并创建
-    if (Array.isArray(body.lines) && body.lines.length > 0) {
-      const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status)
-        VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft')`);
-      body.lines.forEach(l => {
-        if (!l.code) return;
-        const qty = sign.normalizeQty(txnType, l.qty);
-        stmt.run({
-          date, gin_no: docNo, doc_no: docNo, code: l.code, qty,
-          destination: body.destination || '', receiver: body.receiver || '',
-          handler: body.handler || '', remarks: l.remarks || '', txn_type: txnType
-        });
-      });
+    // 先规整明细行（保留原行关联），再整体校验可退量
+    const preparedLines = (Array.isArray(body.lines) ? body.lines : [])
+      .filter(l => l && l.code)
+      .map(l => ({
+        code: l.code,
+        qty: sign.normalizeQty(txnType, l.qty),
+        origin_line_id: Number(l.origin_line_id) || 0,
+        remarks: l.remarks || '',
+      }));
+    if (originDocNo && preparedLines.length) {
+      validateReturnAgainstOrigin(preparedLines, originDocNo, docNo);
     }
 
-    logOutboundDoc(docNo, 'create', req.user?.name || req.user?.username, '创建出库单据');
+    const tx = db.transaction(() => {
+      db.prepare(`INSERT INTO outbound_docs (doc_no, date, txn_type, destination, receiver, handler, status, remarks, created_by, origin_doc_no)
+        VALUES (@doc_no, @date, @txn_type, @destination, @receiver, @handler, 'draft', @remarks, @created_by, @origin_doc_no)`)
+        .run({
+          doc_no: docNo, date, txn_type: txnType,
+          destination: body.destination || '', receiver: body.receiver || '',
+          handler: body.handler || '', remarks: body.remarks || '',
+          created_by: req.user?.name || req.user?.username || '',
+          origin_doc_no: originDocNo,
+        });
+
+      const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status, origin_line_id)
+        VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft', @origin_line_id)`);
+      preparedLines.forEach(l => {
+        stmt.run({
+          date, gin_no: docNo, doc_no: docNo, code: l.code, qty: l.qty,
+          destination: body.destination || '', receiver: body.receiver || '',
+          handler: body.handler || '', remarks: l.remarks, txn_type: txnType,
+          origin_line_id: l.origin_line_id,
+        });
+      });
+
+      logOutboundDoc(docNo, 'create', req.user?.name || req.user?.username,
+        originDocNo ? `创建退库单据，关联原出库单 ${originDocNo}` : '创建出库单据');
+    });
+    tx();
     res.json({ success: true, doc_no: docNo });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ error: e.message, code: e.code });
   }
 });
 
@@ -277,6 +305,19 @@ router.get('/api/outbound-docs/:docNo', requirePerm('outbound', 'view'), (req, r
   res.json({ ...doc, lines, logs, summary, reversals });
 });
 
+// 原出库单的可退明细（2C）：仅已过账/部分冲销的「正常出库」单可作为退库来源
+// excludeDocNo: 当前正在编辑的退库单，避免把自己的占用算进已退量
+router.get('/api/outbound-docs/:docNo/returnable', requirePerm('outbound', 'view'), (req, res) => {
+  const docNo = req.params.docNo;
+  try {
+    const lines = getReturnableLines(docNo, String(req.query.excludeDocNo || '').trim());
+    const doc = db.prepare('SELECT status, destination, date FROM outbound_docs WHERE doc_no=?').get(docNo);
+    res.json({ doc_no: docNo, status: doc.status, destination: doc.destination, date: doc.date, lines });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message, code: e.code });
+  }
+});
+
 // 保存出库单据明细行（草稿态可操作）—— 整体替换
 router.put('/api/outbound-docs/:docNo/lines', requirePerm('outbound', 'edit'), (req, res) => {
   const docNo = req.params.docNo;
@@ -285,21 +326,34 @@ router.put('/api/outbound-docs/:docNo/lines', requirePerm('outbound', 'edit'), (
   if (doc.status !== 'draft') return res.status(400).json({ error: '已过账/作废的单据不能修改明细', code: 'DOC_NOT_DRAFT' });
 
   const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
+  // 2C：退库单可维护原出库单关联（不传则沿用原值）
+  const originDocNo = doc.txn_type === '退库出库'
+    ? (req.body.origin_doc_no !== undefined ? String(req.body.origin_doc_no || '').trim() : (doc.origin_doc_no || ''))
+    : '';
+
+  // 先规整明细（原行关联 + 符号推导），再校验可退量；校验与写入基于同一批行
   try {
+    const preparedLines = lines.filter(l => l && l.code).map(l => ({
+      code: l.code,
+      qty: sign.normalizeQty(doc.txn_type, l.qty),
+      origin_line_id: Number(l.origin_line_id) || 0,
+      remarks: l.remarks || ''
+    }));
+    if (originDocNo && preparedLines.length) {
+      validateReturnAgainstOrigin(preparedLines, originDocNo, docNo);
+    }
     const tx = db.transaction(() => {
       // 先删旧行
       db.prepare("DELETE FROM outbound WHERE doc_no=?").run(docNo);
       // 再插新行
-      const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status)
-        VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft')`);
-      lines.forEach(l => {
-        if (!l.code) return;
-        const qty = sign.normalizeQty(doc.txn_type, l.qty);
+      const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status, origin_line_id)
+        VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft', @origin_line_id)`);
+      preparedLines.forEach(l => {
         stmt.run({
-          date: l.date || doc.date, gin_no: docNo, doc_no: docNo,
-          code: l.code, qty,
+          date: doc.date, gin_no: docNo, doc_no: docNo,
+          code: l.code, qty: l.qty,
           destination: doc.destination, receiver: doc.receiver, handler: doc.handler,
-          remarks: l.remarks || '', txn_type: doc.txn_type
+          remarks: l.remarks, txn_type: doc.txn_type, origin_line_id: l.origin_line_id
         });
       });
       // 更新单据头的部分字段（允许跟着明细一起改）
@@ -309,16 +363,18 @@ router.put('/api/outbound-docs/:docNo/lines', requirePerm('outbound', 'edit'), (
       if (req.body.handler !== undefined) updateFields.handler = req.body.handler;
       if (req.body.remarks !== undefined) updateFields.remarks = req.body.remarks;
       if (req.body.date !== undefined) updateFields.date = req.body.date;
+      if (doc.txn_type === '退库出库') updateFields.origin_doc_no = originDocNo;
       if (Object.keys(updateFields).length > 0) {
         const sets = Object.keys(updateFields).map(k => `${k}=@${k}`).join(', ');
         db.prepare(`UPDATE outbound_docs SET ${sets} WHERE doc_no=@doc_no`).run({ ...updateFields, doc_no: docNo });
       }
-      logOutboundDoc(docNo, 'edit', req.user?.name || req.user?.username, `保存明细 ${lines.length} 行`);
+      logOutboundDoc(docNo, 'edit', req.user?.name || req.user?.username,
+        `保存明细 ${preparedLines.length} 行${originDocNo ? `，关联原出库单 ${originDocNo}` : ''}`);
     });
     tx();
     res.json({ success: true });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ error: e.message, code: e.code });
   }
 });
 
@@ -334,6 +390,18 @@ router.post('/api/outbound-docs/:docNo/confirm', requirePerm('outbound', 'edit')
 
   const forceAllow = req.body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
 
+  // 2C：退库单必须再次校验可退量（期间可能有其他退库单占用原行），并回写原行成本
+  const originDocNo = doc.txn_type === '退库出库' ? (doc.origin_doc_no || '') : '';
+  if (originDocNo) {
+    try {
+      validateReturnAgainstOrigin(
+        lines.map(l => ({ code: l.code, qty: sign.absQty(l.qty), origin_line_id: l.origin_line_id })),
+        originDocNo, docNo);
+    } catch (e) {
+      return res.status(400).json({ error: e.message, code: e.code });
+    }
+  }
+
   try {
     const tx = db.transaction(() => {
       // 库存校验（草稿行不计入库存，因此校验基于其他已过账流水）
@@ -341,9 +409,16 @@ router.post('/api/outbound-docs/:docNo/confirm', requirePerm('outbound', 'edit')
         validateOutboundStock(lines);
       }
       // 过账：逐行计算成本单价后置为 posted
+      // 领用退库关联原出库行的，成本一律取原行 cost_price，不再取当日加权平均
       const upd = db.prepare("UPDATE outbound SET status='posted', cost_price=@cost_price WHERE id=@id");
       lines.forEach(l => {
-        const costPrice = computeCostPrice(l.code, l.qty, l.date);
+        let costPrice;
+        if (originDocNo && l.origin_line_id) {
+          const orig = db.prepare('SELECT cost_price FROM outbound WHERE id=?').get(Number(l.origin_line_id));
+          costPrice = sign.storedAbs(orig && orig.cost_price);
+        } else {
+          costPrice = computeCostPrice(l.code, l.qty, l.date);
+        }
         upd.run({ id: l.id, cost_price: costPrice });
       });
       // 单据头过账

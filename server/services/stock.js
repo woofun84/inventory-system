@@ -3,6 +3,7 @@
  */
 const db = require('../db');
 const docno = require('./docno');
+const sign = require('./sign');
 
 // ==================== 辅助函数 ====================
 
@@ -142,6 +143,101 @@ function validateInboundReturnStock(items, excludeInboundId) {
     e.details = errors;
     throw e;
   }
+}
+
+// ==================== 领用退库：关联原出库单（2C） ====================
+// 可退量口径 = 原出库行数量 - 已退数量
+// 「已退」包含「草稿 + 已过账」的退库行（草稿也占用额度，作废/删除后自动释放），
+// 避免两张草稿各自把同一原行占满，到确认时才发现冲突。
+const RETURN_TXN_TYPE = '退库出库';
+
+function bizError(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  e.status = 400;
+  return e;
+}
+
+// 原出库行累计已退数量（可排除当前正在编辑的退库单自身）
+function getReturnedQtyByLine(originLineId, excludeDocNo) {
+  let sql = `SELECT COALESCE(SUM(ABS(o.qty)),0) AS v FROM outbound o
+    JOIN outbound_docs d ON d.doc_no = o.doc_no
+    WHERE o.origin_line_id = ? AND o.txn_type = ?
+      AND d.status IN ('draft','posted')`;
+  const args = [Number(originLineId) || 0, RETURN_TXN_TYPE];
+  if (excludeDocNo) { sql += ' AND o.doc_no <> ?'; args.push(excludeDocNo); }
+  return Number(db.prepare(sql).get(...args).v || 0);
+}
+
+// 校验原出库单可作为退库来源
+function loadReturnableOrigin(originDocNo) {
+  const doc = db.prepare('SELECT * FROM outbound_docs WHERE doc_no=?').get(originDocNo);
+  if (!doc) throw bizError('ORIGIN_DOC_NOT_FOUND', `原出库单不存在: ${originDocNo}`);
+  if (doc.txn_type !== '正常出库') throw bizError('ORIGIN_DOC_INVALID', '只有正常出库单可以作为退库来源');
+  if (doc.status !== 'posted' && doc.status !== 'partially_reversed') {
+    throw bizError('ORIGIN_DOC_NOT_POSTED', '原出库单尚未过账或已全部冲销，不能退库');
+  }
+  return doc;
+}
+
+// 原出库单的可退明细（只取已过账的正数出库行）
+function getReturnableLines(originDocNo, excludeDocNo) {
+  loadReturnableOrigin(originDocNo);
+  const lines = db.prepare(`SELECT o.id, o.code, o.qty, o.cost_price, o.remarks,
+      m.name AS material_name, m.spec AS material_spec, m.unit AS material_unit, m.brand AS material_brand
+    FROM outbound o LEFT JOIN materials m ON m.code = o.code
+    WHERE o.doc_no = ? AND o.status = 'posted' AND o.qty > 0
+    ORDER BY o.id ASC`).all(originDocNo);
+
+  return lines.map(l => {
+    const origQty = sign.absQty(l.qty);
+    const returnedQty = getReturnedQtyByLine(l.id, excludeDocNo);
+    return {
+      id: l.id,
+      code: l.code,
+      qty: origQty,
+      cost_price: sign.storedAbs(l.cost_price),
+      returned_qty: returnedQty,
+      remaining: Math.max(0, origQty - returnedQty),
+      material_name: l.material_name,
+      material_spec: l.material_spec,
+      material_unit: l.material_unit,
+      material_brand: l.material_brand,
+      remarks: l.remarks,
+    };
+  });
+}
+
+// 校验退库明细：必须关联原行，且 累计已退 + 本次退 <= 原出库量
+// lines: [{ origin_line_id, code, qty }]，qty 为正数
+function validateReturnAgainstOrigin(lines, originDocNo, excludeDocNo) {
+  loadReturnableOrigin(originDocNo);
+  const seen = new Map();
+
+  lines.forEach(l => {
+    const lineId = Number(l.origin_line_id) || 0;
+    if (!lineId) {
+      throw bizError('ORIGIN_LINE_REQUIRED', `物料 ${l.code || '-'} 未关联原出库明细，不能退库`);
+    }
+    const orig = db.prepare('SELECT id, doc_no, code, qty FROM outbound WHERE id=?').get(lineId);
+    if (!orig || orig.doc_no !== originDocNo) {
+      throw bizError('ORIGIN_LINE_INVALID', `明细行 ${lineId} 不属于原出库单 ${originDocNo}`);
+    }
+    if (Number(orig.qty) <= 0) {
+      throw bizError('ORIGIN_LINE_INVALID', `明细行 ${lineId} 不是正常出库行，不能退库`);
+    }
+
+    const qty = sign.absQty(l.qty);
+    const used = getReturnedQtyByLine(lineId, excludeDocNo);
+    const inBatch = (seen.get(lineId) || 0) + qty;
+    seen.set(lineId, inBatch);
+
+    const origQty = sign.absQty(orig.qty);
+    if (used + inBatch > origQty + 1e-4) {
+      throw bizError('RETURN_QTY_EXCEEDED',
+        `物料 ${orig.code}：本次退库 ${used + inBatch} 超过可退量 ${origQty}（最多还可退 ${Math.max(0, origQty - used)}）`);
+    }
+  });
 }
 
 // 计算库存汇总
@@ -353,6 +449,10 @@ module.exports = {
   getAvailableStock,
   validateOutboundStock,
   validateInboundReturnStock,
+  getReturnedQtyByLine,
+  loadReturnableOrigin,
+  getReturnableLines,
+  validateReturnAgainstOrigin,
   getStockSummary,
   computeCostPrice,
   genGrnNo,
