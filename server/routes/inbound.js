@@ -246,7 +246,7 @@ function logInboundDoc(docNo, action, operator, detail) {
 
 // 获取入库单据列表（支持按状态/关键字/日期筛选）
 router.get('/api/inbound-docs', requirePerm('inbound', 'view'), (req, res) => {
-  const { status, keyword, dateFrom, dateTo, txnType } = req.query;
+  const { status, keyword, dateFrom, dateTo, txnType, excludeType } = req.query;
   let sql = `SELECT d.*,
     (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no) as line_count,
     (SELECT COALESCE(SUM(qty),0) FROM inbound i WHERE i.doc_no = d.doc_no) as total_qty,
@@ -255,6 +255,14 @@ router.get('/api/inbound-docs', requirePerm('inbound', 'view'), (req, res) => {
   const params = [];
   if (status) { sql += " AND d.status=?"; params.push(status); }
   if (txnType) { sql += " AND d.txn_type=?"; params.push(txnType); }
+  // 排除指定类型（入库列表“全部”不展示已迁出到退货模块的采购退货）
+  if (excludeType) {
+    const types = String(excludeType).split(',').map(s => s.trim()).filter(Boolean);
+    if (types.length) {
+      sql += ' AND d.txn_type NOT IN (' + types.map(() => '?').join(',') + ')';
+      params.push(...types);
+    }
+  }
   if (dateFrom) { sql += " AND d.date>=?"; params.push(dateFrom); }
   if (dateTo) { sql += " AND d.date<?"; params.push(dateTo + ' 23:59:59'); }
   if (keyword) {

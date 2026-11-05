@@ -709,7 +709,7 @@ Object.assign(App, {
       box.innerHTML = this.puItemsPanel(this.puGroupInboundDocs(rec.ib).map(g => ({
         title: g.doc_no || '-', docNo: g.doc_no || '',
         sub: [this.fmtDate(g.date), g.handler, `${this.t('pu_line_count')} ${g.n}`].filter(Boolean).join(' · '),
-        qty: g.qty,
+        qty: g.qty, txnType: g.txnType,
       })), this.t('pu_no_inbound'));
       return;
     }
@@ -823,7 +823,7 @@ Object.assign(App, {
     (rows || []).forEach(r => {
       const no = r.doc_no || '-';
       let g = map.get(no);
-      if (!g) { g = { doc_no: r.doc_no || '', date: r.date, handler: r.handler, qty: 0, n: 0 }; map.set(no, g); }
+      if (!g) { g = { doc_no: r.doc_no || '', date: r.date, handler: r.handler, qty: 0, n: 0, txnType: r.txn_type || '' }; map.set(no, g); }
       g.qty += Number(r.qty || 0);
       g.n += 1;
       if (!g.date && r.date) g.date = r.date;
@@ -837,7 +837,7 @@ Object.assign(App, {
     return `<ul class="pu-items">` + items.map(x => `<li class="pu-item">
       <div class="pu-item-top">
         <div>${x.docNo
-          ? `<button type="button" class="pu-lk" data-pu="open-ib" data-id="${this.puEsc(x.docNo)}">${this.puEsc(x.title)}</button>`
+          ? `<button type="button" class="pu-lk" data-pu="open-ib" data-id="${this.puEsc(x.docNo)}" data-t="${x.txnType === '采购退货' ? 'ret' : 'ib'}">${this.puEsc(x.title)}</button>`
           : `<strong>${this.puEsc(x.title)}</strong>`}<div class="pu-log-meta">${this.puEsc(x.sub)}</div></div>
         <strong>${this.fmtQty(x.qty)}</strong>
       </div>
@@ -964,7 +964,7 @@ Object.assign(App, {
       case 'n-contract': return this.editContract();
       case 'n-line': return this.addPurchaseLine(s.sel.id);
       case 'receive': return this.puReceive();
-      case 'open-ib': return this.puOpenInbound(id);
+      case 'open-ib': return t === 'ret' ? this.openReturnDoc(id) : this.puOpenInbound(id);
       case 'e-entity': return s.sel.t === 'contracts' ? this.editContract(s.sel.id) : this.puEditOrderPage(s.sel.id);
       case 'd-entity': return s.sel.t === 'contracts' ? this.deleteContract(s.sel.id) : this.deletePurchaseOrder(s.sel.id);
       case 'e-line': return this.editPurchaseLine(Number(id));

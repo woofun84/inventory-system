@@ -167,20 +167,27 @@ Object.assign(App, {
   },
 
   // ========== 新建出库单据：独立页面 ==========
-  async newOutboundDoc() {
+  // presetType: 传入「退库出库」时由「退货与退库」模块复用本页创建领用退库单
+  async newOutboundDoc(presetType) {
+    const preset = presetType === '退库出库' ? '退库出库' : '';
     const now = new Date();
     const date = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
     let docNo = '';
     try {
-      const next = await this.api('/api/outbound-docs/next-no?date=' + date + '&txnType=正常出库');
+      const next = await this.api('/api/outbound-docs/next-no?date=' + date + '&txnType=' + encodeURIComponent(preset || '正常出库'));
       docNo = next.doc_no || '';
     } catch (e) { /* 单号预览失败不阻断创建 */ }
 
     const dests = (this.params?.destinations || []).map(d => d.name);
     const destOptions = dests.map(d => `<option value="${d}">${d}</option>`).join('');
+    // 领用退库已迁出到独立模块，出库页不再提供该类型；仅当外部显式预设时才出现
+    const typeOptions = preset
+      ? `<option value="退库出库">${this.t('out_return')}</option>`
+      : `<option value="正常出库">${this.t('out_normal')}</option>`;
+    const pageTitle = preset ? this.t('ret_new_stock') : this.t('obd_add');
 
     this._obView = 'new';
-    this.setMain(this.pageWrap('📤 ' + this.t('obd_add'), this.t('obd_create_hint'), '',
+    this.setMain(this.pageWrap('📤 ' + pageTitle, this.t('obd_create_hint'), '',
       `<div class="data-page" id="outbound-content">
         <div class="data-toolbar" style="padding:16px">
           <div class="st-toolbar-row" style="margin-bottom:14px">
@@ -192,7 +199,7 @@ Object.assign(App, {
             <div class="form-grid" style="max-width:none">
               <div class="form-group"><label>${this.t('obd_no')}</label><input id="ob_f_no" value="${docNo}" readonly placeholder="保存后生成"></div>
               <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_f_date" type="date" value="${date}"></div>
-              <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type"><option value="正常出库">${this.t('out_normal')}</option><option value="退库出库">${this.t('out_return')}</option></select></div>
+              <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type">${typeOptions}</select></div>
               <div class="form-group"><label>${this.t('obd_destination')}</label><select id="ob_f_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
               <div class="form-group"><label>${this.t('obd_receiver')}</label><input id="ob_f_receiver" value=""></div>
               <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>

@@ -71,9 +71,10 @@ Object.assign(App, {
     </div>`;
   },
 
-  // 视图页签按「业务类型」划分：全部 / 采购入库 / 零星入库 / 采购退货 / 入库冲销
+  // 视图页签按「业务类型」划分：全部 / 采购入库 / 零星入库 / 入库冲销
+  // 采购退货已迁出到「退货与退库」模块，不在本页展示
   ibTabDefs() {
-    return [['', this.t('all')], ['采购入库', this.t('in_purchase')], ['零星入库', this.t('in_other')], ['采购退货', this.t('in_return')], ['入库冲销', this.t('ibd_rev_type')]];
+    return [['', this.t('all')], ['采购入库', this.t('in_purchase')], ['零星入库', this.t('in_other')], ['入库冲销', this.t('ibd_rev_type')]];
   },
 
   ibRenderTabs() {
@@ -119,7 +120,7 @@ Object.assign(App, {
 
   async loadInboundList() {
     try {
-      this._ibList = await this.api('/api/inbound-docs');
+      this._ibList = await this.api('/api/inbound-docs?excludeType=' + encodeURIComponent('采购退货'));
     } catch (e) {
       this._ibList = [];
       const scroll = document.getElementById('ib-scroll');
@@ -156,6 +157,7 @@ Object.assign(App, {
     const s = this.ibState();
     let rows = this._ibList || [];
     if (s.tab) rows = rows.filter(r => r.txn_type === s.tab);
+    else rows = rows.filter(r => r.txn_type !== '采购退货');
     if (s.f.kw) rows = this.filterByKeywords(rows, s.f.kw, ['doc_no', 'date', 'txn_type', 'supplier', 'handler', 'po_no', 'contract_no', 'remarks', 'reversal_of']);
     rows = this.filterByDateRange(rows, 'date', s.f.from, s.f.to);
     const def = this.ibKpiDefs().find(d => d[0] === s.kpi);
@@ -269,13 +271,15 @@ Object.assign(App, {
   },
 
   // ========== 新建入库单据：独立页面，不再使用首屏弹窗 ==========
-  async newInboundDoc() {
+  // presetType: 传入「采购退货」时由「退货与退库」模块复用本页创建退货单
+  async newInboundDoc(presetType) {
     const now = new Date();
     const date = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+    const preset = presetType === '采购退货' ? '采购退货' : '';
     this._ibPreloadLines = null;
     let docNo = '';
     try {
-      const next = await this.api('/api/inbound-docs/next-no?date=' + date + '&txnType=采购入库');
+      const next = await this.api('/api/inbound-docs/next-no?date=' + date + '&txnType=' + encodeURIComponent(preset || '采购入库'));
       docNo = next.doc_no || '';
     } catch (e) { /* 单号预览失败不阻断创建 */ }
 
@@ -287,8 +291,13 @@ Object.assign(App, {
     const supOptions = suppliers.map(s => `<option value="${this.ibEsc(s.name)}"></option>`).join('');
     const poOptions = pendingOrders.map(o => `<option value="${o.po_no}">${o.po_no}${o.supplier ? ' · ' + o.supplier : ''}</option>`).join('');
     const contractOptions = contractNos.map(c => `<option value="${c}">${c}</option>`).join('');
+    // 采购退货已迁出到独立模块，入库页不再提供该类型；仅当外部显式预设时才出现
+    const typeOptions = preset
+      ? `<option value="采购退货">${this.t('in_return')}</option>`
+      : `<option value="采购入库">${this.t('in_purchase')}</option><option value="零星入库">${this.t('in_other')}</option>`;
+    const pageTitle = preset ? this.t('ret_new_purchase') : this.t('ibd_add');
 
-    this.setMain(this.pageWrap('🆕 ' + this.t('ibd_add'), this.t('ibd_create_hint'), '',
+    this.setMain(this.pageWrap('🆕 ' + pageTitle, this.t('ibd_create_hint'), '',
       `<div class="data-page" id="ib-new-root">
         <div class="pu-edit-bar">
           <span class="action-link" onclick="App.backToInboundList()">← ${this.t('ibd_back_list')}</span>
@@ -299,7 +308,7 @@ Object.assign(App, {
           <div class="form-grid" style="max-width:none">
             <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly></div>
             <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_f_date" type="date" value="${date}"></div>
-            <div class="form-group"><label>${this.t('ibd_type')} *</label><select id="ib_f_txn_type" onchange="App.ibOnTypeChange()"><option value="采购入库">${this.t('in_purchase')}</option><option value="采购退货">${this.t('in_return')}</option><option value="零星入库">${this.t('in_other')}</option></select></div>
+            <div class="form-group"><label>${this.t('ibd_type')} *</label><select id="ib_f_txn_type" onchange="App.ibOnTypeChange()">${typeOptions}</select></div>
             <div class="form-group"><label id="ib_f_supplier_label">${this.t('ibd_supplier')} *</label><input id="ib_f_supplier" list="ib_sup_list" autocomplete="off"><datalist id="ib_sup_list">${supOptions}</datalist><div class="form-error" id="ib_f_supplier_error"></div></div>
             <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
             <div class="form-group" id="ib_f_po_wrap"><label>${this.t('in_po_no')}</label><select id="ib_f_po_no" onchange="App.ibLoadPendingLines('po')"><option value="">${this.t('none')}</option>${poOptions || `<option value="">${this.t('in_no_pending_orders')}</option>`}</select></div>
@@ -315,12 +324,16 @@ Object.assign(App, {
       </div>`));
     this.injectPurchaseStyles();
     this.injectInboundStyles();
+    this.ibOnTypeChange();
   },
 
   // 入库类型切换：采购入库显示供应商/采购单/合同；零星入库只保留可空的「来源单位」
+  // 采购退货不需要采购单/合同预载，避免误带「未到货明细」
   ibOnTypeChange() {
     const type = document.getElementById('ib_f_txn_type')?.value || '采购入库';
     const isOther = type === '零星入库';
+    const isReturn = type === '采购退货';
+    const hidePo = isOther || isReturn;
     const label = document.getElementById('ib_f_supplier_label');
     const input = document.getElementById('ib_f_supplier');
     const poWrap = document.getElementById('ib_f_po_wrap');
@@ -333,9 +346,9 @@ Object.assign(App, {
       input.placeholder = isOther ? this.t('ibd_source_unit_ph') : '';
       this.clearFieldError('ib_f_supplier');
     }
-    if (poWrap) poWrap.style.display = isOther ? 'none' : '';
-    if (ctWrap) ctWrap.style.display = isOther ? 'none' : '';
-    if (isOther) {
+    if (poWrap) poWrap.style.display = hidePo ? 'none' : '';
+    if (ctWrap) ctWrap.style.display = hidePo ? 'none' : '';
+    if (hidePo) {
       if (poEl) poEl.value = '';
       if (ctEl) ctEl.value = '';
       this._ibPreloadLines = null;
