@@ -5,8 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const { DB_PATH, INITIAL_ADMIN_USERNAME } = require('./config');
+const { DB_PATH, INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('./config');
 const { localOffsetMinutes } = require('./services/time');
 
 // 自动初始化数据库
@@ -359,18 +358,12 @@ function migrateDB() {
     } catch(e) { /* 字段已存在 */ }
   } catch(e) { console.log('迁移 采购单状态:', e.message); }
 
-  // 初始管理员账号：用户名/密码取自环境变量；未配置密码时随机生成并只打印一次
+  // 初始管理员账号：用户名/密码取自配置（环境变量可覆盖），未配置时使用默认值 admin / admin123
   const adminCount = db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c;
   if (adminCount === 0) {
-    const initialPassword = String(process.env.INITIAL_ADMIN_PASSWORD || '').trim() ||
-      crypto.randomBytes(12).toString('base64url');
     db.prepare(`INSERT INTO users (username, password_hash, name, role, must_change_pwd)
-                VALUES (?,?,?,?,1)`).run(INITIAL_ADMIN_USERNAME, bcrypt.hashSync(initialPassword, 10), '系统管理员', 'admin');
-    if (String(process.env.INITIAL_ADMIN_PASSWORD || '').trim()) {
-      console.log(`已创建初始管理员账号: ${INITIAL_ADMIN_USERNAME}（密码取自环境变量 INITIAL_ADMIN_PASSWORD，首次登录需修改密码）`);
-    } else {
-      console.log(`已创建初始管理员账号: ${INITIAL_ADMIN_USERNAME} / ${initialPassword}（随机生成，仅本次显示，请立即记录；首次登录需修改密码）`);
-    }
+                VALUES (?,?,?,?,1)`).run(INITIAL_ADMIN_USERNAME, bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, 10), '系统管理员', 'admin');
+    console.log(`已创建初始管理员账号: ${INITIAL_ADMIN_USERNAME}（首次登录需修改密码；密码默认 admin123，可用环境变量 INITIAL_ADMIN_PASSWORD 覆盖）`);
   }
 
   // ==================== 系统审计日志（2026-11 新增） ====================

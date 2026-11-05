@@ -40,4 +40,5 @@ module.exports = {
   JWT_SECRET,
   JWT_EXPIRES: '7d',
   INITIAL_ADMIN_USERNAME: String(process.env.INITIAL_ADMIN_USERNAME || '').trim() || 'admin',
+  INITIAL_ADMIN_PASSWORD: String(process.env.INITIAL_ADMIN_PASSWORD || '').trim() || 'admin123',
 };

@@ -13,9 +13,11 @@ node server.js             # 启动服务
 
 `JWT_SECRET` 必填且不少于 32 个字符，缺失或过短时服务会直接报错并提示如何生成，不会用默认密钥兜底。
 
-首次登录的管理员账号由环境变量 `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` 决定；未配置密码时服务会随机生成并只在启动日志中打印一次（首次登录强制修改密码）。
+首次登录的管理员默认账号为 `admin` / `admin123`（首次登录强制修改密码）；设置环境变量 `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` 可覆盖默认值。
 
-重新初始化数据库（会清空所有数据）：
+首次启动时，如果 `DB_PATH` 指向的数据库文件不存在，服务会自动执行初始化建库，无需手动干预。
+
+若要手动创建或重新初始化数据库（**会清空所有数据**）：
 
 ```bash
 node init-db.js
@@ -49,7 +51,7 @@ DB_PATH=C:\Users\YourName\AppData\Local\warehouse_cn\inventory.db
 |---|---|---|
 | `JWT_SECRET` | 是 | JWT 签名密钥，至少 32 字符；缺失或过短时启动直接报错退出 |
 | `INITIAL_ADMIN_USERNAME` | 否 | 首次初始化数据库时创建的管理员用户名，默认 `admin` |
-| `INITIAL_ADMIN_PASSWORD` | 否 | 初始管理员密码；未设置时随机生成并在启动日志打印一次 |
+| `INITIAL_ADMIN_PASSWORD` | 否 | 初始管理员密码，默认 `admin123`；首次登录强制修改密码（仅演示用途，生产部署请用环境变量覆盖） |
 | `HOST` / `PORT` | 否 | 监听地址 / 端口，默认 `0.0.0.0:4000` |
 | `DB_PATH` | 否 | 数据库文件绝对路径，默认项目根目录的 `inventory.db`；项目在 USB 外接盘 / 网络盘时建议指向本机磁盘 |
 
