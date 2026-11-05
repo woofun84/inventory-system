@@ -12,6 +12,7 @@ const {
 } = require('../services/stock');
 const docno = require('../services/docno');
 const time = require('../services/time');
+const sign = require('../services/sign');
 
 const router = express.Router();
 
@@ -114,11 +115,12 @@ router.post('/api/inbound', requirePerm('inbound', 'create'), (req, res) => {
     const stmt = db.prepare(`INSERT INTO inbound (date,grn_no,code,qty,price,supplier,handler,remarks,po_no,contract_no,txn_type,order_line_id)
       VALUES (@date,@grn_no,@code,@qty,@price,@supplier,@handler,@remarks,@po_no,@contract_no,@txn_type,@order_line_id)`);
     // 先规整出「有效行」：date 缺失时回退到顶层 body.date（单条提交的形态）
+    // 只按物料筛选，数量缺失交给 sign.normalizeQty 显式报错，避免 0/空行被静默丢弃
     const items = raw
-      .filter(r => r && r.code && r.qty)
+      .filter(r => r && r.code)
       .map(r => ({ ...r, date: r.date || body.date || '' }))
       .filter(r => r.date);
-    if (items.length === 0) return res.status(400).json({ error: '没有有效的入库行（缺少物料、数量或日期）' });
+    if (items.length === 0) return res.status(400).json({ error: '没有有效的入库行（缺少物料或日期）' });
 
     // 统一规范化符号
     const firstItem = items[0];
@@ -127,13 +129,8 @@ router.post('/api/inbound', requirePerm('inbound', 'create'), (req, res) => {
     items.forEach(r => {
       if (!r.grn_no) r.grn_no = sharedGrnNo;
       if (!r.txn_type) r.txn_type = '采购入库';
-      if (r.txn_type === '采购退货') {
-        r.qty = -Math.abs(Number(r.qty));
-        r.price = -Math.abs(Number(r.price || 0));
-      } else {
-        r.qty = Math.abs(Number(r.qty));
-        r.price = Math.abs(Number(r.price || 0));
-      }
+      r.qty = sign.normalizeQty(r.txn_type, r.qty);
+      r.price = sign.normalizePrice(r.price);
       if (!r.supplier) r.supplier = '';
       if (!r.handler) r.handler = '';
       if (!r.remarks) r.remarks = '';
@@ -178,27 +175,28 @@ router.put('/api/inbound/:id', requirePerm('inbound', 'edit'), (req, res) => {
     // 读取原记录：缺失的可选字段回退到原值，避免 SQL 参数缺失导致整个编辑失败
     const old = db.prepare('SELECT * FROM inbound WHERE id=?').get(req.params.id);
     if (!old) return res.status(404).json({ error: '入库记录不存在' });
+    const oldType = old.txn_type || '采购入库';
+    const txnType = body.txn_type || oldType;
+    // 数量/单价缺失时回退原值；若单据类型变更，则按新类型重新推导符号
+    const qty = body.qty !== undefined && body.qty !== ''
+      ? sign.normalizeQty(txnType, body.qty)
+      : (txnType === oldType ? old.qty : sign.normalizeQty(txnType, sign.absQty(old.qty)));
+    const price = body.price !== undefined && body.price !== ''
+      ? sign.normalizePrice(body.price)
+      : sign.storedAbs(old.price);
     const r = {
       date: body.date || old.date,
       grn_no: body.grn_no !== undefined ? body.grn_no : old.grn_no,
       code: body.code || old.code,
-      qty: body.qty !== undefined && body.qty !== '' ? Number(body.qty) : old.qty,
-      price: body.price !== undefined && body.price !== '' ? Number(body.price) : old.price,
+      qty,
+      price,
       supplier: body.supplier !== undefined ? body.supplier : old.supplier,
       handler: body.handler !== undefined ? body.handler : old.handler,
       remarks: body.remarks !== undefined ? body.remarks : old.remarks,
       po_no: body.po_no !== undefined ? body.po_no : old.po_no,
       contract_no: body.contract_no !== undefined ? body.contract_no : old.contract_no,
-      txn_type: body.txn_type || old.txn_type || '采购入库'
+      txn_type: txnType
     };
-    // 统一符号
-    if (r.txn_type === '采购退货') {
-      r.qty = -Math.abs(Number(r.qty));
-      r.price = -Math.abs(Number(r.price || 0));
-    } else {
-      r.qty = Math.abs(Number(r.qty));
-      r.price = Math.abs(Number(r.price || 0));
-    }
 
     if (!forceAllow) {
       validateInboundReturnStock([r], req.params.id);
@@ -304,10 +302,9 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
       const hdrPoNo = body.po_no || '';
       const hdrContractNo = body.contract_no || '';
       body.lines.forEach(l => {
-        if (!l.code || !l.qty) return;
-        let qty = Number(l.qty), price = Number(l.price || 0);
-        if (txnType === '采购退货') { qty = -Math.abs(qty); price = -Math.abs(price); }
-        else { qty = Math.abs(qty); price = Math.abs(price); }
+        if (!l.code) return;
+        const qty = sign.normalizeQty(txnType, l.qty);
+        const price = sign.normalizePrice(l.price);
         // 明细行可覆盖单头：按采购单载入时各行合同可能不同，按合同载入时各行采购单可能不同
         const poNo = l.po_no !== undefined ? String(l.po_no || '') : hdrPoNo;
         const contractNo = l.contract_no !== undefined ? String(l.contract_no || '') : hdrContractNo;
@@ -389,10 +386,9 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
       // 明细行供应商用本次提交值，避免先写旧单据头导致列表/明细显示不同步
       const effSupplier = req.body.supplier !== undefined ? req.body.supplier : doc.supplier;
       lines.forEach(l => {
-        if (!l.code || !l.qty) return;
-        let qty = Number(l.qty), price = Number(l.price || 0);
-        if (doc.txn_type === '采购退货') { qty = -Math.abs(qty); price = -Math.abs(price); }
-        else { qty = Math.abs(qty); price = Math.abs(price); }
+        if (!l.code) return;
+        const qty = sign.normalizeQty(doc.txn_type, l.qty);
+        const price = sign.normalizePrice(l.price);
         // 明细行可覆盖单头：按采购单载入时各行合同可能不同，按合同载入时各行采购单可能不同
         const poNo = l.po_no !== undefined ? String(l.po_no || '') : effPoNo;
         const contractNo = l.contract_no !== undefined ? String(l.contract_no || '') : effContractNo;
@@ -549,7 +545,7 @@ function updateOriginalDocStatus(originalDocNo) {
   // 检查每行是否已全部冲销（累计冲销量 >= 原入库量）
   const allReversed = origLines.every(l => {
     const revQty = getReversedQty(l.id);
-    return revQty >= Math.abs(Number(l.qty));
+    return revQty >= sign.absQty(l.qty);
   });
 
   if (allReversed) {
@@ -569,17 +565,17 @@ router.get('/api/inbound-docs/:docNo/reversal-info', requirePerm('inbound', 'vie
   if (doc.status !== 'posted' && doc.status !== 'partially_reversed')
     return res.status(400).json({ error: '只有已过账或部分冲销的单据可以冲销', code: 'DOC_NOT_REVERSIBLE' });
 
-  // 原单明细行（只查已过账的正数行，负数行是退货行不可冲销）
+  // 原单明细行（正数入库行和采购退货负数行都可冲销，冲销方向由原行符号决定）
   const lines = db.prepare(`
     SELECT i.id, i.code, i.qty, i.price, i.remarks,
            m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM inbound i LEFT JOIN materials m ON i.code = m.code
-    WHERE i.doc_no=? AND i.status='posted' AND i.qty > 0
+    WHERE i.doc_no=? AND i.status='posted'
     ORDER BY i.id ASC
   `).all(docNo);
 
   const lineInfos = lines.map(l => {
-    const origQty = Math.abs(Number(l.qty));
+    const origQty = sign.absQty(l.qty);
     const reversedQty = getReversedQty(l.id);
     const remaining = origQty - reversedQty;
     return {
@@ -651,26 +647,27 @@ router.post('/api/inbound-docs/:docNo/reversal', requirePerm('inbound', 'edit'),
       const lineDescs = [];
       reqLines.forEach(rl => {
         const lineId = parseInt(rl.line_id, 10);
-        const revQty = Math.abs(Number(rl.qty));
-        if (!lineId || !revQty || revQty <= 0) return;
+        if (!lineId) throw new Error('冲销明细缺少原明细行 ID');
 
         const origLine = db.prepare("SELECT * FROM inbound WHERE id=?").get(lineId);
         if (!origLine || origLine.doc_no !== originalDocNo) throw new Error(`明细行 ${lineId} 不属于原单 ${originalDocNo}`);
-        if (origLine.qty <= 0) throw new Error(`明细行 ${lineId} 不是正数入库行，不可冲销`);
+
+        // 符号由原行方向决定：正数原行 → 冲销存负；负数原行（采购退货）→ 冲销存正
+        const storedQty = sign.normalizeQty('入库冲销', rl.qty, { originalQty: origLine.qty });
+        const revQty = sign.absQty(storedQty);
 
         // 累计冲销校验
         const alreadyReversed = getReversedQty(lineId);
-        const origQty = Math.abs(Number(origLine.qty));
+        const origQty = sign.absQty(origLine.qty);
         if (alreadyReversed + revQty > origQty + 0.0001) {
           throw new Error(`物料 ${origLine.code}：累计冲销量 ${alreadyReversed + revQty} 超过原入库量 ${origQty}（本次最多可冲 ${origQty - alreadyReversed}）`);
         }
 
-        // 冲销行 qty 为负数
-        const negQty = -revQty;
-        const negPrice = -Math.abs(Number(origLine.price || 0));
+        // 单价永远取正，金额符号由数量符号决定
+        const price = sign.storedAbs(origLine.price);
         stmt.run({
           date, grn_no: revDocNo, doc_no: revDocNo,
-          code: origLine.code, qty: negQty, price: negPrice,
+          code: origLine.code, qty: storedQty, price,
           supplier: doc.supplier || '', handler: doc.handler || '',
           remarks: rl.remarks || ('冲销物料 ' + origLine.code),
           po_no: doc.po_no || '', contract_no: doc.contract_no || '',
@@ -713,12 +710,14 @@ router.post('/api/inbound-docs/:docNo/reversal-confirm', requirePerm('inbound', 
   const forceAllow = req.body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   const operator = req.user?.name || req.user?.username || '';
 
-  // 库存校验：冲销量（绝对值）不能超过当前可用库存
-  // 按物料汇总冲销量
+  // 库存校验：只有「负数量的冲销行」才会让库存减少，需要校验可用库存；
+  // 对采购退货（负数原行）的冲销会存正数，属于回补库存，无需校验。
   const demandMap = new Map();
   lines.forEach(l => {
-    const absQty = Math.abs(Number(l.qty));
-    demandMap.set(l.code, (demandMap.get(l.code) || 0) + absQty);
+    const qty = Number(l.qty);
+    if (qty >= 0) return;
+    const need = sign.absQty(qty);
+    demandMap.set(l.code, (demandMap.get(l.code) || 0) + need);
   });
 
   const stockErrors = [];

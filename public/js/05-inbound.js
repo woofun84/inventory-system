@@ -197,7 +197,7 @@ Object.assign(App, {
       ['txn_type', this.t('ibd_type'), r => this.ibTypeBadge(r.txn_type)],
       ['supplier', this.t('ibd_supplier'), r => this.ibEsc(r.supplier || '')],
       ['line_count', this.t('ibd_lines'), r => r.line_count || 0, true],
-      ['total_qty', this.t('ibd_qty'), r => this.fmtQty(r.total_qty), true],
+      ['total_qty', this.t('ibd_qty'), r => this.qtyCell(r.total_qty), true],
       ['total_amount', this.t('ibd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('ibd_handler'), r => this.ibEsc(r.handler || '')],
       ['status', this.t('ibd_status'), r => this.ibdStatusBadge(r.status)],
@@ -628,11 +628,11 @@ Object.assign(App, {
     html += `<ul class="pu-lines">` + f.slice(0, shown).map(l => {
       const ex = s.ex.has(String(l.id));
       const rq = revQtyOf(l);
-      const remain = Number(l.qty || 0) - rq;
+      const remain = this.qtyAbs(l.qty) - rq;
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" data-ib="ex" data-id="${l.id}" aria-expanded="${ex}">
           <span class="pu-line-n"><strong>${this.ibEsc(l.code)}</strong> ${this.ibEsc(l.material_name || '')} <span class="pu-mu">${this.ibEsc(l.material_spec || '')}</span></span>
-          <span class="pu-line-q">${this.fmtQty(l.qty)}${this.ibEsc(l.material_unit || '')}</span>
+          <span class="pu-line-q">${this.qtyCell(l.qty)}${this.ibEsc(l.material_unit || '')}</span>
           ${rq > 0 ? `<span class="badge badge-danger">${this.t('ibd_rev_reversed')} ${this.fmtQty(rq)}</span>` : ''}
         </button>
         ${ex ? `<div class="pu-line-d">
@@ -658,9 +658,9 @@ Object.assign(App, {
       ['material_brand', this.t('mat_brand'), r => this.ibEsc(r.material_brand || '')],
       ['material_unit', this.t('mat_unit'), r => this.ibEsc(r.material_unit || '')],
       ['contract_no', this.t('in_contract'), r => this.ibEsc(r.contract_no || d.contract_no || '')],
-      ['qty', this.t('in_qty'), r => `<span${Number(r.qty) < 0 ? ' style="color:var(--danger)"' : ''}>${this.fmtQty(r.qty)}</span>`, true],
+      ['qty', this.t('in_qty'), r => this.qtyCell(r.qty), true],
       ['reversed_qty', this.t('ibd_rev_reversed'), r => this.fmtQty(this._calcLineReversedQty(r.id)), true, showRevCols],
-      ['remaining', this.t('ibd_rev_remaining'), r => this.fmtQty(Number(r.qty || 0) - Number(this._calcLineReversedQty(r.id) || 0)), true, showRevCols],
+      ['remaining', this.t('ibd_rev_remaining'), r => this.fmtQty(this.qtyAbs(r.qty) - Number(this._calcLineReversedQty(r.id) || 0)), true, showRevCols],
       ['price', this.t('in_price'), r => this.fmtMoney(r.price), true, vp],
       ['amount', this.t('in_total_amount'), r => this.fmtMoney(r.amount), true, vp],
       ['remarks', this.t('in_remarks'), r => this.ibEsc(r.remarks || '')],
@@ -679,11 +679,11 @@ Object.assign(App, {
     return `<ul class="pu-items">` + revs.map(r => {
       const isOrig = r.type === 'original';
       const label = isOrig ? `${this.t('ibd_rev_original')}: ${r.doc_no}` : `${this.t('ibd_rev_doc')}: ${r.doc_no}`;
-      const sub = isOrig ? '' : [this.fmtDate(r.date), `${this.t('pu_line_count')} ${r.line_count || 0}`, `${this.t('ibd_qty')} ${r.total_qty || 0}`].filter(Boolean).join(' · ');
+      const sub = isOrig ? '' : [this.fmtDate(r.date), `${this.t('pu_line_count')} ${r.line_count || 0}`, `${this.t('ibd_qty')} ${this.qtyCell(r.total_qty)}`].filter(Boolean).join(' · ');
       return `<li class="pu-item"><div class="pu-item-top">
         <div>
           <button type="button" class="pu-lk" data-ib="open" data-id="${this.ibEsc(r.doc_no)}">${this.ibEsc(label)}</button>
-          ${sub ? `<div class="pu-log-meta">${this.ibEsc(sub)}</div>` : ''}
+          ${sub ? `<div class="pu-log-meta">${sub}</div>` : ''}
         </div>
         ${isOrig ? '' : this.ibdStatusBadge(r.status)}
       </div></li>`;
@@ -843,7 +843,7 @@ Object.assign(App, {
     ];
     if (showRevCols) {
       cols.push({ label: this.t('ibd_rev_reversed'), align: 'right', value: r => this.fmtQty(this._calcLineReversedQty(r.id)) });
-      cols.push({ label: this.t('ibd_rev_remaining'), align: 'right', value: r => this.fmtQty(Number(r.qty || 0) - Number(this._calcLineReversedQty(r.id) || 0)) });
+      cols.push({ label: this.t('ibd_rev_remaining'), align: 'right', value: r => this.fmtQty(this.qtyAbs(r.qty) - Number(this._calcLineReversedQty(r.id) || 0)) });
     }
     if (vp) {
       cols.push({ label: this.t('in_price'), align: 'right', value: r => this.fmtMoney(r.price) });
@@ -954,9 +954,9 @@ Object.assign(App, {
     const rowsHtml = lines.map((l, i) => {
       const checked = 'checked';
       const maxQty = l.remaining;
-      const qtyInput = `<input type="number" step="0.01" min="0" max="${maxQty}" value="${maxQty}"
+      const qtyInput = `<input type="number" step="0.01" min="0.01" max="${maxQty}" value="${maxQty}"
         data-idx="${i}" class="ib-rev-qty"
-        oninput="App.onRevQtyChange(${i}, this.value)">`;
+        oninput="App.onRevQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
       const avail = this._inboundStockMap?.[l.code];
       const availText = avail === undefined || avail === null ? '-' : avail;
       const availColor = avail === undefined || avail === null ? 'var(--text-muted)'
@@ -968,7 +968,7 @@ Object.assign(App, {
         <td>${l.material_spec || ''}</td>
         <td>${l.material_brand || ''}</td>
         <td>${l.material_unit || ''}</td>
-        <td class="text-right">${l.qty}</td>
+        <td class="text-right">${this.qtyCell(l.qty)}</td>
         <td class="text-right" style="color:var(--danger)">${l.reversed_qty > 0 ? '-' + l.reversed_qty : 0}</td>
         <td class="text-right" style="color:var(--success);font-weight:600">${l.remaining}</td>
         <td class="text-right" style="font-size:12px;color:${availColor}">${availText}</td>
@@ -990,7 +990,7 @@ Object.assign(App, {
             <td>${this.fmtDate(r.date)}</td>
             <td>${this.ibdStatusBadge(r.status)}</td>
             <td class="text-right">${r.line_count || 0}</td>
-            <td class="text-right">${r.total_qty || 0}</td>
+            <td class="text-right">${this.qtyCell(r.total_qty)}</td>
             <td>${r.confirmed_by || '-'}</td>
             <td><span class="action-link" onclick="App.openInboundDoc('${r.doc_no}')">${this.t('ibd_view_detail')}</span></td>
           </tr>`).join('')}
@@ -1042,6 +1042,12 @@ Object.assign(App, {
     this.refreshRevSummary();
   },
 
+  // 冲销数量输入：先去负号（含粘贴），再按上限收敛
+  onRevQtyInput(idx, el) {
+    const clean = this.qtyInput(el);
+    this.onRevQtyChange(idx, clean);
+  },
+
   // 冲销数量变化
   onRevQtyChange(idx, val) {
     const lines = this._ibRevInfo?.lines || [];
@@ -1074,7 +1080,7 @@ Object.assign(App, {
     });
     const summary = document.getElementById('ib-rev-summary');
     if (summary) {
-      summary.innerHTML = `<span>${this.t('ibd_rev_selected', { n: checkedCount })}</span><span>${this.t('ibd_rev_total_qty')}: <b style="color:var(--danger)">-${totalRevQty}</b></span>`;
+      summary.innerHTML = `<span>${this.t('ibd_rev_selected', { n: checkedCount })}</span><span>${this.t('ibd_rev_total_qty')}: <b style="color:var(--danger)">${totalRevQty}</b></span>`;
     }
   },
 
@@ -1082,16 +1088,20 @@ Object.assign(App, {
   async createReversalDoc(originalDocNo) {
     const lines = this._ibRevInfo?.lines || [];
     const revLines = [];
+    let hasInvalidQty = false;
     lines.forEach((l, i) => {
       const checkbox = document.querySelector(`.ib-rev-check[data-idx="${i}"]`);
       if (checkbox && checkbox.checked) {
         const qty = l._revQty !== undefined ? l._revQty : l.remaining;
-        if (qty > 0) {
-          revLines.push({ line_id: l.id, qty: qty });
-        }
+        if (this.qtyIsValid(qty)) revLines.push({ line_id: l.id, qty: qty });
+        else hasInvalidQty = true;
       }
     });
 
+    if (hasInvalidQty) {
+      this.toast(this.t('rev_qty_required'), 'error');
+      return;
+    }
     if (revLines.length === 0) {
       this.toast(this.t('ibd_rev_no_selection'), 'error');
       return;
@@ -1328,7 +1338,7 @@ Object.assign(App, {
         }
         return `<tr>
           <td style="min-width:220px"><select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select></td>
-          <td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditSet(${i},'qty',this.value)"></td>
+          <td style="min-width:100px"><input type="number" step="0.01" min="0.01" value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
           ${vp ? `<td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.price === null || l.price === undefined ? '' : l.price}" oninput="App.ibEditSet(${i},'price',this.value)"></td>
           <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
           <td style="min-width:120px;font-size:12px">${contract}</td>
@@ -1417,6 +1427,12 @@ Object.assign(App, {
     });
   },
 
+  // 数量输入：去掉负号（含粘贴）后写回明细
+  ibEditQtyInput(idx, el) {
+    const clean = this.qtyInput(el);
+    this.ibEditSet(idx, 'qty', clean);
+  },
+
   // 明细行字段变更（草稿态）：物料/数量/单价/备注
   ibEditSet(idx, field, val) {
     const l = (this._ibEditLines || [])[idx];
@@ -1460,6 +1476,20 @@ Object.assign(App, {
     this.renderInboundEditTable();
   },
 
+  // 明细行校验：数量必须为正数、单价不能为负；0/非法值显式报错，不再静默丢行
+  ibValidateEditLines() {
+    const lines = this._ibEditLines || [];
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      // 完全空行（点了添加但未填任何内容）允许忽略
+      if (!l.code && !l.qty && !l.price && !l.remarks) continue;
+      if (!l.code) return { ok: false, message: this.t('line_material_required', { n: i + 1 }) };
+      if (!this.qtyIsValid(l.qty)) return { ok: false, message: this.t('qty_line_invalid', { n: i + 1 }) };
+      if (!this.priceIsValid(l.price)) return { ok: false, message: this.t('price_line_invalid', { n: i + 1 }) };
+    }
+    return { ok: true };
+  },
+
   // ========== 保存草稿 ==========
   // 明细行提交体：带上行级合同号/采购单号（按采购单或合同载入的行可能各不相同），
   // 为空则交由后端回退到单据头字段。
@@ -1474,7 +1504,13 @@ Object.assign(App, {
 
   async saveInboundDraft() {
     const docNo = this._ibDocNo;
-    const lines = (this._ibEditLines || []).filter(l => l.code && l.qty > 0);
+
+    const check = this.ibValidateEditLines();
+    if (!check.ok) {
+      this.toast(check.message, 'error');
+      return;
+    }
+    const lines = (this._ibEditLines || []).filter(l => l.code);
 
     // 草稿允许暂时没有明细；只有确认过账时才强制要求至少一行有效物料。
     const body = {
@@ -1501,7 +1537,13 @@ Object.assign(App, {
   confirmInboundDocFromEdit() {
     const docNo = this._ibDocNo;
     const d = this._ibDetail;
-    const lines = (this._ibEditLines || []).filter(l => l.code && l.qty > 0);
+
+    const check = this.ibValidateEditLines();
+    if (!check.ok) {
+      this.toast(check.message, 'error');
+      return;
+    }
+    const lines = (this._ibEditLines || []).filter(l => l.code);
     const s = d?.summary || {};
 
     if (lines.length === 0) {
@@ -1520,7 +1562,7 @@ Object.assign(App, {
     }
 
     this.confirmDialog(this.t('ibd_confirm'),
-      `${this.t('ibd_confirm_hint')}\n\n${this.t('ibd_line_count', { n: lines.length })} | ${this.t('in_total_qty')}: ${lines.reduce((s, l) => s + (Number(l.qty) || 0), 0)}`,
+      `${this.t('ibd_confirm_hint')}\n\n${this.t('ibd_line_count', { n: lines.length })} | ${this.t('in_total_qty')}: ${lines.reduce((s, l) => s + Math.abs(Number(l.qty) || 0), 0)}`,
       async () => {
         // 先保存明细，再确认
         const body = {
@@ -1570,7 +1612,7 @@ Object.assign(App, {
     }
 
     this.confirmDialog(this.t('ibd_confirm'),
-      `${this.t('ibd_confirm_hint')}\n\n${this.t('ibd_line_count', { n: lines.length })} | ${this.t('in_total_qty')}: ${lines.reduce((s, l) => s + Number(l.qty || 0), 0)}`,
+      `${this.t('ibd_confirm_hint')}\n\n${this.t('ibd_line_count', { n: lines.length })} | ${this.t('in_total_qty')}: ${lines.reduce((s, l) => s + Math.abs(Number(l.qty) || 0), 0)}`,
       async () => {
         try {
           const r = await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});

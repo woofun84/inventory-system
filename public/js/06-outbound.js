@@ -120,7 +120,7 @@ Object.assign(App, {
           <td>${txnBadge}</td>
           <td>${r.destination || ''}</td>
           <td class="text-right">${r.line_count || 0}</td>
-          <td class="text-right">${r.total_qty || 0}</td>
+          <td class="text-right">${this.qtyCell(r.total_qty)}</td>
           ${vp ? `<td class="text-right">${this.fmtMoney(r.total_amount)}</td>` : ''}
           <td>${r.handler || ''}</td>
           <td>${statusBadge}</td>
@@ -382,7 +382,7 @@ Object.assign(App, {
             return `<span class="action-link" onclick="App.openOutboundDoc('${r.doc_no}')">← ${this.t('obd_rev_original')}: ${r.doc_no}</span>`;
           } else {
             const revStatus = this.obdStatusBadge(r.status);
-            return `<span class="action-link" onclick="App.openOutboundDoc('${r.doc_no}')">${this.t('obd_rev_doc')}: ${r.doc_no}</span> <small>(${r.line_count||0}行 / ${r.total_qty||0}) ${revStatus}</small>`;
+            return `<span class="action-link" onclick="App.openOutboundDoc('${r.doc_no}')">${this.t('obd_rev_doc')}: ${r.doc_no}</span> <small>(${r.line_count||0}行 / ${this.qtyCell(r.total_qty)}) ${revStatus}</small>`;
           }
         }).join('<br>');
         items.push(`<span style="grid-column:1/-1">${revLinks}</span>`);
@@ -424,11 +424,10 @@ Object.assign(App, {
     } else {
       tbody = pageData.map(l => {
         const qty = Number(l.qty) || 0;
-        const qtyColor = qty < 0 ? 'var(--danger)' : 'var(--text)';
         let revCell = '<td></td>', remCell = '<td></td>';
-        if (showRevCols && l.reversal_of === '' && qty > 0) {
+        if (showRevCols && l.reversal_of === '' && qty !== 0) {
           const revQty = this._calcOutboundLineReversedQty(l.id);
-          const remaining = qty - revQty;
+          const remaining = Math.abs(qty) - revQty;
           revCell = `<td class="text-right" style="color:${revQty > 0 ? 'var(--danger)' : 'var(--text-muted)'}">${revQty > 0 ? '-' + revQty : 0}</td>`;
           remCell = `<td class="text-right" style="color:${remaining <= 0 ? 'var(--text-muted)' : 'var(--success)'}">${remaining}</td>`;
         }
@@ -438,7 +437,7 @@ Object.assign(App, {
           <td>${l.material_spec || ''}</td>
           <td>${l.material_brand || ''}</td>
           <td>${l.material_unit || ''}</td>
-          <td class="text-right" style="color:${qtyColor}">${qty}</td>
+          <td class="text-right">${this.qtyCell(qty)}</td>
           ${showRevCols ? revCell : ''}
           ${showRevCols ? remCell : ''}
           ${vp ? `<td class="text-right">${this.fmtMoney(l.cost_price)}</td>` : ''}
@@ -455,7 +454,7 @@ Object.assign(App, {
     if (summary) {
       const parts = [
         `${this.t('obd_line_count', { n: s.line_count || 0 })}`,
-        `${this.t('out_total_qty')}: <b style="color:var(--text)">${s.total_qty || 0}</b>`,
+        `${this.t('out_total_qty')}: <b style="color:var(--text)">${this.qtyCell(s.total_qty)}</b>`,
       ];
       if (vp) parts.push(`${this.t('out_total_amount')}: <b style="color:var(--text)">${cur} ${this.fmtMoney(s.total_amount)}</b>`);
       if (d.remarks) parts.push(`${this.t('obd_remarks')}: <b style="color:var(--text)">${d.remarks}</b>`);
@@ -596,9 +595,9 @@ Object.assign(App, {
     // 冲销明细行表格
     const rowsHtml = lines.map((l, i) => {
       const maxQty = l.remaining;
-      const qtyInput = `<input type="number" step="0.01" min="0" max="${maxQty}" value="${maxQty}" 
+      const qtyInput = `<input type="number" step="0.01" min="0.01" max="${maxQty}" value="${maxQty}" 
         style="width:80px" data-idx="${i}" class="ob-rev-qty"
-        oninput="App.onOutRevQtyChange(${i}, this.value)">`;
+        oninput="App.onOutRevQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
       const avail = this._outboundStockMap?.[l.code];
       const availText = avail === undefined || avail === null ? '-' : avail;
       const availColor = avail === undefined || avail === null ? 'var(--text-muted)'
@@ -610,7 +609,7 @@ Object.assign(App, {
         <td>${l.material_spec || ''}</td>
         <td>${l.material_brand || ''}</td>
         <td>${l.material_unit || ''}</td>
-        <td class="text-right">${l.qty}</td>
+        <td class="text-right">${this.qtyCell(l.qty)}</td>
         <td class="text-right" style="color:var(--danger)">${l.reversed_qty > 0 ? '-' + l.reversed_qty : 0}</td>
         <td class="text-right" style="color:var(--success);font-weight:600">${l.remaining}</td>
         ${vp ? `<td class="text-right">${this.fmtMoney(l.cost_price)}</td>` : ''}
@@ -632,7 +631,7 @@ Object.assign(App, {
             <td>${this.fmtDate(r.date)}</td>
             <td>${this.obdStatusBadge(r.status)}</td>
             <td class="text-right">${r.line_count || 0}</td>
-            <td class="text-right">${r.total_qty || 0}</td>
+            <td class="text-right">${this.qtyCell(r.total_qty)}</td>
             <td>${r.confirmed_by || '-'}</td>
             <td><span class="action-link" onclick="App.openOutboundDoc('${r.doc_no}')">${this.t('obd_view_detail')}</span></td>
           </tr>`).join('')}
@@ -687,6 +686,12 @@ Object.assign(App, {
     this.refreshOutRevSummary();
   },
 
+  // 冲销数量输入：先去负号（含粘贴），再按上限收敛
+  onOutRevQtyInput(idx, el) {
+    const clean = this.qtyInput(el);
+    this.onOutRevQtyChange(idx, clean);
+  },
+
   onOutRevQtyChange(idx, val) {
     const lines = this._obRevInfo?.lines || [];
     if (lines[idx]) {
@@ -716,7 +721,7 @@ Object.assign(App, {
     });
     const summary = document.getElementById('ob-rev-summary');
     if (summary) {
-      summary.innerHTML = `${this.t('obd_rev_selected', { n: checkedCount })} | ${this.t('obd_rev_total_qty')}: <b style="color:var(--danger)">-${totalRevQty}</b>`;
+      summary.innerHTML = `${this.t('obd_rev_selected', { n: checkedCount })} | ${this.t('obd_rev_total_qty')}: <b style="color:var(--danger)">${totalRevQty}</b>`;
     }
   },
 
@@ -724,14 +729,20 @@ Object.assign(App, {
   async createOutboundReversalDoc(originalDocNo) {
     const lines = this._obRevInfo?.lines || [];
     const revLines = [];
+    let hasInvalidQty = false;
     lines.forEach((l, i) => {
       const checkbox = document.querySelector(`.ob-rev-check[data-idx="${i}"]`);
       if (checkbox && checkbox.checked) {
         const qty = l._revQty !== undefined ? l._revQty : l.remaining;
-        if (qty > 0) revLines.push({ line_id: l.id, qty: qty });
+        if (this.qtyIsValid(qty)) revLines.push({ line_id: l.id, qty: qty });
+        else hasInvalidQty = true;
       }
     });
 
+    if (hasInvalidQty) {
+      this.toast(this.t('rev_qty_required'), 'error');
+      return;
+    }
     if (revLines.length === 0) {
       this.toast(this.t('obd_rev_no_selection'), 'error');
       return;
@@ -911,7 +922,7 @@ Object.assign(App, {
 
         if (isDraft) {
           const codeCell = `<span class="action-link" onclick="App.showOutboundMaterialPicker(${i})">${l.code || this.t('please_select')}</span>`;
-          const qtyInput = `<input type="number" step="0.01" class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" style="width:80px" oninput="App.onOutEditQtyChange(${i}, this.value)">`;
+          const qtyInput = `<input type="number" step="0.01" min="0.01" class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" style="width:80px" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
           const remarksInput = `<input class="ob-edit-remarks" data-idx="${i}" value="${l.remarks || ''}" style="width:120px" oninput="App._obEditLines[${i}].remarks=this.value">`;
           const delBtn = `<span class="action-link danger" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</span>`;
           return `<tr>
@@ -964,6 +975,12 @@ Object.assign(App, {
     if (!this._obEditLines) this._obEditLines = [];
     this._obEditLines.push({ code: '', qty: '', cost_price: 0, remarks: '' });
     this.renderOutboundEditTable();
+  },
+
+  // 数量输入：去掉负号（含粘贴）后写回缓存
+  onOutEditQtyInput(idx, el) {
+    const clean = this.qtyInput(el);
+    this.onOutEditQtyChange(idx, clean);
   },
 
   // 数量变化时更新缓存（出库成本由后端过账时计算，前端不录入）
@@ -1078,10 +1095,28 @@ Object.assign(App, {
     this.renderOutboundEditTable();
   },
 
+  // 明细行校验：数量必须为正数；0/非法值显式报错，不再静默丢行
+  obValidateEditLines() {
+    const lines = this._obEditLines || [];
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.code && !l.qty && !l.remarks) continue;
+      if (!l.code) return { ok: false, message: this.t('line_material_required', { n: i + 1 }) };
+      if (!this.qtyIsValid(l.qty)) return { ok: false, message: this.t('qty_line_invalid', { n: i + 1 }) };
+    }
+    return { ok: true };
+  },
+
   // ========== 保存草稿 ==========
   async saveOutboundDraft() {
     const docNo = this._obDocNo;
-    const lines = (this._obEditLines || []).filter(l => l.code && l.qty > 0);
+
+    const check = this.obValidateEditLines();
+    if (!check.ok) {
+      this.toast(check.message, 'error');
+      return;
+    }
+    const lines = (this._obEditLines || []).filter(l => l.code);
 
     const body = {
       lines: lines.map(l => ({
@@ -1108,7 +1143,13 @@ Object.assign(App, {
   // ========== 确认出库（从编辑页面） ==========
   confirmOutboundDocFromEdit() {
     const docNo = this._obDocNo;
-    const lines = (this._obEditLines || []).filter(l => l.code && l.qty > 0);
+
+    const check = this.obValidateEditLines();
+    if (!check.ok) {
+      this.toast(check.message, 'error');
+      return;
+    }
+    const lines = (this._obEditLines || []).filter(l => l.code);
 
     if (lines.length === 0) {
       this.toast(this.t('obd_no_lines'), 'error');

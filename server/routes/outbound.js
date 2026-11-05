@@ -14,6 +14,7 @@ const {
 } = require('../services/stock');
 const docno = require('../services/docno');
 const time = require('../services/time');
+const sign = require('../services/sign');
 
 const router = express.Router();
 
@@ -50,13 +51,14 @@ router.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
       VALUES (@date,@gin_no,@doc_no,@code,@qty,@destination,@receiver,@handler,@remarks,@cost_price,@txn_type,'posted')`);
 
     // 先规整出「有效行」：校验与写入必须基于同一批行
+    // 只按物料筛选，数量缺失交给 sign.normalizeQty 显式报错，避免 0/空行被静默丢弃
     const items = raw
-      .filter(r => r && r.code && r.qty)
+      .filter(r => r && r.code)
       .map(r => ({ ...r, date: r.date || body.date || '' }))
       .filter(r => r.date);
-    if (items.length === 0) return res.status(400).json({ error: '没有有效的出库行（缺少物料、数量或日期）' });
+    if (items.length === 0) return res.status(400).json({ error: '没有有效的出库行（缺少物料或日期）' });
 
-    // 统一规范化：补默认字段 + 退库出库 qty 转负数（校验前完成，保证口径一致）
+    // 统一规范化：补默认字段 + 按类型推导数量符号（校验前完成，保证口径一致）
     const firstItem = items[0];
     if (!firstItem.txn_type) firstItem.txn_type = '正常出库';
     const sharedGinNo = genOutboundDocNo(firstItem.date, firstItem.txn_type);
@@ -64,8 +66,7 @@ router.post('/api/outbound', requirePerm('outbound', 'create'), (req, res) => {
       if (!r.gin_no) r.gin_no = sharedGinNo;
       if (!r.doc_no) r.doc_no = r.gin_no;
       if (!r.txn_type) r.txn_type = '正常出库';
-      if (r.txn_type === '退库出库') r.qty = -Math.abs(Number(r.qty));
-      else r.qty = Math.abs(Number(r.qty)); // 正常出库强制为正，防止脏数据
+      r.qty = sign.normalizeQty(r.txn_type, r.qty);
       if (!r.destination) r.destination = '';
       if (!r.receiver) r.receiver = '';
       if (!r.handler) r.handler = '';
@@ -107,19 +108,22 @@ router.put('/api/outbound/:id', requirePerm('outbound', 'edit'), (req, res) => {
     // 读取原记录：缺失的可选字段回退到原值，避免 SQL 参数缺失导致整个编辑失败
     const old = db.prepare('SELECT * FROM outbound WHERE id=?').get(req.params.id);
     if (!old) return res.status(404).json({ error: '出库记录不存在' });
+    const oldType = old.txn_type || '正常出库';
+    const txnType = body.txn_type || oldType;
+    const qty = body.qty !== undefined && body.qty !== ''
+      ? sign.normalizeQty(txnType, body.qty)
+      : (txnType === oldType ? old.qty : sign.normalizeQty(txnType, sign.absQty(old.qty)));
     const r = {
       date: body.date || old.date,
       gin_no: body.gin_no !== undefined ? body.gin_no : old.gin_no,
       code: body.code || old.code,
-      qty: body.qty !== undefined && body.qty !== '' ? Number(body.qty) : old.qty,
+      qty,
       destination: body.destination !== undefined ? body.destination : old.destination,
       receiver: body.receiver !== undefined ? body.receiver : old.receiver,
       handler: body.handler !== undefined ? body.handler : old.handler,
       remarks: body.remarks !== undefined ? body.remarks : old.remarks,
-      txn_type: body.txn_type || old.txn_type || '正常出库'
+      txn_type: txnType
     };
-    // 退库出库：确保 qty 为负数
-    if (r.txn_type === '退库出库') r.qty = -Math.abs(r.qty);
     // 编辑场景：排除本条记录自身的扣减量后再校验
     if (!forceAllow) {
       validateOutboundStock([r], req.params.id);
@@ -220,10 +224,8 @@ router.post('/api/outbound-docs', requirePerm('outbound', 'create'), (req, res) 
       const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status)
         VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft')`);
       body.lines.forEach(l => {
-        if (!l.code || !l.qty) return;
-        let qty = Number(l.qty);
-        if (txnType === '退库出库') qty = -Math.abs(qty);
-        else qty = Math.abs(qty);
+        if (!l.code) return;
+        const qty = sign.normalizeQty(txnType, l.qty);
         stmt.run({
           date, gin_no: docNo, doc_no: docNo, code: l.code, qty,
           destination: body.destination || '', receiver: body.receiver || '',
@@ -291,10 +293,8 @@ router.put('/api/outbound-docs/:docNo/lines', requirePerm('outbound', 'edit'), (
       const stmt = db.prepare(`INSERT INTO outbound (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status)
         VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, 0, @txn_type, 'draft')`);
       lines.forEach(l => {
-        if (!l.code || !l.qty) return;
-        let qty = Number(l.qty);
-        if (doc.txn_type === '退库出库') qty = -Math.abs(qty);
-        else qty = Math.abs(qty);
+        if (!l.code) return;
+        const qty = sign.normalizeQty(doc.txn_type, l.qty);
         stmt.run({
           date: l.date || doc.date, gin_no: docNo, doc_no: docNo,
           code: l.code, qty,
@@ -426,10 +426,10 @@ function getOutboundReversedQty(lineId) {
 
 // 根据冲销单的过账结果，自动更新原单状态
 function updateOriginalOutboundDocStatus(originalDocNo) {
-  const origLines = db.prepare("SELECT id, qty FROM outbound WHERE doc_no=? AND status='posted' AND qty > 0").all(originalDocNo);
+  const origLines = db.prepare("SELECT id, qty FROM outbound WHERE doc_no=? AND status='posted'").all(originalDocNo);
   if (origLines.length === 0) return;
 
-  const allReversed = origLines.every(l => getOutboundReversedQty(l.id) >= Math.abs(Number(l.qty)));
+  const allReversed = origLines.every(l => getOutboundReversedQty(l.id) >= sign.absQty(l.qty));
 
   if (allReversed) {
     db.prepare("UPDATE outbound_docs SET status='reversed' WHERE doc_no=?").run(originalDocNo);
@@ -448,17 +448,17 @@ router.get('/api/outbound-docs/:docNo/reversal-info', requirePerm('outbound', 'v
   if (doc.status !== 'posted' && doc.status !== 'partially_reversed')
     return res.status(400).json({ error: '只有已过账或部分冲销的单据可以冲销', code: 'DOC_NOT_REVERSIBLE' });
 
-  // 只查已过账的正数行（负数行是退库出库行，不可冲销）
+  // 正数出库行和退库出库负数行都可冲销，冲销方向由原行符号决定
   const lines = db.prepare(`
     SELECT o.id, o.code, o.qty, o.cost_price, o.remarks,
            m.name as material_name, m.spec as material_spec, m.unit as material_unit, m.brand as material_brand
     FROM outbound o LEFT JOIN materials m ON o.code = m.code
-    WHERE o.doc_no=? AND o.status='posted' AND o.qty > 0
+    WHERE o.doc_no=? AND o.status='posted'
     ORDER BY o.id ASC
   `).all(docNo);
 
   const lineInfos = lines.map(l => {
-    const origQty = Math.abs(Number(l.qty));
+    const origQty = sign.absQty(l.qty);
     const reversedQty = getOutboundReversedQty(l.id);
     return {
       id: l.id,
@@ -521,7 +521,7 @@ router.post('/api/outbound-docs/:docNo/reversal', requirePerm('outbound', 'edit'
           reason || ('冲销原单 ' + originalDocNo), operator,
           originalDocNo);
 
-      // 创建冲销明细行（qty 为负数，反向回补库存）
+      // 创建冲销明细行：符号由原行方向决定（正数原行 → 存负回补；退库出库负数原行 → 存正扣减）
       const stmt = db.prepare(`INSERT INTO outbound
         (date, gin_no, doc_no, code, qty, destination, receiver, handler, remarks, cost_price, txn_type, status, reversal_of)
         VALUES (@date, @gin_no, @doc_no, @code, @qty, @destination, @receiver, @handler, @remarks, @cost_price, '出库冲销', 'draft', @reversal_of)`);
@@ -529,25 +529,26 @@ router.post('/api/outbound-docs/:docNo/reversal', requirePerm('outbound', 'edit'
       const lineDescs = [];
       reqLines.forEach(rl => {
         const lineId = parseInt(rl.line_id, 10);
-        const revQty = Math.abs(Number(rl.qty));
-        if (!lineId || !revQty || revQty <= 0) return;
+        if (!lineId) throw new Error('冲销明细缺少原明细行 ID');
 
         const origLine = db.prepare("SELECT * FROM outbound WHERE id=?").get(lineId);
         if (!origLine || origLine.doc_no !== originalDocNo) throw new Error(`明细行 ${lineId} 不属于原单 ${originalDocNo}`);
-        if (origLine.qty <= 0) throw new Error(`明细行 ${lineId} 不是正数出库行，不可冲销`);
+
+        const storedQty = sign.normalizeQty('出库冲销', rl.qty, { originalQty: origLine.qty });
+        const revQty = sign.absQty(storedQty);
 
         const alreadyReversed = getOutboundReversedQty(lineId);
-        const origQty = Math.abs(Number(origLine.qty));
+        const origQty = sign.absQty(origLine.qty);
         if (alreadyReversed + revQty > origQty + 0.0001) {
           throw new Error(`物料 ${origLine.code}：累计冲销量 ${alreadyReversed + revQty} 超过原出库量 ${origQty}（本次最多可冲 ${origQty - alreadyReversed}）`);
         }
 
         stmt.run({
           date, gin_no: revDocNo, doc_no: revDocNo,
-          code: origLine.code, qty: -revQty,
+          code: origLine.code, qty: storedQty,
           destination: doc.destination || '', receiver: doc.receiver || '', handler: doc.handler || '',
           remarks: rl.remarks || ('冲销物料 ' + origLine.code),
-          cost_price: Math.abs(Number(origLine.cost_price || 0)),
+          cost_price: sign.storedAbs(origLine.cost_price),
           reversal_of: String(lineId)
         });
 
@@ -567,7 +568,7 @@ router.post('/api/outbound-docs/:docNo/reversal', requirePerm('outbound', 'edit'
 });
 
 // 确认冲销（冲销单草稿 → posted）
-// 冲销行 qty 为负数，确认后反向回补库存（增加库存），不会造成库存不足
+// 冲销行符号随原行方向：冲销正常出库 → 存负回补库存（不校验）；冲销退库出库 → 存正扣减库存（需校验）
 router.post('/api/outbound-docs/:docNo/reversal-confirm', requirePerm('outbound', 'edit'), (req, res) => {
   const revDocNo = req.params.docNo;
   const revDoc = db.prepare("SELECT * FROM outbound_docs WHERE doc_no=?").get(revDocNo);
@@ -581,29 +582,54 @@ router.post('/api/outbound-docs/:docNo/reversal-confirm', requirePerm('outbound'
   const lines = db.prepare("SELECT * FROM outbound WHERE doc_no=? AND reversal_of != ''").all(revDocNo);
   if (lines.length === 0) return res.status(400).json({ error: '冲销单没有明细行' });
 
+  const forceAllow = req.body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
   const operator = req.user?.name || req.user?.username || '';
+
+  // 只有正数量的冲销行（冲销退库出库）会占用库存，需要校验
+  const demandMap = new Map();
+  lines.forEach(l => {
+    const qty = Number(l.qty);
+    if (qty <= 0) return;
+    demandMap.set(l.code, (demandMap.get(l.code) || 0) + sign.absQty(qty));
+  });
+
+  const stockErrors = [];
+  demandMap.forEach((needQty, code) => {
+    const available = getAvailableStock(code);
+    if (needQty > available + 0.0001) {
+      stockErrors.push({ code, requested: needQty, available });
+    }
+  });
+
+  if (stockErrors.length > 0 && !forceAllow) {
+    return res.status(400).json({
+      error: `库存不足，无法冲销：${stockErrors.map(d => `${d.code} 需冲 ${d.requested}，可用 ${d.available}`).join('；')}`,
+      code: 'INSUFFICIENT_STOCK',
+      details: stockErrors
+    });
+  }
 
   try {
     const tx = db.transaction(() => {
-      // 冲销行过账（保持成本单价不变，为回补库存的成本）
+      // 冲销行过账（保持成本单价不变，为回补/扣减库存的成本）
       const upd = db.prepare("UPDATE outbound SET status='posted', cost_price=@cost_price WHERE id=@id");
       lines.forEach(l => {
         const origLine = db.prepare("SELECT cost_price FROM outbound WHERE id=?").get(parseInt(l.reversal_of, 10));
-        const costPrice = Math.abs(Number(origLine?.cost_price ?? l.cost_price ?? 0));
+        const costPrice = sign.storedAbs(origLine?.cost_price ?? l.cost_price);
         upd.run({ id: l.id, cost_price: costPrice });
       });
       // 冲销单头过账
       db.prepare("UPDATE outbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now') WHERE doc_no=?")
         .run(operator, revDocNo);
 
-      logOutboundDoc(revDocNo, 'confirm', operator, `确认冲销，${lines.length} 行已过账，库存已回补`);
-      logOutboundDoc(originalDocNo, 'reverse', operator, `冲销单 ${revDocNo} 已确认，库存已回补`);
+      logOutboundDoc(revDocNo, 'confirm', operator, `确认冲销，${lines.length} 行已过账`);
+      logOutboundDoc(originalDocNo, 'reverse', operator, `冲销单 ${revDocNo} 已确认`);
 
       // 自动更新原单状态
       updateOriginalOutboundDocStatus(originalDocNo);
     });
     tx();
-    res.json({ success: true, line_count: lines.length });
+    res.json({ success: true, line_count: lines.length, forced: forceAllow });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

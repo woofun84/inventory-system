@@ -2,6 +2,73 @@
  * 通用 UI 组件 —— 表格排序、分页、表单校验、空状态、筛选、状态徽章、模态框
  */
 Object.assign(App, {
+  // ========== 数量输入：界面一律正数，符号由后端推导 ==========
+  // 去掉各种减号/负号与非数字字符（覆盖手动输入和粘贴）
+  qtySanitize(raw) {
+    return String(raw == null ? '' : raw)
+      .replace(/[−–—]/g, '-')
+      .replace(/[^\d.\-]/g, '')
+      .replace(/-/g, '');
+  },
+
+  qtyInput(el) {
+    if (!el) return '';
+    const clean = this.qtySanitize(el.value);
+    if (clean !== el.value) el.value = clean;
+    return clean;
+  },
+
+  // 粘贴时先清洗再写入，避免 type=number 直接吞掉带负号的文本
+  qtyPaste(ev) {
+    const data = ev.clipboardData || window.clipboardData;
+    const txt = data ? data.getData('text') : '';
+    ev.preventDefault();
+    const el = ev.target;
+    el.value = this.qtySanitize(txt);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+
+  // 数量必须是纯正数：拒绝 0、负数、空值、多个小数点
+  qtyIsValid(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!/^\d+(\.\d+)?$/.test(s)) return false;
+    return Number(s) > 0;
+  },
+
+  // 单价允许 0，不能为负；空值由调用方按 0 处理
+  priceIsValid(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (s === '') return true;
+    return /^\d+(\.\d+)?$/.test(s);
+  },
+
+  // ========== 数量展示：绝对值 + 方向徽标 ==========
+  // 存库符号只用于口径计算，界面一律展示绝对值，方向用 +/− 徽标表示
+  qtyAbs(v) {
+    const n = Number(v == null ? 0 : v);
+    return Number.isFinite(n) ? Math.abs(n) : 0;
+  },
+
+  qtyDir(v) {
+    const n = Number(v == null ? 0 : v);
+    if (!Number.isFinite(n) || n === 0) return '';
+    return n > 0 ? '+' : '−';
+  },
+
+  qtyDirBadge(v) {
+    const dir = this.qtyDir(v);
+    if (!dir) return '';
+    const cls = dir === '+' ? 'badge-success' : 'badge-danger';
+    const title = dir === '+' ? this.t('qty_dir_plus') : this.t('qty_dir_minus');
+    return `<span class="badge ${cls}" title="${title}">${dir}</span>`;
+  },
+
+  // 表格单元格：绝对值 + 方向徽标
+  qtyCell(v) {
+    const dir = this.qtyDirBadge(v);
+    return `${this.fmtQty(this.qtyAbs(v))}${dir ? ' ' + dir : ''}`;
+  },
+
   // ========== 表格排序 ==========
   // tableState 存储各页面的排序/分页状态: { key: { sortKey, sortDir, page, pageSize } }
   tableStates: {},
