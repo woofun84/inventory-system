@@ -147,8 +147,8 @@ function validateInboundReturnStock(items, excludeInboundId) {
 
 // ==================== 领用退库：关联原出库单（2C） ====================
 // 可退量口径 = 原出库行数量 - 已退数量
-// 「已退」包含「草稿 + 已过账」的退库行（草稿也占用额度，作废/删除后自动释放），
-// 避免两张草稿各自把同一原行占满，到确认时才发现冲突。
+// 「已退」只统计「已过账」的退库行：草稿不占用可退额度，作废/删除自然不受影响，
+// 也避免两张草稿互相锁死同一原行的可退量。
 const RETURN_TXN_TYPE = '退库出库';
 
 function bizError(code, message) {
@@ -163,7 +163,7 @@ function getReturnedQtyByLine(originLineId, excludeDocNo) {
   let sql = `SELECT COALESCE(SUM(ABS(o.qty)),0) AS v FROM outbound o
     JOIN outbound_docs d ON d.doc_no = o.doc_no
     WHERE o.origin_line_id = ? AND o.txn_type = ?
-      AND d.status IN ('draft','posted')`;
+      AND d.status = 'posted'`;
   const args = [Number(originLineId) || 0, RETURN_TXN_TYPE];
   if (excludeDocNo) { sql += ' AND o.doc_no <> ?'; args.push(excludeDocNo); }
   return Number(db.prepare(sql).get(...args).v || 0);
