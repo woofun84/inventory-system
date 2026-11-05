@@ -12,7 +12,14 @@
 const express = require('express');
 const path = require('path');
 const os = require('os');
-const { HOST, PORT } = require('./server/config');
+let config;
+try {
+  config = require('./server/config');
+} catch (e) {
+  console.error(e.message); // 配置缺失/非法：只输出可读提示，不打印无关堆栈
+  process.exit(1);
+}
+const { HOST, PORT } = config;
 const { requireAuth } = require('./server/middleware/auth');
 const { auditMiddleware } = require('./server/middleware/audit');
 

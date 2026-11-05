@@ -5,13 +5,15 @@
 ## 快速启动
 
 ```bash
-cd inventory-system
-npm install        # 首次安装依赖
-node server.js     # 启动服务
-# 打开 http://localhost:3000
+npm install                # 首次安装依赖
+copy .env.example .env     # Windows（macOS/Linux 用 cp）；再编辑 .env 填入 JWT_SECRET
+node server.js             # 启动服务
+# 打开 http://localhost:4000
 ```
 
-首次登录：用户名 `admin`，密码 `admin123`（首次登录强制修改密码）。
+`JWT_SECRET` 必填且不少于 32 个字符，缺失或过短时服务会直接报错并提示如何生成，不会用默认密钥兜底。
+
+首次登录的管理员账号由环境变量 `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` 决定；未配置密码时服务会随机生成并只在启动日志中打印一次（首次登录强制修改密码）。
 
 重新初始化数据库（会清空所有数据）：
 
@@ -19,13 +21,33 @@ node server.js     # 启动服务
 node init-db.js
 ```
 
+### 环境变量（.env）
+
+敏感配置不写进代码，统一从项目根目录的 `.env` 读取（模板见 `.env.example`；`.env` 已被 `.gitignore` 忽略，切勿提交）。
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `JWT_SECRET` | 是 | JWT 签名密钥，至少 32 字符；缺失或过短时启动直接报错退出 |
+| `INITIAL_ADMIN_USERNAME` | 否 | 首次初始化数据库时创建的管理员用户名，默认 `admin` |
+| `INITIAL_ADMIN_PASSWORD` | 否 | 初始管理员密码；未设置时随机生成并在启动日志打印一次 |
+| `HOST` / `PORT` | 否 | 监听地址 / 端口，默认 `0.0.0.0:4000` |
+
+生成密钥（32 字节以上随机串）：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+**密钥轮换**：更换 `JWT_SECRET` 后，此前签发的所有 JWT 立即失效，所有在线用户需要重新登录（token 有效期 7 天）。
+
 ## 目录结构
 
 ```
-inventory-system/
-├── server.js              Express 后端（REST API + 鉴权 + 权限中间件 + 业务逻辑）
+.  （项目根目录）
+├── server.js              Express 后端入口（路由挂载 + 静态资源）
 ├── init-db.js             数据库初始化脚本（建表 + 种子数据）
-├── inventory.db           SQLite 数据库文件
+├── inventory.db           SQLite 数据库文件（本地数据，不入库）
+├── .env.example           环境变量模板（复制为 .env 后填写）
 ├── package.json
 ├── .gitignore
 ├── public/
@@ -193,6 +215,8 @@ inventory-system/
 ### 6. 登录与安全
 
 - 独立登录页 `login.html`，token 存 localStorage
+- JWT 签名密钥来自环境变量 `JWT_SECRET`（不再硬编码）；轮换密钥会使旧 token 全部失效，用户需重新登录
+- 初始管理员账号由 `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` 配置，未配置密码时随机生成并只打印一次
 - `api()` 自动带 `Authorization: Bearer` 头，401 自动跳登录页
 - 首次登录强制改密（`must_change_pwd` 标记）
 - **5 分钟空闲超时**：无操作自动退出登录

@@ -37,14 +37,14 @@
     <button class="btn btn-primary login-btn" id="btn-login" onclick="doLogin()">登 录</button>
     <div class="login-error" id="err"></div>
   </div>
-  <div class="login-hint" id="hint">初始账号：admin / admin123</div>
+  <div class="login-hint" id="hint">初始管理员账号由部署环境配置，请联系系统管理员获取</div>
 </div>
 <script>
 (function() {
   var lang = localStorage.getItem('lang') || 'zh';
   var i18n = {
-    zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', hint: '初始账号：admin / admin123', fail: '登录失败', empty: '请输入用户名和密码' },
-    en: { title: 'Inventory Management System', sub: 'In/Out Tracking', user: 'Username', pass: 'Password', btn: 'Log In', hint: 'Default: admin / admin123', fail: 'Login failed', empty: 'Please enter username and password' }
+    zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', empty: '请输入用户名和密码' },
+    en: { title: 'Inventory Management System', sub: 'In/Out Tracking', user: 'Username', pass: 'Password', btn: 'Log In', hint: 'Initial admin credentials are configured by the deployment environment. Contact your administrator.', fail: 'Login failed', empty: 'Please enter username and password' }
   };
   var t = i18n[lang] || i18n.zh;
   document.title = t.title;
