@@ -29,6 +29,7 @@ Object.assign(App, {
 
     this.setMain(this.pageWrap('📤 ' + this.t('obd_title'), this.t('obd_desc'), '',
       `<div id="outbound-content" class="data-page">
+        <nav id="ob-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('obd_title')}"></nav>
         <div class="data-toolbar">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
             <div>${addBtn}</div>
@@ -48,7 +49,9 @@ Object.assign(App, {
         <div class="data-pager" id="outbound-pager"></div>
       </div>`));
 
+    this.injectPurchaseStyles();
     this.injectOutboundStyles();
+    this.renderOutboundTabs();
     try {
       // 领用退库已迁入「退货与退库」模块，出库列表默认排除，避免重复展示
       this._outboundDocs = await this.api('/api/outbound-docs?excludeType=' + encodeURIComponent('退库出库'));
@@ -58,6 +61,27 @@ Object.assign(App, {
     } catch (e) {
       document.getElementById('outbound-scroll').innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
     }
+  },
+
+  // 视图页签：红冲单归到原单所属模块的独立子页签（与入库模块一致）
+  obTabDefs() {
+    return [['', this.t('all')], ['正常出库', this.t('out_normal')], ['出库冲销', this.t('obd_rev_type')]];
+  },
+
+  renderOutboundTabs() {
+    const box = document.getElementById('ob-tabs');
+    if (!box) return;
+    if (this._obTab === undefined) this._obTab = '';
+    box.innerHTML = this.obTabDefs().map(([k, label]) =>
+      `<button type="button" class="pu-viewtab" role="tab" aria-selected="${this._obTab === k}" onclick="App.obSwitchTab('${k}')">${label}</button>`
+    ).join('');
+  },
+
+  obSwitchTab(k) {
+    this._obTab = k;
+    this.getTableState('outbound').page = 1;
+    this.renderOutboundTabs();
+    this.renderOutboundTable();
   },
 
   renderOutboundTable() {
@@ -75,6 +99,7 @@ Object.assign(App, {
 
     const filterFields = ['doc_no', 'date', 'txn_type', 'destination', 'receiver', 'handler', 'remarks'];
     let filtered = this.filterByKeywords(data, keywords, filterFields);
+    if (this._obTab) filtered = filtered.filter(r => r.txn_type === this._obTab);
     if (status) filtered = filtered.filter(r => r.status === status);
     filtered = this.filterByDateRange(filtered, 'date', dateFrom, dateTo);
 
@@ -207,30 +232,29 @@ Object.assign(App, {
     this._obView = 'new';
     this.setMain(this.pageWrap('📤 ' + pageTitle, this.t('obd_create_hint'), '',
       `<div class="data-page" id="outbound-content">
-        <div class="data-toolbar" style="padding:16px">
-          <div class="st-toolbar-row" style="margin-bottom:14px">
-            <div class="st-toolbar-left"><span class="action-link st-back-link" onclick="App.backToOutboundList()">← ${this.t('obd_back_list')}</span></div>
-            <div class="st-toolbar-right"><span class="badge badge-warning">${this.t('obd_status_draft')}</span></div>
-          </div>
-          <div class="ib-form-section">
-            <div class="ib-section-title"><span>01</span><div><b>单据信息</b><small>先填写领用去向和经办信息，明细可在下一步添加</small></div></div>
-            <div class="form-grid" style="max-width:none">
-              <div class="form-group"><label>${this.t('obd_no')}</label><input id="ob_f_no" value="${docNo}" readonly placeholder="保存后生成"></div>
-              <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_f_date" type="date" value="${date}"></div>
-              <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type">${typeOptions}</select></div>
-              ${originField}
-              <div class="form-group"><label>${this.t('obd_destination')}</label><select id="ob_f_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
-              <div class="form-group"><label>${this.t('obd_receiver')}</label><input id="ob_f_receiver" value=""></div>
-              <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
-              <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><textarea id="ob_f_remarks" rows="2" placeholder="可填写领用事由、工单号或其他说明"></textarea></div>
-            </div>
-          </div>
-          <div class="ib-next-step">
-            <div><b>下一步：添加物料明细</b><small>创建单据后进入明细编辑页；此时不会扣减库存。</small></div>
-            <div class="ib-new-actions"><button class="btn btn-outline" onclick="App.backToOutboundList()">${this.t('cancel')}</button><button class="btn btn-primary" onclick="App.createOutboundDoc()">创建单据并添加明细 →</button></div>
+        <div class="pu-edit-bar">
+          <span class="action-link" onclick="App.backToOutboundList()">← ${this.t('obd_back_list')}</span>
+          <span class="badge badge-warning">${this.t('obd_status_draft')}</span>
+        </div>
+        <div class="pu-card">
+          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
+          <div class="form-grid" style="max-width:none">
+            <div class="form-group"><label>${this.t('obd_no')}</label><input id="ob_f_no" value="${docNo}" readonly placeholder="保存后生成"></div>
+            <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_f_date" type="date" value="${date}"></div>
+            <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type">${typeOptions}</select></div>
+            ${originField}
+            <div class="form-group"><label>${this.t('obd_destination')}</label><select id="ob_f_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
+            <div class="form-group"><label>${this.t('obd_receiver')}</label><input id="ob_f_receiver" value=""></div>
+            <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
+            <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><textarea id="ob_f_remarks" rows="2"></textarea></div>
           </div>
         </div>
+        <div class="pu-edit-actions">
+          <button class="btn btn-outline" onclick="App.backToOutboundList()">${this.t('cancel')}</button>
+          <button class="btn btn-primary" onclick="App.createOutboundDoc()">${this.t('pu_create_and_add')}</button>
+        </div>
       </div>`));
+    this.injectPurchaseStyles();
     this.injectOutboundStyles();
   },
 
