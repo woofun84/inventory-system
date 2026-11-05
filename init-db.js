@@ -5,7 +5,7 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'inventory.db');
+const { DB_PATH } = require('./server/config');
 const SEED_PATH = path.join(__dirname, '..', 'seed_data.json');
 
 // 删除旧数据库

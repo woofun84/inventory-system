@@ -27,8 +27,14 @@ if (JWT_SECRET.length < 32) {
   );
 }
 
+// 数据库文件路径：默认放在项目根目录，可用环境变量 DB_PATH 指向其它位置
+// （例如项目所在的盘符不支持 SQLite WAL 时，可把数据库放到本机磁盘）
+const DB_PATH = String(process.env.DB_PATH || '').trim()
+  ? path.resolve(String(process.env.DB_PATH).trim())
+  : path.join(__dirname, '..', 'inventory.db');
+
 module.exports = {
-  DB_PATH: path.join(__dirname, '..', 'inventory.db'),
+  DB_PATH,
   HOST: process.env.HOST || '0.0.0.0',
   PORT: Number(process.env.PORT) || 4000,
   JWT_SECRET,

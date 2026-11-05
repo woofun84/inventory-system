@@ -21,6 +21,26 @@ node server.js             # 启动服务
 node init-db.js
 ```
 
+### 运行环境
+
+- Node.js 22 及以上。依赖 `better-sqlite3` 13 自带 N-API 预编译二进制，在 Node 26 下可直接使用，**不需要**安装 Visual Studio Build Tools 或 Python。
+- 若依赖二进制与当前 Node 版本不匹配（报 `NODE_MODULE_VERSION ... was compiled against a different Node.js version`），执行下面的命令重新生成与该 Node 匹配的二进制即可：
+
+```bash
+npm rebuild better-sqlite3     # 已有 node_modules 时
+npm install                    # 或重新安装依赖
+```
+
+### 数据库位置
+
+默认使用项目根目录下的 `inventory.db`。如果项目放在 USB 外接盘、网络盘或同步盘上，SQLite 的 WAL 模式可能报 `SQLITE_IOERR_*` / `disk I/O error`（这不是代码问题，而是磁盘不支持 WAL 所需的共享内存与截断操作），此时用环境变量 `DB_PATH` 把数据库文件指向本机磁盘的绝对路径即可，例如：
+
+```
+DB_PATH=C:\Users\YourName\AppData\Local\warehouse_cn\inventory.db
+```
+
+首次使用新的 `DB_PATH` 前，把旧的 `inventory.db` 复制到该位置即可保留原有数据。
+
 ### 环境变量（.env）
 
 敏感配置不写进代码，统一从项目根目录的 `.env` 读取（模板见 `.env.example`；`.env` 已被 `.gitignore` 忽略，切勿提交）。
@@ -31,6 +51,7 @@ node init-db.js
 | `INITIAL_ADMIN_USERNAME` | 否 | 首次初始化数据库时创建的管理员用户名，默认 `admin` |
 | `INITIAL_ADMIN_PASSWORD` | 否 | 初始管理员密码；未设置时随机生成并在启动日志打印一次 |
 | `HOST` / `PORT` | 否 | 监听地址 / 端口，默认 `0.0.0.0:4000` |
+| `DB_PATH` | 否 | 数据库文件绝对路径，默认项目根目录的 `inventory.db`；项目在 USB 外接盘 / 网络盘时建议指向本机磁盘 |
 
 生成密钥（32 字节以上随机串）：
 
