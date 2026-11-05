@@ -50,7 +50,8 @@ Object.assign(App, {
 
     this.injectOutboundStyles();
     try {
-      this._outboundDocs = await this.api('/api/outbound-docs');
+      // 领用退库已迁入「退货与退库」模块，出库列表默认排除，避免重复展示
+      this._outboundDocs = await this.api('/api/outbound-docs?excludeType=' + encodeURIComponent('退库出库'));
       this._tableRenderers = this._tableRenderers || {};
       this._tableRenderers['outbound'] = () => this.renderOutboundTable();
       this.renderOutboundTable();
@@ -186,6 +187,23 @@ Object.assign(App, {
       : `<option value="正常出库">${this.t('out_normal')}</option>`;
     const pageTitle = preset ? this.t('ret_new_stock') : this.t('obd_add');
 
+    // 2C：领用退库可关联原出库单（只列已过账/部分冲销的正常出库单）
+    let originOptions = '';
+    this._obOriginCandidates = [];
+    if (preset) {
+      try {
+        const docs = await this.api('/api/outbound-docs?txnType=' + encodeURIComponent('正常出库'));
+        this._obOriginCandidates = (docs || []).filter(d => d.status === 'posted' || d.status === 'partially_reversed');
+        originOptions = this._obOriginCandidates
+          .map(d => `<option value="${d.doc_no}">${d.doc_no} · ${d.date} · ${d.destination || ''}</option>`).join('');
+      } catch (e) { /* 原单列表拉取失败不阻断创建 */ }
+    }
+    const originField = preset ? `
+              <div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_origin_doc')}</label>
+                <select id="ob_f_origin_doc"><option value="">${this.t('ret_origin_none')}</option>${originOptions}</select>
+                <small style="color:var(--text-muted);font-size:12px">${this.t('ret_origin_hint')}</small>
+              </div>` : '';
+
     this._obView = 'new';
     this.setMain(this.pageWrap('📤 ' + pageTitle, this.t('obd_create_hint'), '',
       `<div class="data-page" id="outbound-content">
@@ -200,6 +218,7 @@ Object.assign(App, {
               <div class="form-group"><label>${this.t('obd_no')}</label><input id="ob_f_no" value="${docNo}" readonly placeholder="保存后生成"></div>
               <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_f_date" type="date" value="${date}"></div>
               <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type">${typeOptions}</select></div>
+              ${originField}
               <div class="form-group"><label>${this.t('obd_destination')}</label><select id="ob_f_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
               <div class="form-group"><label>${this.t('obd_receiver')}</label><input id="ob_f_receiver" value=""></div>
               <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
@@ -224,7 +243,8 @@ Object.assign(App, {
       destination: document.getElementById('ob_f_destination')?.value,
       receiver: document.getElementById('ob_f_receiver')?.value.trim(),
       handler: document.getElementById('ob_f_handler')?.value.trim(),
-      remarks: document.getElementById('ob_f_remarks')?.value.trim()
+      remarks: document.getElementById('ob_f_remarks')?.value.trim(),
+      origin_doc_no: document.getElementById('ob_f_origin_doc')?.value || ''
     };
     try {
       const r = await this.api('/api/outbound-docs', 'POST', body);
@@ -800,6 +820,10 @@ Object.assign(App, {
 
     const detail = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo));
     this._obDetail = detail;
+    // 2C：领用退库需要维护原出库单与可退行
+    this._obIsReturn = detail.txn_type === '退库出库';
+    this._obOriginDocNo = this._obIsReturn ? (detail.origin_doc_no || '') : '';
+    this._obReturnableMap = {};
     this._obEditLines = (detail.lines || []).map(l => ({
       id: l.id,
       code: l.code,
@@ -809,7 +833,9 @@ Object.assign(App, {
       material_unit: l.material_unit,
       qty: Math.abs(Number(l.qty)),
       cost_price: Number(l.cost_price) || 0,
-      remarks: l.remarks || ''
+      remarks: l.remarks || '',
+      origin_line_id: Number(l.origin_line_id) || 0,
+      max_qty: null
     }));
 
     // 加载物料和库存数据
@@ -821,6 +847,13 @@ Object.assign(App, {
       stockMap = Object.fromEntries(stock.map(s => [s.code, s.on_hand]));
     } catch (e) {}
     this._outboundStockMap = stockMap;
+
+    // 2C：退库单加载原出库单候选与可退量上限
+    if (this._obIsReturn) {
+      await this.loadOutboundOriginCandidates();
+      await this.loadReturnableMap();
+      this.applyReturnableMax();
+    }
 
     this.setMain(this.pageWrap('✏️ ' + detail.doc_no,
       `${this.t('obd_edit_title')} · ${this.obdStatusBadge(detail.status)}`, '',
@@ -847,6 +880,60 @@ Object.assign(App, {
     this.renderOutboundEdit();
   },
 
+  // ========== 2C：领用退库的原出库单关联 ==========
+  async loadOutboundOriginCandidates() {
+    if (this._obOriginCandidates && this._obOriginCandidates.length) return;
+    try {
+      const docs = await this.api('/api/outbound-docs?txnType=' + encodeURIComponent('正常出库'));
+      this._obOriginCandidates = (docs || []).filter(d => d.status === 'posted' || d.status === 'partially_reversed');
+    } catch (e) { this._obOriginCandidates = []; }
+  },
+
+  // 可退明细：以“排除本单”的口径计算剩余可退量
+  async loadReturnableMap() {
+    this._obReturnableMap = {};
+    if (!this._obOriginDocNo) return;
+    try {
+      const r = await this.api('/api/outbound-docs/' + encodeURIComponent(this._obOriginDocNo)
+        + '/returnable?excludeDocNo=' + encodeURIComponent(this._obDocNo || ''));
+      (r.lines || []).forEach(l => { this._obReturnableMap[String(l.id)] = l; });
+    } catch (e) { this._obReturnableMap = {}; }
+  },
+
+  applyReturnableMax() {
+    (this._obEditLines || []).forEach(l => {
+      const r = this._obReturnableMap[String(l.origin_line_id)];
+      if (r) l.max_qty = r.remaining;
+    });
+  },
+
+  // 一键带出原单剩余可退明细（覆盖当前明细行）
+  async fillOutboundOriginLines() {
+    if (!this._obOriginDocNo) { this.toast(this.t('ret_origin_required'), 'error'); return; }
+    await this.loadReturnableMap();
+    const rows = Object.values(this._obReturnableMap).filter(r => r.remaining > 0);
+    if (rows.length === 0) { this.toast(this.t('ret_origin_no_remaining'), 'error'); return; }
+    this._obEditLines = rows.map(r => ({
+      code: r.code,
+      material_name: r.material_name,
+      material_spec: r.material_spec,
+      material_brand: r.material_brand,
+      material_unit: r.material_unit,
+      qty: r.remaining,
+      cost_price: r.cost_price,
+      remarks: '',
+      origin_line_id: r.id,
+      max_qty: r.remaining
+    }));
+    this.renderOutboundEditTable();
+  },
+
+  async onOutboundOriginChange() {
+    this._obOriginDocNo = document.getElementById('ob_e_origin_doc')?.value || '';
+    this._obEditLines = [];
+    await this.fillOutboundOriginLines();
+  },
+
   renderOutboundEdit() {
     const d = this._obDetail;
     if (!d) return;
@@ -868,12 +955,21 @@ Object.assign(App, {
     if (formEl) {
       if (isDraft) {
         const destOptions = dests.map(x => `<option value="${x}" ${x === d.destination ? 'selected' : ''}>${x}</option>`).join('');
+        const originSelect = this._obIsReturn ? `<div class="form-group" style="grid-column:1/-1">
+            <label>${this.t('ret_origin_doc')}</label>
+            <select id="ob_e_origin_doc" onchange="App.onOutboundOriginChange()">
+              <option value="">${this.t('ret_origin_none')}</option>
+              ${(this._obOriginCandidates || []).map(o => `<option value="${o.doc_no}" ${o.doc_no === this._obOriginDocNo ? 'selected' : ''}>${o.doc_no} · ${o.date} · ${o.destination || ''}</option>`).join('')}
+            </select>
+            <small style="color:var(--text-muted);font-size:12px">${this.t('ret_origin_hint')}</small>
+          </div>` : '';
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('obd_date')}</label><input id="ob_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${this.t('obd_destination')}</label><select id="ob_e_destination"><option value="">${this.t('none')}</option>${destOptions}</select></div>
           <div class="form-group"><label>${this.t('obd_receiver')}</label><input id="ob_e_receiver" value="${d.receiver || ''}"></div>
           <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_e_handler" value="${d.handler || ''}"></div>
-          <div class="form-group" style="grid-column:span 4"><label>${this.t('obd_remarks')}</label><input id="ob_e_remarks" value="${d.remarks || ''}"></div>
+          ${originSelect}
+          <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><input id="ob_e_remarks" value="${d.remarks || ''}"></div>
         </div>`;
       } else {
         formEl.innerHTML = `<div style="padding:10px;background:var(--info-bg,rgba(14,165,233,.1));border-radius:6px;font-size:12px">${this.t('obd_posted_hint')}</div>`;
@@ -885,7 +981,11 @@ Object.assign(App, {
     if (btnBox) {
       let btns = '';
       if (isDraft) {
-        btns += `<button class="btn btn-outline" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>`;
+        if (this._obIsReturn) {
+          btns += `<button class="btn btn-outline" onclick="App.fillOutboundOriginLines()">${this.t('ret_fill_origin')}</button>`;
+        } else {
+          btns += `<button class="btn btn-outline" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>`;
+        }
         btns += `<button class="btn btn-outline" onclick="App.saveOutboundDraft()">${this.t('obd_save_draft')}</button>`;
         btns += `<button class="btn btn-primary" onclick="App.confirmOutboundDocFromEdit()">${this.t('obd_confirm')}</button>`;
       }
@@ -906,7 +1006,7 @@ Object.assign(App, {
     const headers = [
       this.t('mat_code'), this.t('mat_name'), this.t('mat_spec'),
       this.t('mat_brand'), this.t('mat_unit'),
-      this.t('out_qty'), this.t('out_available'),
+      this.t('out_qty'), this._obIsReturn ? this.t('ret_origin_remaining') : this.t('out_available'),
       ...(vp ? [this.t('out_cost_price'), '行成本'] : []),
       this.t('out_remarks'), ''
     ];
@@ -920,16 +1020,26 @@ Object.assign(App, {
       </td></tr>`;
     } else {
       tbody = lines.map((l, i) => {
+        const isLinked = !!(this._obIsReturn && l.origin_line_id);
+        // 退库行显示的原单剩余可退量；普通出库显示当前库存
+        const remain = l.max_qty === null || l.max_qty === undefined ? undefined : l.max_qty;
         const available = this._outboundStockMap ? this._outboundStockMap[l.code] : undefined;
-        const availText = available === undefined || available === null ? '-' : available;
-        const availColor = available === undefined || available === null ? 'var(--text-muted)'
-          : (available < 0 ? 'var(--danger)' : (available === 0 ? 'var(--warning)' : 'var(--success)'));
+        const availText = isLinked ? (remain === undefined ? '-' : remain)
+          : (available === undefined || available === null ? '-' : available);
+        const availColor = isLinked
+          ? (remain === 0 ? 'var(--warning)' : 'var(--success)')
+          : (available === undefined || available === null ? 'var(--text-muted)'
+            : (available < 0 ? 'var(--danger)' : (available === 0 ? 'var(--warning)' : 'var(--success)')));
         const costText = l.cost_price ? this.fmtMoney(l.cost_price) : '-';
         const amountText = l.cost_price ? this.fmtMoney((Number(l.qty) || 0) * (Number(l.cost_price) || 0)) : '-';
 
         if (isDraft) {
-          const codeCell = `<span class="action-link" onclick="App.showOutboundMaterialPicker(${i})">${l.code || this.t('please_select')}</span>`;
-          const qtyInput = `<input type="number" step="0.01" min="0.01" class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" style="width:80px" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
+          // 已关联原出库行的退库明细不允许换料，避免绕过可退量校验
+          const codeCell = isLinked
+            ? `<span class="ib-doc-no">${l.code}</span>`
+            : `<span class="action-link" onclick="App.showOutboundMaterialPicker(${i})">${l.code || this.t('please_select')}</span>`;
+          const maxAttr = isLinked && remain !== undefined ? ` max="${remain}"` : '';
+          const qtyInput = `<input type="number" step="0.01" min="0.01"${maxAttr} class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" style="width:80px" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
           const remarksInput = `<input class="ob-edit-remarks" data-idx="${i}" value="${l.remarks || ''}" style="width:120px" oninput="App._obEditLines[${i}].remarks=this.value">`;
           const delBtn = `<span class="action-link danger" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</span>`;
           return `<tr>
@@ -1110,6 +1220,11 @@ Object.assign(App, {
       if (!l.code && !l.qty && !l.remarks) continue;
       if (!l.code) return { ok: false, message: this.t('line_material_required', { n: i + 1 }) };
       if (!this.qtyIsValid(l.qty)) return { ok: false, message: this.t('qty_line_invalid', { n: i + 1 }) };
+      // 2C：关联原出库行的退库数量不能超过剩余可退量
+      if (this._obIsReturn && l.origin_line_id && l.max_qty !== null && l.max_qty !== undefined
+        && Number(l.qty) > Number(l.max_qty) + 1e-4) {
+        return { ok: false, message: this.t('ret_qty_over_origin', { n: i + 1, max: l.max_qty }) };
+      }
     }
     return { ok: true };
   },
@@ -1129,8 +1244,10 @@ Object.assign(App, {
       lines: lines.map(l => ({
         code: l.code,
         qty: parseFloat(l.qty) || 0,
-        remarks: l.remarks || ''
+        remarks: l.remarks || '',
+        origin_line_id: l.origin_line_id || 0
       })),
+      origin_doc_no: this._obIsReturn ? this._obOriginDocNo : undefined,
       date: document.getElementById('ob_e_date')?.value,
       destination: document.getElementById('ob_e_destination')?.value,
       receiver: document.getElementById('ob_e_receiver')?.value,
@@ -1170,8 +1287,10 @@ Object.assign(App, {
           lines: lines.map(l => ({
             code: l.code,
             qty: parseFloat(l.qty) || 0,
-            remarks: l.remarks || ''
+            remarks: l.remarks || '',
+            origin_line_id: l.origin_line_id || 0
           })),
+          origin_doc_no: this._obIsReturn ? this._obOriginDocNo : undefined,
           date: document.getElementById('ob_e_date')?.value,
           destination: document.getElementById('ob_e_destination')?.value,
           receiver: document.getElementById('ob_e_receiver')?.value,

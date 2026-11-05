@@ -3,9 +3,11 @@
  *
  * 只做聚合展示：采购退货（入库账本）与领用退库（出库账本）。
  * 写入复用现有 inbound/outbound 接口与页面，不复制业务逻辑。
+ * 列表页形态（页签/筛选/KPI/分栏/右侧详情）与入库模块保持一致。
  */
 Object.assign(App, {
   _retState: null,
+  _retList: null,
   _retData: null,
 
   retEsc(v) {
@@ -16,53 +18,68 @@ Object.assign(App, {
 
   retState() {
     if (!this._retState) {
-      this._retState = { tab: '', status: '', kw: '', from: '', to: '', page: 1, pageSize: 20 };
+      this._retState = { tab: '', kpi: '', kw: '', from: '', to: '', sel: '' };
     }
     return this._retState;
   },
 
+  retTabDefs() {
+    return [['', this.t('ret_tab_all')], ['采购退货', this.t('ret_tab_purchase')], ['领用退库', this.t('ret_tab_stock')]];
+  },
+
+  retKpiDefs() {
+    return [
+      ['', this.t('ret_tab_all'), r => true],
+      ['draft', this.t('ibd_status_draft'), r => r.status === 'draft'],
+      ['posted', this.t('ibd_status_posted'), r => r.status === 'posted'],
+      ['partially_reversed', this.t('ibd_status_partial_rev'), r => r.status === 'partially_reversed'],
+      ['reversed', this.t('ibd_status_reversed'), r => r.status === 'reversed'],
+      ['cancelled', this.t('ibd_status_cancelled'), r => r.status === 'cancelled'],
+    ];
+  },
+
   async renderReturns() {
-    this.retState().page = 1;
+    const s = this.retState();
     this._retData = null;
+    const st = this.getTableState('returns');
+    if (!this._retInit) { st.page = 1; st.pageSize = 20; this._retInit = true; }
+
     this.setMain(this.pageWrap('↩ ' + this.t('ret_title'), this.t('ret_desc'), '',
-      `<div class="data-page" id="ret-root">
-        <div class="data-toolbar" style="padding:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-            <div id="ret-tabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-            <div>
-              ${this.can('returns', 'create') ? `<button class="btn btn-primary" onclick="App.newInboundDoc('采购退货')">+ ${this.t('ret_new_purchase')}</button>
-              <button class="btn btn-outline" onclick="App.newOutboundDoc('退库出库')">+ ${this.t('ret_new_stock')}</button>` : ''}
-            </div>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input id="ret-kw" placeholder="${this.t('ret_filter_ph')}" style="width:240px" onkeydown="if(event.key==='Enter')App.retApplyFilter()">
-              <select id="ret-status" style="width:130px">
-                <option value="">${this.t('ret_status_all')}</option>
-                <option value="draft">${this.t('ibd_status_draft')}</option>
-                <option value="posted">${this.t('ibd_status_posted')}</option>
-                <option value="partially_reversed">${this.t('ibd_status_partial_rev')}</option>
-                <option value="reversed">${this.t('ibd_status_reversed')}</option>
-                <option value="cancelled">${this.t('ibd_status_cancelled')}</option>
-              </select>
-              <input id="ret-from" type="date" style="width:140px">
-              <span style="color:var(--text-muted)">~</span>
-              <input id="ret-to" type="date" style="width:140px">
-              <button class="btn btn-outline" onclick="App.retApplyFilter()">${this.t('search')}</button>
-              <button class="btn btn-outline" onclick="App.retClearFilter()">${this.t('clear')}</button>
-            </div>
-            <div><span id="ret-total" style="color:var(--text-muted);font-size:12px"></span></div>
+      `<div id="ret-root" class="data-page">
+        <div class="data-toolbar">
+          <nav id="ret-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('ret_title')}"></nav>
+          <div class="pu-toolbar">
+            <div id="ret-filters" class="pu-filter-inner"></div>
+            <div id="ret-head-actions" class="pu-head-actions"></div>
           </div>
         </div>
-        <div id="ret-body" style="padding:0 16px 16px"></div>
+        <div id="ret-kpis" class="pu-kpis" role="group" aria-label="${this.t('ret_status')}"></div>
+        <div class="pu-split" id="ret-split">
+          <section class="pu-list">
+            <div class="data-scroll" id="ret-scroll"></div>
+            <div class="pu-pager" id="ret-pager"></div>
+          </section>
+          <aside class="pu-insp" id="ret-insp" hidden aria-label="${this.t('ret_detail')}"></aside>
+        </div>
       </div>`));
-    this.retRenderTabs();
+    const pb = document.querySelector('.page-body');
+    if (pb) pb.classList.add('pu-page-body');
+
     this.injectPurchaseStyles();
+    this._tableRenderers = this._tableRenderers || {};
+    this._tableRenderers['returns'] = () => this.retRenderList();
+
+    this.retRenderTabs();
+    this.retRenderFilters();
+    this.retRenderHeadActions();
     await this.retLoadList();
+
     if (this._retPendingDoc) {
       const no = this._retPendingDoc;
       this._retPendingDoc = null;
-      await this.retOpenDoc(no);
+      await this.retSelectDoc(no);
+    } else if (s.sel) {
+      await this.retSelectDoc(s.sel, true);
     }
   },
 
@@ -70,64 +87,112 @@ Object.assign(App, {
     const box = document.getElementById('ret-tabs');
     if (!box) return;
     const s = this.retState();
-    const tabs = [['', this.t('ret_tab_all')], ['采购退货', this.t('ret_tab_purchase')], ['领用退库', this.t('ret_tab_stock')]];
-    box.innerHTML = tabs.map(([k, label]) =>
-      `<button class="btn ${s.tab === k ? 'btn-primary' : 'btn-outline'}" onclick="App.retSwitchTab('${k}')">${label}</button>`
+    box.innerHTML = this.retTabDefs().map(([k, label]) =>
+      `<button type="button" class="pu-viewtab" role="tab" aria-selected="${s.tab === k}" onclick="App.retSwitchTab('${k}')">${label}</button>`
     ).join('');
   },
 
-  retSyncFilterInputs() {
+  retRenderFilters() {
+    const box = document.getElementById('ret-filters');
+    if (!box) return;
     const s = this.retState();
-    const kw = document.getElementById('ret-kw');
-    const st = document.getElementById('ret-status');
-    const from = document.getElementById('ret-from');
-    const to = document.getElementById('ret-to');
-    if (kw) kw.value = s.kw;
-    if (st) st.value = s.status;
-    if (from) from.value = s.from;
-    if (to) to.value = s.to;
+    const ph = this.t('ret_filter_ph');
+    box.innerHTML = `<div class="pu-search" role="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="ret_f_kw" type="search" value="${this.retEsc(s.kw)}" placeholder="${ph}" aria-label="${ph}" onkeydown="if(event.key==='Enter')App.retApplyFilter()">
+      </div>
+      <div class="pu-daterange" role="group" aria-label="${this.t('pu_date')}">
+        <label for="ret_f_from">${this.t('pu_date')}</label>
+        <input id="ret_f_from" type="date" value="${this.retEsc(s.from)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
+        <span class="pu-sep" aria-hidden="true">~</span>
+        <input id="ret_f_to" type="date" value="${this.retEsc(s.to)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="App.retClearFilter()">${this.t('pu_clear_filter')}</button>`;
+  },
+
+  retRenderHeadActions() {
+    const box = document.getElementById('ret-head-actions');
+    if (!box) return;
+    box.innerHTML = this.can('returns', 'create')
+      ? `<button type="button" class="btn btn-primary" onclick="App.newInboundDoc('采购退货')">+ ${this.t('ret_new_purchase')}</button>
+         <button type="button" class="btn btn-outline" onclick="App.newOutboundDoc('退库出库')">+ ${this.t('ret_new_stock')}</button>`
+      : '';
   },
 
   retSwitchTab(tab) {
     const s = this.retState();
     s.tab = tab;
-    s.page = 1;
+    s.sel = '';
+    const st = this.getTableState('returns');
+    st.page = 1;
+    this.retCloseInspector();
     this.retRenderTabs();
-    this.retLoadList();
+    this.retRenderList();
   },
 
   retApplyFilter() {
     const s = this.retState();
-    s.kw = document.getElementById('ret-kw')?.value.trim() || '';
-    s.status = document.getElementById('ret-status')?.value || '';
-    s.from = document.getElementById('ret-from')?.value || '';
-    s.to = document.getElementById('ret-to')?.value || '';
-    s.page = 1;
-    this.retLoadList();
+    s.kw = (document.getElementById('ret_f_kw')?.value || '').trim();
+    s.from = document.getElementById('ret_f_from')?.value || '';
+    s.to = document.getElementById('ret_f_to')?.value || '';
+    s.sel = '';
+    const st = this.getTableState('returns');
+    st.page = 1;
+    this.retCloseInspector();
+    this.retRenderList();
   },
 
   retClearFilter() {
-    this._retState = { tab: this.retState().tab, status: '', kw: '', from: '', to: '', page: 1, pageSize: 20 };
-    this.retSyncFilterInputs();
-    this.retLoadList();
+    this._retState = { tab: this.retState().tab, kpi: this.retState().kpi, kw: '', from: '', to: '', sel: '' };
+    const st = this.getTableState('returns');
+    st.page = 1;
+    this.retRenderFilters();
+    this.retCloseInspector();
+    this.retRenderList();
   },
 
-  async retLoadList() {
+  retSetKpi(kpi) {
     const s = this.retState();
-    const q = new URLSearchParams({ page: String(s.page), pageSize: String(s.pageSize) });
-    if (s.tab) q.set('type', s.tab);
-    if (s.status) q.set('status', s.status);
-    if (s.kw) q.set('keyword', s.kw);
-    if (s.from) q.set('dateFrom', s.from);
-    if (s.to) q.set('dateTo', s.to);
+    s.kpi = kpi;
+    s.sel = '';
+    const st = this.getTableState('returns');
+    st.page = 1;
+    this.retCloseInspector();
+    this.retRenderList();
+  },
+
+  // 聚合接口按页返回，这里全量拉取后在前端做筛选/排序/分页，与入库模块口径一致
+  async retLoadList() {
+    const PAGE = 200;
     try {
-      this._retData = await this.api('/api/returns/docs?' + q.toString());
+      const first = await this.api('/api/returns/docs?page=1&pageSize=' + PAGE);
+      let items = (first.items || []).slice();
+      const totalPages = Number(first.totalPages || 1);
+      for (let p = 2; p <= totalPages; p++) {
+        const next = await this.api('/api/returns/docs?page=' + p + '&pageSize=' + PAGE);
+        items = items.concat(next.items || []);
+      }
+      this._retList = items;
     } catch (e) {
-      this._retData = { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 };
+      this._retList = [];
       this.toast(e.message || this.t('ret_load_failed'), 'error');
     }
-    this.retSyncFilterInputs();
     this.retRenderList();
+  },
+
+  retRowsByTab() {
+    const s = this.retState();
+    const rows = this._retList || [];
+    return s.tab ? rows.filter(r => r.sub_type === s.tab) : rows;
+  },
+
+  retVisibleRows() {
+    const s = this.retState();
+    let rows = this.retRowsByTab();
+    if (s.kw) rows = this.filterByKeywords(rows, s.kw, ['doc_no', 'sub_type', 'party', 'ref_no', 'handler', 'remarks']);
+    rows = this.filterByDateRange(rows, 'date', s.from, s.to);
+    if (s.kpi) rows = rows.filter(r => r.status === s.kpi);
+    return rows;
   },
 
   retStatusBadge(status) {
@@ -143,56 +208,90 @@ Object.assign(App, {
     return `<span class="badge badge-${hit[0]}">${this.t(hit[1])}</span>`;
   },
 
-  retRenderList() {
-    const body = document.getElementById('ret-body');
-    if (!body) return;
-    const d = this._retData || { items: [], total: 0, page: 1, totalPages: 1 };
-    const showPrice = this.canViewPrice();
-    const totalEl = document.getElementById('ret-total');
-    if (totalEl) totalEl.textContent = this.t('ret_total', { n: d.total });
+  retSubTypeBadge(subType) {
+    if (subType === '采购退货') return `<span class="badge badge-danger">${this.t('ret_tab_purchase')}</span>`;
+    return `<span class="badge badge-success">${this.t('ret_tab_stock')}</span>`;
+  },
 
-    if (!d.items.length) {
-      body.innerHTML = `<div class="empty-state" style="padding:40px;text-align:center;color:var(--text-muted)">${this.t('ret_empty')}</div>`;
-      return;
+  retRenderList() {
+    const s = this.retState();
+    const kp = document.getElementById('ret-kpis');
+    if (kp) {
+      const rows = this.retRowsByTab();
+      kp.innerHTML = this.retKpiDefs().map(([k, label, fn]) =>
+        `<button type="button" class="pu-kpi" aria-pressed="${s.kpi === k}" onclick="App.retSetKpi('${k}')"><small>${label}</small><strong>${rows.filter(fn).length}</strong></button>`
+      ).join('');
     }
 
-    const rows = d.items.map(r => `<tr>
-      <td><span class="action-link" onclick="App.retOpenDoc('${this.retEsc(r.doc_no)}')">${this.retEsc(r.doc_no)}</span></td>
-      <td>${this.fmtDate(r.date)}</td>
-      <td>${this.retEsc(r.sub_type)}</td>
-      <td>${this.retEsc(r.party || '-')}</td>
-      <td>${this.retEsc(r.ref_no || '-')}</td>
-      <td class="text-right">${r.line_count || 0}</td>
-      <td class="text-right">${this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty)}</td>
-      ${showPrice ? `<td class="text-right">${this.fmtMoney(r.total_amount)}</td>` : ''}
-      <td>${this.retStatusBadge(r.status)}</td>
-      <td class="text-right">${this.qtyCell(r.direction === 'in' ? r.reversed_qty : -r.reversed_qty)}</td>
-      <td class="text-right">${this.qtyCell(r.direction === 'in' ? r.remaining_qty : -r.remaining_qty)}</td>
-      <td><span class="action-link" onclick="App.retOpenDoc('${this.retEsc(r.doc_no)}')">${this.t('ret_view')}</span></td>
-    </tr>`).join('');
-
-    const pager = `<div class="pu-pager" style="display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 0">
-      <span style="font-size:12px;color:var(--text-muted)">${this.t('ret_page_info', { page: d.page, pages: d.totalPages, n: d.total })}</span>
-      <button class="btn btn-outline" ${d.page <= 1 ? 'disabled' : ''} onclick="App.retPage(${d.page - 1})">${this.t('pu_prev')}</button>
-      <button class="btn btn-outline" ${d.page >= d.totalPages ? 'disabled' : ''} onclick="App.retPage(${d.page + 1})">${this.t('pu_next')}</button>
-    </div>`;
-
-    body.innerHTML = `<div class="table-wrap"><table><thead><tr>
-      <th>${this.t('ret_no')}</th><th>${this.t('ret_date')}</th><th>${this.t('ret_subtype')}</th>
-      <th>${this.t('ret_party')}</th><th>${this.t('ret_ref')}</th><th class="text-right">${this.t('ret_lines')}</th>
-      <th class="text-right">${this.t('ret_qty')}</th>${showPrice ? `<th class="text-right">${this.t('ret_amount')}</th>` : ''}
-      <th>${this.t('ret_status')}</th><th class="text-right">${this.t('ret_reversed')}</th>
-      <th class="text-right">${this.t('ret_remaining')}</th><th>${this.t('ret_actions')}</th>
-    </tr></thead><tbody>${rows}</tbody></table></div>${pager}`;
+    const rows = this.retVisibleRows();
+    const st = this.getTableState('returns');
+    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
+    const pageData = this.paginate(sorted, st.page, st.pageSize);
+    const scroll = document.getElementById('ret-scroll');
+    if (scroll) {
+      scroll.innerHTML = sorted.length
+        ? this.retListTable(pageData)
+        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.retHasFilter() ? this.t('pu_no_result_hint') : this.t('ret_empty')}</span></div>`;
+    }
+    const pager = document.getElementById('ret-pager');
+    if (pager) pager.innerHTML = this.renderPager('returns', sorted.length);
   },
 
-  retPage(page) {
+  retHasFilter() {
     const s = this.retState();
-    s.page = Math.max(1, Number(page) || 1);
-    this.retLoadList();
+    return !!(s.kw || s.from || s.to || s.kpi || s.tab);
   },
 
-  // 从采购单详情等外部入口直接打开退货单详情
+  retListTable(pageData) {
+    const vp = this.canViewPrice();
+    const s = this.retState();
+    const tid = 'returns';
+    const cols = [
+      ['doc_no', this.t('ret_no'), r => `<button type="button" class="pu-lk" onclick="event.stopPropagation();App.retSelectDoc('${this.retEsc(r.doc_no)}')">${this.retEsc(r.doc_no)}</button>`],
+      ['date', this.t('ret_date'), r => this.fmtDate(r.date)],
+      ['sub_type', this.t('ret_subtype'), r => this.retSubTypeBadge(r.sub_type)],
+      ['party', this.t('ret_party'), r => this.retEsc(r.party || '-')],
+      ['ref_no', this.t('ret_ref'), r => this.retEsc(r.ref_no || '-')],
+      ['line_count', this.t('ret_lines'), r => r.line_count || 0, true],
+      ['total_qty', this.t('ret_qty'), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
+      ['total_amount', this.t('ret_amount'), r => this.fmtMoney(r.total_amount), true, vp],
+      ['status', this.t('ret_status'), r => this.retStatusBadge(r.status)],
+      ['reversed_qty', this.t('ret_reversed'), r => this.qtyCell(r.direction === 'in' ? r.reversed_qty : -r.reversed_qty), true],
+      ['remaining_qty', this.t('ret_remaining'), r => this.qtyCell(r.direction === 'in' ? r.remaining_qty : -r.remaining_qty), true],
+      ['actions', this.t('ret_actions'), r => `<span class="action-link" onclick="event.stopPropagation();App.retSelectDoc('${this.retEsc(r.doc_no)}')">${this.t('ret_view')}</span>`],
+    ];
+    const shown = cols.filter(c => c[4] !== false);
+    const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
+    const body = pageData.map(r => {
+      const on = s.sel === r.doc_no;
+      return `<tr class="pu-row${on ? ' sel' : ''}" onclick="App.retSelectDoc('${this.retEsc(r.doc_no)}')">` +
+        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+    }).join('');
+    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+  },
+
+  retCloseInspector() {
+    const insp = document.getElementById('ret-insp');
+    if (insp) { insp.hidden = true; insp.innerHTML = ''; }
+  },
+
+  async retSelectDoc(docNo, silent) {
+    const s = this.retState();
+    s.sel = docNo;
+    this.retRenderList();
+    try {
+      this._retData = await this.api('/api/returns/docs/' + encodeURIComponent(docNo));
+    } catch (e) {
+      if (!silent) this.toast(e.message || this.t('ret_load_failed'), 'error');
+      return;
+    }
+    const insp = document.getElementById('ret-insp');
+    if (!insp) return;
+    insp.hidden = false;
+    insp.innerHTML = this.retDetailHtml(this._retData);
+  },
+
+  // 兼容旧入口：从采购单详情等直接打开退货单
   openReturnDoc(docNo) {
     if (!this.can('returns', 'view')) {
       this.toast(this.t('no_perm_msg'), 'error');
@@ -203,15 +302,8 @@ Object.assign(App, {
     return this.renderReturns();
   },
 
-  async retOpenDoc(docNo) {
-    try {
-      const doc = await this.api('/api/returns/docs/' + encodeURIComponent(docNo));
-      const body = document.getElementById('ret-body');
-      if (!body) return;
-      body.innerHTML = this.retDetailHtml(doc);
-    } catch (e) {
-      this.toast(e.message || this.t('ret_load_failed'), 'error');
-    }
+  retOpenDoc(docNo) {
+    return this.retSelectDoc(docNo);
   },
 
   retDetailHtml(doc) {
@@ -229,16 +321,23 @@ Object.assign(App, {
       doc.status === 'draft' && canDelete ? `<button class="btn btn-outline" onclick="App.retDelete('${this.retEsc(doc.doc_no)}','${doc.ledger}')">${this.t('ret_delete')}</button>` : '',
     ].filter(Boolean).join(' ');
 
+    // 领用退库的原出库单可直接跳转（2C）
+    const refCell = doc.ref_no
+      ? (doc.ledger === 'outbound'
+          ? `<span class="action-link" onclick="App.openOutboundDoc('${this.retEsc(doc.ref_no)}')">${this.retEsc(doc.ref_no)}</span>`
+          : this.retEsc(doc.ref_no))
+      : '-';
+
     const lineRows = (doc.lines || []).map(l => {
-      const qty = l.qty;
+      const qty = Math.abs(Number(l.qty || 0));
       const reversed = Math.abs(Number(l.reversed_qty || 0));
-      const remain = Math.max(0, Math.abs(Number(qty || 0)) - reversed);
+      const remain = Math.max(0, qty - reversed);
       return `<tr>
         <td>${this.retEsc(l.code || '-')}</td>
         <td>${this.retEsc(l.material_name || '-')}</td>
         <td>${this.retEsc(l.material_spec || '-')}</td>
         <td>${this.retEsc(l.material_unit || '')}</td>
-        <td class="text-right">${this.qtyCell(d * Math.abs(Number(qty || 0)))}</td>
+        <td class="text-right">${this.qtyCell(d * qty)}</td>
         ${showPrice ? `<td class="text-right">${this.fmtMoney(doc.ledger === 'inbound' ? l.price : l.cost_price)}</td>
         <td class="text-right">${this.fmtMoney(doc.ledger === 'inbound' ? l.amount : l.cost_amount)}</td>` : ''}
         <td class="text-right">${this.qtyCell(d * reversed)}</td>
@@ -261,9 +360,9 @@ Object.assign(App, {
         <div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('ret_no')}</label><div>${this.retEsc(doc.doc_no)}</div></div>
           <div class="form-group"><label>${this.t('ret_date')}</label><div>${this.fmtDate(doc.date)}</div></div>
-          <div class="form-group"><label>${this.t('ret_subtype')}</label><div>${this.retEsc(doc.sub_type)}</div></div>
+          <div class="form-group"><label>${this.t('ret_subtype')}</label><div>${this.retSubTypeBadge(doc.sub_type)}</div></div>
           <div class="form-group"><label>${this.t('ret_party')}</label><div>${this.retEsc(doc.party || '-')}</div></div>
-          <div class="form-group"><label>${this.t('ret_ref')}</label><div>${this.retEsc(doc.ref_no || '-')}</div></div>
+          <div class="form-group"><label>${this.t('ret_ref')}</label><div>${refCell}</div></div>
           <div class="form-group"><label>${this.t('ret_handler')}</label><div>${this.retEsc(doc.handler || '-')}</div></div>
           <div class="form-group"><label>${this.t('ret_qty')}</label><div>${this.qtyCell(d * s.total_qty)}</div></div>
           ${showPrice ? `<div class="form-group"><label>${this.t('ret_amount')}</label><div>${this.fmtMoney(s.total_amount)}</div></div>` : ''}
@@ -295,7 +394,10 @@ Object.assign(App, {
   },
 
   retBackToList() {
-    this.retLoadList();
+    const s = this.retState();
+    s.sel = '';
+    this.retCloseInspector();
+    this.retRenderList();
   },
 
   async retConfirm(docNo, ledger) {
@@ -304,7 +406,8 @@ Object.assign(App, {
     try {
       await this.api(url + encodeURIComponent(docNo) + '/confirm', { method: 'POST' });
       this.toast(this.t('ret_confirmed'));
-      await this.retOpenDoc(docNo);
+      await this.retLoadList();
+      await this.retSelectDoc(docNo, true);
     } catch (e) {
       this.toast(e.message || this.t('ret_confirm_failed'), 'error');
     }
@@ -316,7 +419,10 @@ Object.assign(App, {
     try {
       await this.api(url + encodeURIComponent(docNo), { method: 'DELETE' });
       this.toast(this.t('deleted'));
-      this.retLoadList();
+      const s = this.retState();
+      s.sel = '';
+      this.retCloseInspector();
+      await this.retLoadList();
     } catch (e) {
       this.toast(e.message || this.t('requestFailed'), 'error');
     }
