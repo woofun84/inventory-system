@@ -6,6 +6,7 @@
  * 只读请求（GET）不记录，避免噪音。
  */
 const { record, summarize } = require('../services/audit');
+const db = require('../db');
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const METHOD_ACTION = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
@@ -43,13 +44,44 @@ function pickTarget(segs, body) {
   return '';
 }
 
+// 单据类型 → 审计归口模块
+// 采购退货（入库账本）/ 领用退库（出库账本）统一记为 returns，
+// 其余单据类型保持 inbound / outbound；历史审计记录不回溯改写。
+const RETURN_TXN_TYPES = new Set(['采购退货', '退库出库']);
+const DOC_TABLES = { 'inbound-docs': 'inbound_docs', 'outbound-docs': 'outbound_docs' };
+
+function docTxnType(res0, segs, body) {
+  const table = DOC_TABLES[res0];
+  if (!table) return '';
+  // 创建时单据号可能由服务端生成，先看请求体里的 txn_type
+  const bodyType = body && typeof body.txn_type === 'string' ? body.txn_type : '';
+  if (bodyType) return bodyType;
+
+  // 其余按路径中的单据号查库（如 /api/inbound-docs/RET-xxx/confirm）
+  let docNo = segs[2] && !NON_TARGET.has(segs[2]) ? segs[2] : '';
+  if (!docNo && body && body.doc_no) docNo = String(body.doc_no);
+  if (!docNo) return '';
+  try {
+    const row = db.prepare(`SELECT txn_type FROM ${table} WHERE doc_no=?`).get(docNo);
+    return row ? row.txn_type : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function resolveModule(res0, segs, body) {
+  if (RETURN_TXN_TYPES.has(docTxnType(res0, segs, body))) return 'returns';
+  return PATH_MODULE[res0] || res0;
+}
+
 function auditMiddleware(req, res, next) {
   if (!WRITE_METHODS.has(req.method) || !req.path.startsWith('/api/')) return next();
   res.on('finish', () => {
     try {
       const segs = req.path.split('/').filter(Boolean); // ['api','materials','CB-0001']
       const res0 = segs[1] || '';
-      const module = PATH_MODULE[res0] || res0;
+      const body = req.body;
+      const module = resolveModule(res0, segs, body);
 
       let action = METHOD_ACTION[req.method] || req.method.toLowerCase();
       for (let i = segs.length - 1; i >= 2; i--) {
@@ -58,7 +90,6 @@ function auditMiddleware(req, res, next) {
       if (res0 === 'auth' && segs[2] === 'login') action = 'login';
       if (res0 === 'auth' && segs[2] === 'change-password') action = 'change-password';
 
-      const body = req.body;
       const u = req.user || {};
       record({
         user_id: u.id || null,

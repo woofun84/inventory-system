@@ -10,7 +10,7 @@
   }[ch]));
 
   // 可审计模块（与后端 middleware/audit.js 的 PATH_MODULE 取值一致）
-  const AUDIT_MODULES = ['auth', 'users', 'materials', 'suppliers', 'inbound', 'outbound', 'purchase', 'stocktake', 'settings'];
+  const AUDIT_MODULES = ['auth', 'users', 'materials', 'suppliers', 'inbound', 'outbound', 'returns', 'purchase', 'stocktake', 'settings'];
   // 动作码（与后端 services/audit.js 的 ACTIONS 一致）
   const AUDIT_ACTIONS = ['login', 'create', 'update', 'delete', 'confirm', 'cancel', 'reverse', 'load', 'change-password'];
 
