@@ -176,7 +176,7 @@ const App = {
   render() {
     const pages = {
       dashboard: () => this.renderDashboard(), materials: () => this.renderMaterials(),
-      inbound: () => this.renderInbound(), outbound: () => this.renderOutbound(),
+      inbound: () => this.renderInbound(), outbound: () => this.renderOutbound(), returns: () => this.renderReturns(),
       stockSummary: () => this.renderStockSummary(), query: () => this.renderQuery(),
       ledger: () => this.renderLedger(),
       stocktake: () => this.renderStocktake(),
@@ -192,6 +192,7 @@ const App = {
       { section: this.t('nav_home'), items: [{ key: 'dashboard', icon: '🏠', label: this.t('nav_home') }]},
       { section: this.lang === 'zh' ? '常用操作' : 'Operations', items: [
         { key: 'inbound', icon: '📥', label: this.t('nav_inbound') }, { key: 'outbound', icon: '📤', label: this.t('nav_outbound') },
+        { key: 'returns', icon: '↩️', label: this.t('nav_returns') },
         { key: 'stocktake', icon: '📋', label: this.t('nav_stocktake') },
         { key: 'query', icon: '🔍', label: this.t('nav_query') }, { key: 'purchase', icon: '🛒', label: this.t('nav_purchase') },
       ]},

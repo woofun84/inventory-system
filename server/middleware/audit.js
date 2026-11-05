@@ -24,6 +24,7 @@ const PATH_MODULE = {
   'inbound-docs': 'inbound',
   outbound: 'outbound',
   'outbound-docs': 'outbound',
+  returns: 'returns',
   purchase: 'purchase',
   stocktakes: 'stocktake',
   params: 'settings',

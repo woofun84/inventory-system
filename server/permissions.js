@@ -22,6 +22,7 @@ const ROLE_PERMISSIONS = {
     dashboard: ['view'],
     inbound: ['view', 'create', 'edit', 'delete'],
     outbound: ['view', 'create', 'edit', 'delete'],
+    returns: ['view', 'create', 'edit', 'delete'],
     materials: ['view', 'create', 'edit', 'delete'],
     suppliers: ['view', 'create', 'edit', 'delete'],
     purchase: ['view', 'create', 'edit', 'delete'],
@@ -34,6 +35,7 @@ const ROLE_PERMISSIONS = {
     dashboard: ['view'],
     inbound: ['view', 'create'],
     outbound: ['view', 'create'],
+    returns: ['view', 'create'],
     materials: ['view'],
     suppliers: ['view'],
     purchase: ['view'],
@@ -41,7 +43,7 @@ const ROLE_PERMISSIONS = {
     stocktake: ['view', 'create'],
   },
   viewer: {
-    dashboard: ['view'], inbound: ['view'], outbound: ['view'], materials: ['view'],
+    dashboard: ['view'], inbound: ['view'], outbound: ['view'], returns: ['view'], materials: ['view'],
     suppliers: ['view'], purchase: ['view'], stockSummary: ['view'],
     query: ['view'], ledger: ['view'],
     stocktake: ['view'],
@@ -61,7 +63,7 @@ function grantsOf(role) {
   if (!p) return {};
   if (Array.isArray(p)) {
     const g = {};
-    ['dashboard', 'inbound', 'outbound', 'materials', 'suppliers', 'purchase',
+    ['dashboard', 'inbound', 'outbound', 'returns', 'materials', 'suppliers', 'purchase',
      'stockSummary', 'query', 'ledger', 'stocktake', 'settings', 'users', 'audit']
       .forEach(m => g[m] = (MODULE_ACTIONS[m] || DEFAULT_MODULE_ACTIONS).slice());
     return g;

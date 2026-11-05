@@ -69,6 +69,7 @@ app.use(require('./server/routes/materials'));
 app.use(require('./server/routes/suppliers'));
 app.use(require('./server/routes/inbound'));
 app.use(require('./server/routes/outbound'));
+app.use(require('./server/routes/returns'));
 app.use(require('./server/routes/stock'));
 app.use(require('./server/routes/adjustments'));
 app.use(require('./server/routes/stocktake'));
