@@ -535,7 +535,7 @@ Object.assign(App, {
     meta.push([this.t('ibd_remarks'), d.remarks || '–']);
 
     const tabs = [
-      ['lines', this.t('pu_tab_detail_lines'), lines.length],
+      ['lines', this.t('ibd_tab_lines'), lines.length],
       ['rev', this.t('ibd_rev_history'), revs.length],
       ['logs', this.t('pu_tab_logs'), logs.length],
     ];

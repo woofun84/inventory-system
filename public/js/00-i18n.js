@@ -153,6 +153,7 @@ const I18N = {
     // 退货与退库模块
     ret_title: '退货与退库', ret_desc: '集中管理采购退货与领用退库；数量展示绝对值，方向用徽标标识',
     ret_tab_all: '全部', ret_tab_purchase: '采购退货', ret_tab_stock: '领用退库', ret_tab_reversal: '退货冲销',
+    ret_lines_purchase: '退货明细', ret_lines_stock: '退库明细', ret_lines_reversal: '冲销明细',
     ret_new_purchase: '新建采购退货', ret_new_stock: '新建领用退库',
     ret_filter_ph: '单号 / 对方单位 / 原单号 / 经办人 / 备注', ret_status_all: '全部状态',
     ret_total: '共 {n} 张单据', ret_load_failed: '加载退货/退库数据失败', ret_empty: '暂无退货/退库单据',
@@ -301,6 +302,7 @@ const I18N = {
     pu_po_count: '采购单数', pu_receive_rate: '到货率',
     pu_back_list: '返回列表',
     pu_tab_detail_lines: '采购明细', pu_tab_inbound: '入库单', pu_tab_logs: '操作日志',
+    ibd_tab_lines: '入库明细', obd_tab_lines: '出库明细',
     pu_detail_orders: '关联采购单',
     pu_add_line: '添加明细', pu_edit_line: '编辑明细',
     pu_code: '物料编码', pu_material: '物料名称', pu_spec: '规格', pu_unit: '单位',
@@ -510,6 +512,7 @@ const I18N = {
     // Returns module
     ret_title: 'Returns & Return to Stock', ret_desc: 'Manage purchase returns and return-to-stock; quantities show absolute values with direction badges',
     ret_tab_all: 'All', ret_tab_purchase: 'Purchase Returns', ret_tab_stock: 'Return to Stock', ret_tab_reversal: 'Return Reversals',
+    ret_lines_purchase: 'Return Lines', ret_lines_stock: 'Return-to-Stock Lines', ret_lines_reversal: 'Reversal Lines',
     ret_new_purchase: 'New Purchase Return', ret_new_stock: 'New Return to Stock',
     ret_filter_ph: 'Doc no / party / ref no / handler / remarks', ret_status_all: 'All statuses',
     ret_total: '{n} documents', ret_load_failed: 'Failed to load return documents', ret_empty: 'No return documents',
@@ -658,6 +661,7 @@ const I18N = {
     pu_po_count: 'Orders', pu_receive_rate: 'Receive Rate',
     pu_back_list: 'Back to List',
     pu_tab_detail_lines: 'Purchase Lines', pu_tab_inbound: 'Inbound Docs', pu_tab_logs: 'Operation Log',
+    ibd_tab_lines: 'Inbound Lines', obd_tab_lines: 'Outbound Lines',
     pu_detail_orders: 'Related Purchase Orders',
     pu_add_line: 'Add Line', pu_edit_line: 'Edit Line',
     pu_code: 'Material Code', pu_material: 'Material Name', pu_spec: 'Spec', pu_unit: 'Unit',

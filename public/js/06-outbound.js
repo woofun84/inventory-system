@@ -504,6 +504,7 @@ Object.assign(App, {
     const summary = document.getElementById('ob-summary');
     if (summary) {
       const parts = [
+        `${this.t('obd_tab_lines')}`,
         `${this.t('obd_line_count', { n: s.line_count || 0 })}`,
         `${this.t('out_total_qty')}: <b style="color:var(--text)">${this.qtyCell(s.total_qty)}</b>`,
       ];

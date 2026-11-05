@@ -251,6 +251,15 @@ Object.assign(App, {
     return `<span class="badge badge-${hit[0]}">${this.t(hit[1])}</span>`;
   },
 
+  // 明细页签文案按子类型区分：采购退货/领用退库/退货冲销各有专属叫法
+  retLinesLabel(doc) {
+    const st = (doc && doc.sub_type) || '';
+    if (st === '采购退货') return this.t('ret_lines_purchase');
+    if (st === '领用退库') return this.t('ret_lines_stock');
+    if (st === '退货冲销') return this.t('ret_lines_reversal');
+    return this.t('pu_tab_detail_lines');
+  },
+
   retTypeLabel(doc) {
     const st = (doc && doc.sub_type) || '';
     if (st === '采购退货') return this.t('ret_tab_purchase');
@@ -450,7 +459,7 @@ Object.assign(App, {
     meta.push([this.t('ibd_remarks'), d.remarks || '–']);
 
     const tabs = [
-      ['lines', this.t('pu_tab_detail_lines'), lines.length],
+      ['lines', this.retLinesLabel(d), lines.length],
       ['rev', this.t('ret_reversal_docs'), revs.length],
       ['logs', this.t('pu_tab_logs'), logs.length],
     ];
