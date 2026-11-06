@@ -443,6 +443,216 @@ function getOrderLinesByContract(contractNo) {
   })).filter(l => l.unreceived_qty > 0 && l.manual_status !== '已取消' && l.manual_status !== '已关闭');
 }
 
+// ==================== 采购退货三档关联（2026-11 第五批） ====================
+// 档 1 inbound ：绑原入库单，行 origin_line_id 指向原入库行
+// 档 2 po/contract：按采购单/合同跨多张入库单合并退货，行 origin_line_id 仍指向具体入库行
+// 档 3 none    ：无原单（仅 admin/manager），单价手填、原因必填
+const PURCHASE_RETURN_TYPE = '采购退货';
+const RETURN_SOURCE_TYPES = ['采购入库', '零星入库'];
+const RETURN_TIER_VALUES = ['inbound', 'po', 'contract', 'none'];
+const RETURN_SOURCE_STATUSES = ['posted', 'partially_reversed'];
+
+// 已确认（已影响库存）的单据状态：部分冲销/全部冲销仍保留原明细行，
+// 其占用量必须继续计入，再通过红冲数量回补，否则部分冲销会被整体放回额度。
+const CONFIRMED_DOC_STATUS_SQL = "d.status IN ('posted','partially_reversed','reversed')";
+
+// 原入库行被「入库冲销」冲掉的数量（红冲后不再占用可退额度）
+function getInboundReversedQtyByLine(lineId) {
+  const r = db.prepare(`SELECT COALESCE(SUM(ABS(i.qty)),0) AS v FROM inbound i
+    JOIN inbound_docs d ON d.doc_no = i.doc_no
+    WHERE i.reversal_of = ? AND i.txn_type = '入库冲销' AND ${CONFIRMED_DOC_STATUS_SQL}`).get(String(lineId));
+  return Number(r ? r.v : 0);
+}
+
+// 原入库行被已过账采购退货占用的净数量：
+//   Σ 已确认退货行数量 − Σ 针对这些退货行的已过账红冲数量
+// 草稿不占用额度；红冲回补后额度恢复。
+function getPurchaseReturnedQtyByLine(lineId, excludeDocNo) {
+  let sql = `SELECT COALESCE(SUM(ABS(r.qty)),0) AS v FROM inbound r
+    JOIN inbound_docs d ON d.doc_no = r.doc_no
+    WHERE r.txn_type = ? AND r.origin_line_id = ? AND ${CONFIRMED_DOC_STATUS_SQL}`;
+  const args = [PURCHASE_RETURN_TYPE, Number(lineId) || 0];
+  if (excludeDocNo) { sql += ' AND r.doc_no <> ?'; args.push(excludeDocNo); }
+  const returned = Number(db.prepare(sql).get(...args).v || 0);
+
+  let revSql = `SELECT COALESCE(SUM(ABS(x.qty)),0) AS v FROM inbound x
+    JOIN inbound_docs xd ON xd.doc_no = x.doc_no
+    WHERE x.txn_type = '入库冲销' AND xd.status = 'posted'
+      AND x.reversal_of IN (
+        SELECT CAST(r.id AS TEXT) FROM inbound r
+        JOIN inbound_docs d ON d.doc_no = r.doc_no
+        WHERE r.txn_type = ? AND r.origin_line_id = ? AND ${CONFIRMED_DOC_STATUS_SQL}`;
+  const revArgs = [PURCHASE_RETURN_TYPE, Number(lineId) || 0];
+  if (excludeDocNo) { revSql += ' AND r.doc_no <> ?'; revArgs.push(excludeDocNo); }
+  revSql += ')';
+  const restored = Number(db.prepare(revSql).get(...revArgs).v || 0);
+  return Math.max(0, returned - restored);
+}
+
+// 单条原入库行的可退量 = 原入库量 − 已冲销入库量 − 已过账退货净占用量
+function purchaseReturnAvailable(line) {
+  const orig = sign.absQty(line.qty);
+  const reversed = getInboundReversedQtyByLine(line.id);
+  const returned = getPurchaseReturnedQtyByLine(line.id);
+  return Math.max(0, orig - reversed - returned);
+}
+
+// 校验原入库单可作为采购退货来源
+function loadPurchaseReturnOrigin(originDocNo) {
+  const doc = db.prepare('SELECT * FROM inbound_docs WHERE doc_no=?').get(originDocNo);
+  if (!doc) throw bizError('ORIGIN_DOC_NOT_FOUND', `原入库单不存在: ${originDocNo}`);
+  if (!RETURN_SOURCE_TYPES.includes(doc.txn_type)) {
+    throw bizError('ORIGIN_DOC_INVALID', '只有采购入库/零星入库单可以作为采购退货来源');
+  }
+  if (!RETURN_SOURCE_STATUSES.includes(doc.status)) {
+    throw bizError('ORIGIN_DOC_NOT_POSTED', '原入库单尚未过账或已全部冲销，不能退货');
+  }
+  return doc;
+}
+
+const RETURN_SOURCE_SELECT = `SELECT i.id, i.doc_no, i.date, i.code, i.qty, i.price, i.po_no, i.contract_no,
+    i.order_line_id, m.name AS material_name, m.spec AS material_spec,
+    m.unit AS material_unit, m.brand AS material_brand
+  FROM inbound i
+  JOIN inbound_docs d ON d.doc_no = i.doc_no
+  LEFT JOIN materials m ON m.code = i.code`;
+
+function mapSourceLine(l, excludeDocNo) {
+  return {
+    id: l.id,
+    doc_no: l.doc_no,
+    date: l.date,
+    code: l.code,
+    qty: sign.absQty(l.qty),
+    price: sign.storedAbs(l.price),
+    po_no: l.po_no || '',
+    contract_no: l.contract_no || '',
+    order_line_id: Number(l.order_line_id) || 0,
+    material_name: l.material_name,
+    material_spec: l.material_spec,
+    material_unit: l.material_unit,
+    material_brand: l.material_brand,
+    available: Math.max(0, sign.absQty(l.qty) - getInboundReversedQtyByLine(l.id)
+      - getPurchaseReturnedQtyByLine(l.id, excludeDocNo)),
+  };
+}
+
+// 档 1：原入库单的可退明细（只取已过账的正数来源行）
+function getPurchaseReturnOriginLines(originDocNo, excludeDocNo) {
+  loadPurchaseReturnOrigin(originDocNo);
+  const lines = db.prepare(`${RETURN_SOURCE_SELECT}
+    WHERE i.doc_no = ? AND i.status = 'posted' AND i.qty > 0
+      AND i.txn_type IN ('采购入库','零星入库')
+    ORDER BY i.id ASC`).all(originDocNo);
+  return lines.map(l => mapSourceLine(l, excludeDocNo));
+}
+
+// 档 2 范围合法性：采购单必须存在；合同必须存在于档案或明细行中
+function loadPurchaseReturnScope(scope, refNo) {
+  if (!refNo) throw bizError('RETURN_REF_REQUIRED', '请选择关联的采购单或合同');
+  if (scope === 'po') {
+    const po = db.prepare('SELECT po_no, supplier FROM purchase_orders WHERE po_no=?').get(refNo);
+    if (!po) throw bizError('RETURN_PO_NOT_FOUND', `采购单不存在: ${refNo}`);
+    return po;
+  }
+  const ct = db.prepare('SELECT contract_no, supplier FROM contracts WHERE contract_no=?').get(refNo);
+  if (ct) return ct;
+  const line = db.prepare(`SELECT ? AS contract_no, COALESCE(po.supplier,'') AS supplier
+    FROM order_lines ol LEFT JOIN purchase_orders po ON po.po_no = ol.po_no
+    WHERE ${EFF_CONTRACT} = ? LIMIT 1`).get(refNo, refNo);
+  if (!line) throw bizError('RETURN_CONTRACT_NOT_FOUND', `合同不存在: ${refNo}`);
+  return line;
+}
+
+// 档 2：采购单/合同范围的可退明细（跨多张入库单）
+//   po       ：入库行 order_line_id 属于该采购单的采购明细，或行上 po_no 直接匹配
+//   contract ：入库行 order_line_id 的「有效合同」= 合同号（行级合同优先、否则采购单头默认），
+//              或行上 contract_no 直接匹配
+function getPurchaseReturnScopeLines(scope, refNo, excludeDocNo) {
+  loadPurchaseReturnScope(scope, refNo);
+  let sql = `${RETURN_SOURCE_SELECT}
+    WHERE i.status = 'posted' AND i.qty > 0
+      AND i.txn_type IN ('采购入库','零星入库')
+      AND d.status IN ('posted','partially_reversed')`;
+  let args;
+  if (scope === 'po') {
+    sql += ` AND (i.po_no = ? OR i.order_line_id IN (SELECT id FROM order_lines WHERE po_no = ?))`;
+    args = [refNo, refNo];
+  } else {
+    sql += ` AND (i.contract_no = ? OR i.order_line_id IN (
+      SELECT ol.id FROM order_lines ol LEFT JOIN purchase_orders po ON po.po_no = ol.po_no
+      WHERE ${EFF_CONTRACT} = ?))`;
+    args = [refNo, refNo];
+  }
+  sql += ' ORDER BY i.id ASC';
+  return db.prepare(sql).all(...args).map(l => mapSourceLine(l, excludeDocNo));
+}
+
+// 档 2 下拉候选：所有已确认采购单 + 所有合同（含仅出现在明细行上的合同号）
+function getPurchaseReturnScopeOptions() {
+  const po = db.prepare(`SELECT po_no, date, supplier FROM purchase_orders
+    WHERE status='posted' ORDER BY date DESC, po_no`).all();
+  const contract = db.prepare(`SELECT contract_no, MAX(supplier) AS supplier FROM (
+      SELECT contract_no, supplier FROM contracts
+      UNION ALL SELECT ol.contract_no AS contract_no, po.supplier AS supplier
+        FROM order_lines ol LEFT JOIN purchase_orders po ON po.po_no = ol.po_no
+        WHERE TRIM(COALESCE(ol.contract_no,'')) <> ''
+    ) GROUP BY contract_no ORDER BY contract_no`).all();
+  return { po, contract };
+}
+
+// 档 1 下拉候选：已过账/部分冲销的采购入库、零星入库
+function getPurchaseReturnOriginOptions() {
+  return db.prepare(`SELECT doc_no, date, txn_type, supplier,
+      (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no AND i.qty > 0) AS line_count
+    FROM inbound_docs d
+    WHERE txn_type IN ('采购入库','零星入库')
+      AND status IN ('posted','partially_reversed')
+    ORDER BY date DESC, created_at DESC`).all();
+}
+
+// 汇总某范围/原单的可退明细：Map<origin_line_id, source line>
+function collectPurchaseReturnSources(docLike, excludeDocNo) {
+  const tier = String(docLike.return_tier || '');
+  if (tier === 'inbound') {
+    return new Map(getPurchaseReturnOriginLines(docLike.origin_doc_no, excludeDocNo).map(s => [String(s.id), s]));
+  }
+  if (tier === 'po' || tier === 'contract') {
+    return new Map(getPurchaseReturnScopeLines(tier, docLike.return_ref_no, excludeDocNo).map(s => [String(s.id), s]));
+  }
+  return new Map();
+}
+
+// 校验采购退货明细：关联档必须指向范围内的入库行，且单行累计不超可退量
+// 返回 Map<origin_line_id, source line>，供调用方继承原行单价/采购明细核销号
+function validatePurchaseReturnLines(docLike, lines, excludeDocNo) {
+  const tier = String(docLike.return_tier || '');
+  if (docLike.txn_type !== PURCHASE_RETURN_TYPE || tier === 'none' || !tier) return new Map();
+  const sources = collectPurchaseReturnSources(docLike, excludeDocNo);
+  const seen = new Map();
+
+  (lines || []).forEach(l => {
+    const srcId = Number(l.origin_line_id) || 0;
+    if (!srcId) {
+      throw bizError('RETURN_ORIGIN_LINE_REQUIRED', `物料 ${l.code || '-'} 未关联原入库明细，不能退货`);
+    }
+    const src = sources.get(String(srcId));
+    if (!src) {
+      throw bizError('RETURN_ORIGIN_LINE_INVALID', `明细行 ${srcId} 不属于当前退货关联范围`);
+    }
+    if (l.code && l.code !== src.code) {
+      throw bizError('RETURN_MATERIAL_MISMATCH', `明细行 ${srcId} 的物料应为 ${src.code}`);
+    }
+    const qty = sign.absQty(l.qty);
+    const inBatch = (seen.get(String(srcId)) || 0) + qty;
+    seen.set(String(srcId), inBatch);
+    if (inBatch > src.available + 1e-4) {
+      throw bizError('RETURN_QTY_EXCEEDED',
+        `物料 ${src.code}：本次退货 ${inBatch} 超过可退量 ${src.available}（最多还可退 ${Math.max(0, src.available - (inBatch - qty))}）`);
+    }
+  });
+  return sources;
+}
 
 module.exports = {
   getAdjustTotal,
@@ -464,4 +674,19 @@ module.exports = {
   resolveOrderLineId,
   EFF_CONTRACT,
   RECEIVED_BY_LINE,
+  // 采购退货三档（第五批）
+  PURCHASE_RETURN_TYPE,
+  RETURN_SOURCE_TYPES,
+  RETURN_TIER_VALUES,
+  getInboundReversedQtyByLine,
+  getPurchaseReturnedQtyByLine,
+  purchaseReturnAvailable,
+  loadPurchaseReturnOrigin,
+  getPurchaseReturnOriginLines,
+  loadPurchaseReturnScope,
+  getPurchaseReturnScopeLines,
+  getPurchaseReturnScopeOptions,
+  getPurchaseReturnOriginOptions,
+  collectPurchaseReturnSources,
+  validatePurchaseReturnLines,
 };

@@ -181,6 +181,25 @@ const I18N = {
     ibd_rev_need: '需冲', ibd_rev_stock_short: '库存不足，无法冲销',
     ibd_log_reverse: '冲销',
 
+    // ---- 采购退货三档（2026-11 第五批）----
+    ret_tier: '关联档位', ret_tier_inbound: '关联入库单', ret_tier_po: '关联采购单',
+    ret_tier_contract: '关联合同', ret_tier_none: '无原单',
+    ret_no_origin: '无原单', ret_no_origin_forbidden: '无原单退货仅管理员或主管可用',
+    ret_no_origin_reason: '无原单原因', ret_no_origin_reason_ph: '请填写无原单退货原因（必填，将写入审计）',
+    ret_no_origin_hint: '无原单退货不关联入库单：请手动填写供应商、每条物料的单价与原因，仅管理员/主管可用。',
+    ret_origin_inbound_doc: '原入库单', ret_po: '采购单', ret_contract: '合同',
+    ret_source_doc: '来源入库单', ret_remaining_qty: '剩余可退',
+    ret_source_preview_hint: '共 {n} 条可退明细（跨多张入库单合并），创建后填写退货数量（留空的行不生成明细）。',
+    ret_no_returnable: '该关联范围内没有可退明细',
+    ret_tier_required: '请选择退货关联档位',
+    ret_origin_inbound_required: '请选择原入库单',
+    ret_scope_required: '请选择采购单或合同',
+    ret_reason_required: '无原单退货必须填写原因',
+    ret_tier_changed_locked: '单据创建后不可修改关联档位',
+    ret_qty_over_available: '第 {n} 行退货数量超过可退量（最多 {max}）',
+    ret_line_origin_locked: '来源与单价已锁定，只填写退货数量',
+    ret_origin_supplier: '供应商自动继承原单，可手工修改',
+
     // ---- 出库单据（outbound documents）----
     obd_title: '出库管理', obd_desc: '按单据管理出库流程：草稿→确认出库→生成库存流水',
     obd_add: '新建出库单', obd_edit: '编辑', obd_edit_title: '出库单编辑',
@@ -539,6 +558,25 @@ const I18N = {
     ibd_rev_confirm_btn: 'Confirm Reversal',
     ibd_rev_need: 'Need', ibd_rev_stock_short: 'Insufficient stock for reversal',
     ibd_log_reverse: 'Reverse',
+
+    // ---- Purchase return linkage tiers (2026-11 batch 5) ----
+    ret_tier: 'Linkage', ret_tier_inbound: 'Inbound Doc', ret_tier_po: 'Purchase Order',
+    ret_tier_contract: 'Contract', ret_tier_none: 'No Source',
+    ret_no_origin: 'No source', ret_no_origin_forbidden: 'No-source returns are limited to admin / manager',
+    ret_no_origin_reason: 'No-source reason', ret_no_origin_reason_ph: 'Enter the reason for this no-source return (required, written to audit)',
+    ret_no_origin_hint: 'A no-source return is not linked to any inbound doc: enter supplier, unit price and reason manually. Admin / manager only.',
+    ret_origin_inbound_doc: 'Original Inbound Doc', ret_po: 'Purchase Order', ret_contract: 'Contract',
+    ret_source_doc: 'Source Inbound Doc', ret_remaining_qty: 'Reversible',
+    ret_source_preview_hint: '{n} reversible lines (aggregated across inbound docs). Enter return qty after creation; blank lines are skipped.',
+    ret_no_returnable: 'No reversible lines in this linkage scope',
+    ret_tier_required: 'Select a return linkage tier',
+    ret_origin_inbound_required: 'Select the original inbound doc',
+    ret_scope_required: 'Select a purchase order or contract',
+    ret_reason_required: 'A no-source return requires a reason',
+    ret_tier_changed_locked: 'The linkage tier cannot be changed after creation',
+    ret_qty_over_available: 'Line {n} exceeds the reversible qty (max {max})',
+    ret_line_origin_locked: 'Source and price are locked; enter return qty only',
+    ret_origin_supplier: 'Supplier is inherited from the source doc and can be edited',
 
     // ---- Outbound documents ----
     obd_title: 'Outbound Management', obd_desc: 'Document-based outbound flow: draft → confirm → generate stock transactions',

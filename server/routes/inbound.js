@@ -9,10 +9,129 @@ const {
   validateInboundReturnStock,
   genGrnNo,
   resolveOrderLineId,
+  loadPurchaseReturnOrigin,
+  loadPurchaseReturnScope,
+  validatePurchaseReturnLines,
 } = require('../services/stock');
 const docno = require('../services/docno');
 const time = require('../services/time');
 const sign = require('../services/sign');
+
+// ==================== 采购退货三档（2026-11 第五批） ====================
+// 档 1 inbound  关联原入库单；档 2 po/contract 关联采购单/合同；
+// 档 3 none 无原单（仅 admin/manager，供应商/单价/原因必填）。
+const RETURN_TIERS = ['inbound', 'po', 'contract', 'none'];
+const NO_ORIGIN_ROLES = ['admin', 'manager'];
+
+function isPurchaseReturnDoc(docLike) {
+  return docLike && docLike.txn_type === '采购退货';
+}
+
+function normalizeReturnTier(raw) {
+  const v = String(raw || '').trim();
+  return RETURN_TIERS.includes(v) ? v : '';
+}
+
+function routeFail(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  e.status = 400;
+  return e;
+}
+
+// 校验单据头的档位字段是否完整、互斥、权限合规
+function validateReturnTierHeader(docLike, user) {
+  if (!isPurchaseReturnDoc(docLike)) return '';
+  const tier = normalizeReturnTier(docLike.return_tier);
+  if (!tier) throw routeFail('RETURN_TIER_REQUIRED', '采购退货必须选择关联档位（原入库单/采购单/合同/无原单）');
+  if (tier === 'inbound') {
+    if (!String(docLike.origin_doc_no || '').trim()) {
+      throw routeFail('ORIGIN_DOC_REQUIRED', '关联入库单档必须选择原入库单');
+    }
+  } else if (tier === 'po' || tier === 'contract') {
+    if (!String(docLike.return_ref_no || '').trim()) {
+      throw routeFail('RETURN_REF_REQUIRED', '关联采购单/合同档必须选择原采购单号或合同号');
+    }
+  } else {
+    if (!NO_ORIGIN_ROLES.includes(user?.role)) {
+      const e = routeFail('RETURN_TIER_FORBIDDEN', '无原单退货仅管理员或主管可用');
+      e.status = 403;
+      throw e;
+    }
+    if (!String(docLike.supplier || '').trim()) {
+      throw routeFail('SUPPLIER_REQUIRED', '无原单退货必须填写供应商');
+    }
+    if (!String(docLike.return_reason || '').trim()) {
+      throw routeFail('RETURN_REASON_REQUIRED', '无原单退货必须填写原因');
+    }
+  }
+  return tier;
+}
+
+// 创建时整理采购退货单头：校验档位、继承供应商/采购单/合同
+function prepareReturnHeader(body, txnType, user) {
+  if (!isPurchaseReturnDoc({ txn_type: txnType })) {
+    return {
+      return_tier: '', origin_doc_no: '', return_ref_no: '', return_reason: '',
+      supplier: body.supplier || '', po_no: body.po_no || '', contract_no: body.contract_no || ''
+    };
+  }
+  const header = {
+    return_tier: normalizeReturnTier(body.return_tier),
+    origin_doc_no: String(body.origin_doc_no || '').trim(),
+    return_ref_no: String(body.return_ref_no || '').trim(),
+    return_reason: String(body.return_reason || '').trim(),
+    supplier: String(body.supplier || '').trim(),
+  };
+  validateReturnTierHeader({ txn_type: '采购退货', ...header }, user);
+  let supplier = header.supplier;
+  let poNo = body.po_no || '';
+  let contractNo = body.contract_no || '';
+  if (header.return_tier === 'inbound') {
+    const origin = loadPurchaseReturnOrigin(header.origin_doc_no);
+    if (!supplier) supplier = origin.supplier || '';
+  } else if (header.return_tier === 'po') {
+    const po = loadPurchaseReturnScope('po', header.return_ref_no);
+    if (!supplier) supplier = po.supplier || '';
+    if (!poNo) poNo = header.return_ref_no;
+  } else if (header.return_tier === 'contract') {
+    const ct = loadPurchaseReturnScope('contract', header.return_ref_no);
+    if (!supplier) supplier = ct.supplier || '';
+    if (!contractNo) contractNo = header.return_ref_no;
+  }
+  return { ...header, supplier, po_no: poNo, contract_no: contractNo };
+}
+
+// 解析一条采购退货明细：关联档取原入库行单价与来源，无原单档才允许手填单价
+function resolveReturnLine(docLike, l, sources, defaults) {
+  const srcId = Number(l.origin_line_id) || 0;
+  const src = sources && srcId ? sources.get(String(srcId)) : null;
+  if (docLike.return_tier === 'none') {
+    return {
+      origin_line_id: 0,
+      price: sign.normalizePrice(l.price),
+      po_no: l.po_no !== undefined ? String(l.po_no || '') : (defaults.po_no || ''),
+      contract_no: l.contract_no !== undefined ? String(l.contract_no || '') : (defaults.contract_no || ''),
+      order_line_id: resolveOrderLineId(
+        l.po_no !== undefined ? l.po_no : defaults.po_no,
+        l.code,
+        l.contract_no !== undefined ? l.contract_no : defaults.contract_no
+      ),
+    };
+  }
+  // 关联档：单价/采购单/合同/核销行全部继承原入库行，前端只允许改数量与备注
+  const poNo = src ? (src.po_no || '') : (defaults.po_no || '');
+  const contractNo = src ? (src.contract_no || '') : (defaults.contract_no || '');
+  return {
+    origin_line_id: src ? src.id : 0,
+    price: src ? src.price : sign.normalizePrice(l.price),
+    po_no: poNo,
+    contract_no: contractNo,
+    order_line_id: src
+      ? (src.order_line_id || resolveOrderLineId(poNo, l.code, contractNo))
+      : resolveOrderLineId(poNo, l.code, contractNo),
+  };
+}
 
 const router = express.Router();
 
@@ -294,43 +413,57 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
     const exist = db.prepare("SELECT doc_no FROM inbound_docs WHERE doc_no=?").get(docNo);
     if (exist) return res.status(400).json({ error: '单据号已存在: ' + docNo });
 
-    db.prepare(`INSERT INTO inbound_docs (doc_no, date, txn_type, supplier, handler, po_no, contract_no, status, remarks, created_by)
-      VALUES (@doc_no, @date, @txn_type, @supplier, @handler, @po_no, @contract_no, 'draft', @remarks, @created_by)`)
+    // 采购退货：先校验三档单头并继承供应商/原单号
+    const hdr = prepareReturnHeader(body, txnType, req.user);
+
+    // 单头 + 明细同一事务：明细校验失败时回滚单头，避免留下空草稿
+    const createdTx = db.transaction(() => {
+    db.prepare(`INSERT INTO inbound_docs (doc_no, date, txn_type, supplier, handler, po_no, contract_no, status, remarks, created_by,
+        return_tier, origin_doc_no, return_ref_no, return_reason)
+      VALUES (@doc_no, @date, @txn_type, @supplier, @handler, @po_no, @contract_no, 'draft', @remarks, @created_by,
+        @return_tier, @origin_doc_no, @return_ref_no, @return_reason)`)
       .run({
         doc_no: docNo, date, txn_type: txnType,
-        supplier: body.supplier || '', handler: body.handler || '',
-        po_no: body.po_no || '', contract_no: body.contract_no || '',
-        remarks: body.remarks || '', created_by: req.user?.name || req.user?.username || ''
+        supplier: hdr.supplier, handler: body.handler || '',
+        po_no: hdr.po_no, contract_no: hdr.contract_no,
+        remarks: body.remarks || '', created_by: req.user?.name || req.user?.username || '',
+        return_tier: hdr.return_tier, origin_doc_no: hdr.origin_doc_no,
+        return_ref_no: hdr.return_ref_no, return_reason: hdr.return_reason
       });
 
     // 如果带了明细行，一并创建
     if (Array.isArray(body.lines) && body.lines.length > 0) {
-      const stmt = db.prepare(`INSERT INTO inbound (date, grn_no, doc_no, code, qty, price, supplier, handler, remarks, po_no, contract_no, txn_type, status, order_line_id)
-        VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id)`);
-      const hdrPoNo = body.po_no || '';
-      const hdrContractNo = body.contract_no || '';
-      body.lines.forEach(l => {
-        if (!l.code) return;
+      const stmt = db.prepare(`INSERT INTO inbound (date, grn_no, doc_no, code, qty, price, supplier, handler, remarks, po_no, contract_no, txn_type, status, order_line_id, origin_line_id)
+        VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id, @origin_line_id)`);
+      const docLike = {
+        txn_type: txnType,
+        return_tier: hdr.return_tier,
+        origin_doc_no: hdr.origin_doc_no,
+        return_ref_no: hdr.return_ref_no,
+      };
+      const validLines = body.lines.filter(l => l.code);
+      // 关联档：校验收货行归属与可退量；无原单档返回空 Map
+      const sources = validatePurchaseReturnLines(docLike, validLines);
+      validLines.forEach(l => {
         const qty = sign.normalizeQty(txnType, l.qty);
-        const price = sign.normalizePrice(l.price);
-        // 明细行可覆盖单头：按采购单载入时各行合同可能不同，按合同载入时各行采购单可能不同
-        const poNo = l.po_no !== undefined ? String(l.po_no || '') : hdrPoNo;
-        const contractNo = l.contract_no !== undefined ? String(l.contract_no || '') : hdrContractNo;
-        // 把到货精确核销到具体采购明细行（采购单+物料+合同号解析；找不到记 0，回退三元组匹配）
+        const resolved = resolveReturnLine(docLike, l, sources, { po_no: hdr.po_no, contract_no: hdr.contract_no });
+        // 把到货精确核销到具体采购明细行；关联档直接继承原入库行的核销号
         stmt.run({
-          date, grn_no: docNo, doc_no: docNo, code: l.code, qty, price,
-          supplier: body.supplier || '', handler: body.handler || '',
-          remarks: l.remarks || '', po_no: poNo,
-          contract_no: contractNo, txn_type: txnType,
-          order_line_id: resolveOrderLineId(poNo, l.code, contractNo)
+          date, grn_no: docNo, doc_no: docNo, code: l.code, qty, price: resolved.price,
+          supplier: hdr.supplier, handler: body.handler || '',
+          remarks: l.remarks || '', po_no: resolved.po_no,
+          contract_no: resolved.contract_no, txn_type: txnType,
+          order_line_id: resolved.order_line_id, origin_line_id: resolved.origin_line_id
         });
       });
     }
+    });
+    createdTx();
 
     logInboundDoc(docNo, 'create', req.user?.name || req.user?.username, '创建入库单据');
     res.json({ success: true, doc_no: docNo });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message, code: e.code || 'INBOUND_DOC_CREATE_FAILED' });
   }
 });
 
@@ -382,51 +515,65 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
 
   const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
   try {
+    // 采购退货：先校验档位、权限、原因，再按范围校验可退量（草稿不占额度）
+    const effHeader = {
+      ...doc,
+      supplier: req.body.supplier !== undefined ? req.body.supplier : doc.supplier,
+      return_reason: req.body.return_reason !== undefined ? req.body.return_reason : doc.return_reason,
+    };
+    validateReturnTierHeader(effHeader, req.user);
+    const validLines = lines.filter(l => l.code);
+    const sources = validatePurchaseReturnLines(effHeader, validLines);
+
     const tx = db.transaction(() => {
       // 先删旧行
       db.prepare("DELETE FROM inbound WHERE doc_no=?").run(docNo);
       // 再插新行
-      const stmt = db.prepare(`INSERT INTO inbound (date, grn_no, doc_no, code, qty, price, supplier, handler, remarks, po_no, contract_no, txn_type, status, order_line_id)
-        VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id)`);
+      const stmt = db.prepare(`INSERT INTO inbound (date, grn_no, doc_no, code, qty, price, supplier, handler, remarks, po_no, contract_no, txn_type, status, order_line_id, origin_line_id)
+        VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id, @origin_line_id)`);
       // 明细行核销用「本次提交后的」采购单/合同号（头部字段紧随其后更新）
       const effPoNo = req.body.po_no !== undefined ? req.body.po_no : doc.po_no;
       const effContractNo = req.body.contract_no !== undefined ? req.body.contract_no : doc.contract_no;
       // 明细行供应商用本次提交值，避免先写旧单据头导致列表/明细显示不同步
       const effSupplier = req.body.supplier !== undefined ? req.body.supplier : doc.supplier;
-      lines.forEach(l => {
-        if (!l.code) return;
+      validLines.forEach(l => {
         const qty = sign.normalizeQty(doc.txn_type, l.qty);
-        const price = sign.normalizePrice(l.price);
-        // 明细行可覆盖单头：按采购单载入时各行合同可能不同，按合同载入时各行采购单可能不同
-        const poNo = l.po_no !== undefined ? String(l.po_no || '') : effPoNo;
-        const contractNo = l.contract_no !== undefined ? String(l.contract_no || '') : effContractNo;
+        // 采购退货关联档：单价/来源/核销行继承原入库行；无原单档才允许手填
+        const resolved = resolveReturnLine(
+          { ...doc, return_tier: normalizeReturnTier(doc.return_tier) },
+          l, sources, { po_no: effPoNo, contract_no: effContractNo }
+        );
         stmt.run({
           date: l.date || doc.date, grn_no: docNo, doc_no: docNo,
-          code: l.code, qty, price,
+          code: l.code, qty, price: resolved.price,
           supplier: effSupplier, handler: doc.handler,
-          remarks: l.remarks || '', po_no: poNo,
-          contract_no: contractNo, txn_type: doc.txn_type,
-          order_line_id: resolveOrderLineId(poNo, l.code, contractNo)
+          remarks: l.remarks || '', po_no: resolved.po_no,
+          contract_no: resolved.contract_no, txn_type: doc.txn_type,
+          order_line_id: resolved.order_line_id, origin_line_id: resolved.origin_line_id
         });
       });
       // 更新单据头的部分字段（允许跟着明细一起改）
       const updateFields = {};
       if (req.body.supplier !== undefined) updateFields.supplier = req.body.supplier;
       if (req.body.handler !== undefined) updateFields.handler = req.body.handler;
-      if (req.body.po_no !== undefined) updateFields.po_no = req.body.po_no;
-      if (req.body.contract_no !== undefined) updateFields.contract_no = req.body.contract_no;
+      if (req.body.po_no !== undefined && !isPurchaseReturnDoc(doc)) updateFields.po_no = req.body.po_no;
+      if (req.body.contract_no !== undefined && !isPurchaseReturnDoc(doc)) updateFields.contract_no = req.body.contract_no;
       if (req.body.remarks !== undefined) updateFields.remarks = req.body.remarks;
       if (req.body.date !== undefined) updateFields.date = req.body.date;
+      // 无原单档允许在草稿里补/改原因（必填在保存与确认时都会校验）
+      if (isPurchaseReturnDoc(doc) && normalizeReturnTier(doc.return_tier) === 'none' && req.body.return_reason !== undefined) {
+        updateFields.return_reason = req.body.return_reason;
+      }
       if (Object.keys(updateFields).length > 0) {
         const sets = Object.keys(updateFields).map(k => `${k}=@${k}`).join(', ');
         db.prepare(`UPDATE inbound_docs SET ${sets} WHERE doc_no=@doc_no`).run({ ...updateFields, doc_no: docNo });
       }
-      logInboundDoc(docNo, 'edit', req.user?.name || req.user?.username, `保存明细 ${lines.length} 行`);
+      logInboundDoc(docNo, 'edit', req.user?.name || req.user?.username, `保存明细 ${validLines.length} 行`);
     });
     tx();
     res.json({ success: true });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message, code: e.code || 'INBOUND_LINES_SAVE_FAILED' });
   }
 });
 
@@ -448,6 +595,20 @@ router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), 
   const forceAllow = req.body.force_allow === true && ['admin', 'manager'].includes(req.user?.role);
 
   try {
+    // 采购退货：确认时再次校验档位/权限/原因（force_allow 只放宽库存，不放宽额度）
+    validateReturnTierHeader(doc, req.user);
+    let sources = new Map();
+    if (isPurchaseReturnDoc(doc) && normalizeReturnTier(doc.return_tier) !== 'none') {
+      sources = validatePurchaseReturnLines(doc, lines);
+      // 关联档单价必须等于原入库行单价，防止绕过前端改写成本
+      lines.forEach(l => {
+        const src = sources.get(String(l.origin_line_id));
+        if (!src) return; // validatePurchaseReturnLines 已抛出
+        if (Math.abs(sign.storedAbs(l.price) - src.price) > 1e-6) {
+          throw routeFail('RETURN_PRICE_MISMATCH', `物料 ${l.code} 的退货单价必须继承原入库行单价 ${src.price}`);
+        }
+      });
+    }
     const tx = db.transaction(() => {
       // 采购退货库存校验
       if (!forceAllow) {
@@ -470,7 +631,7 @@ router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), 
         details: e.details
       });
     }
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message, code: e.code || 'INBOUND_CONFIRM_FAILED' });
   }
 });
 

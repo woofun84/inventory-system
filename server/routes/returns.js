@@ -8,6 +8,12 @@
 const express = require('express');
 const db = require('../db');
 const { requirePerm } = require('../middleware/auth');
+const {
+  getPurchaseReturnOriginOptions,
+  getPurchaseReturnOriginLines,
+  getPurchaseReturnScopeOptions,
+  getPurchaseReturnScopeLines,
+} = require('../services/stock');
 
 const router = express.Router();
 
@@ -36,7 +42,11 @@ SELECT d.doc_no AS doc_no,
        'inbound' AS ledger,
        'out' AS direction,
        COALESCE(d.supplier, '') AS party,
-       COALESCE(NULLIF(d.po_no, ''), NULLIF(d.contract_no, ''), '') AS ref_no,
+       COALESCE(NULLIF(d.origin_doc_no, ''), NULLIF(d.return_ref_no, ''), NULLIF(d.po_no, ''), NULLIF(d.contract_no, ''), '') AS ref_no,
+       COALESCE(d.return_tier, '') AS return_tier,
+       COALESCE(d.origin_doc_no, '') AS origin_doc_no,
+       COALESCE(d.return_ref_no, '') AS return_ref_no,
+       COALESCE(d.return_reason, '') AS return_reason,
        d.status AS status,
        COALESCE(d.handler, '') AS handler,
        COALESCE(d.remarks, '') AS remarks,
@@ -60,6 +70,10 @@ SELECT d.doc_no AS doc_no,
        'in' AS direction,
        COALESCE(d.destination, '') AS party,
        COALESCE(d.origin_doc_no, '') AS ref_no,
+       '' AS return_tier,
+       '' AS origin_doc_no,
+       '' AS return_ref_no,
+       '' AS return_reason,
        d.status AS status,
        COALESCE(d.handler, '') AS handler,
        COALESCE(d.remarks, '') AS remarks,
@@ -83,6 +97,10 @@ SELECT d.doc_no AS doc_no,
        'in' AS direction,
        COALESCE(o.supplier, '') AS party,
        COALESCE(d.reversal_of, '') AS ref_no,
+       COALESCE(o.return_tier, '') AS return_tier,
+       COALESCE(o.origin_doc_no, '') AS origin_doc_no,
+       COALESCE(o.return_ref_no, '') AS return_ref_no,
+       COALESCE(o.return_reason, '') AS return_reason,
        d.status AS status,
        COALESCE(d.handler, '') AS handler,
        COALESCE(d.remarks, '') AS remarks,
@@ -103,6 +121,10 @@ SELECT d.doc_no AS doc_no,
        'out' AS direction,
        COALESCE(o.destination, '') AS party,
        COALESCE(d.reversal_of, '') AS ref_no,
+       '' AS return_tier,
+       '' AS origin_doc_no,
+       '' AS return_ref_no,
+       '' AS return_reason,
        d.status AS status,
        COALESCE(d.handler, '') AS handler,
        COALESCE(d.remarks, '') AS remarks,
@@ -121,9 +143,13 @@ function withDerived(row) {
   const reversed = Number(row.reversed_qty || 0);
   const remaining = Math.max(0, total - reversed);
   const isReversal = Number(row.is_reversal || 0) === 1;
+  const returnTier = String(row.return_tier || '');
   return {
     ...row,
     is_reversal: isReversal,
+    return_tier: returnTier,
+    // 无原单标记：档 3 的采购退货，以及其红冲单（档位从原单继承）
+    no_origin: returnTier === 'none',
     total_qty: total,
     total_amount: Number(row.total_amount || 0),
     reversed_qty: reversed,
@@ -209,6 +235,35 @@ function sendInboundDetail(res, doc, isReversal) {
   const reversals = db.prepare(`SELECT doc_no, date, status FROM inbound_docs
     WHERE reversal_of = ? ORDER BY created_at DESC`).all(doc.doc_no);
 
+  // 冲销单继承原单的退货档位/原因，保证详情与列表「无原单」标记一致
+  let tierInfo = {
+    return_tier: doc.return_tier || '',
+    origin_doc_no: doc.origin_doc_no || '',
+    return_ref_no: doc.return_ref_no || '',
+    return_reason: doc.return_reason || '',
+  };
+  if (isReversal && doc.reversal_of) {
+    const orig = db.prepare(`SELECT return_tier, origin_doc_no, return_ref_no, return_reason
+      FROM inbound_docs WHERE doc_no = ?`).get(doc.reversal_of);
+    if (orig) {
+      tierInfo = {
+        return_tier: orig.return_tier || '',
+        origin_doc_no: orig.origin_doc_no || '',
+        return_ref_no: orig.return_ref_no || '',
+        return_reason: orig.return_reason || '',
+      };
+    }
+  }
+
+  // 关联档明细附上来源入库单号，便于追溯成本
+  const originIds = [...new Set(lines.map(l => Number(l.origin_line_id) || 0).filter(Boolean))];
+  if (originIds.length) {
+    const srcRows = db.prepare(`SELECT id, doc_no FROM inbound
+      WHERE id IN (${originIds.map(() => '?').join(',')})`).all(...originIds);
+    const srcMap = Object.fromEntries(srcRows.map(r => [String(r.id), r.doc_no]));
+    lines.forEach(l => { l.source_doc_no = srcMap[String(l.origin_line_id)] || ''; });
+  }
+
   // 已冲销量按“已过账的冲销单明细”实时汇总，与冲销页的算法保持一致
   const reversedMap = {};
   db.prepare(`SELECT r.reversal_of AS line_id, SUM(ABS(r.qty)) AS v
@@ -227,11 +282,14 @@ function sendInboundDetail(res, doc, isReversal) {
 
   res.json({
     ...doc,
+    ...tierInfo,
+    no_origin: tierInfo.return_tier === 'none',
     sub_type: isReversal ? SUB_REVERSAL : SUB_PURCHASE,
     ledger: 'inbound',
     direction: isReversal ? 'in' : 'out',
     party: doc.supplier || '',
-    ref_no: isReversal ? (doc.reversal_of || '') : (doc.po_no || doc.contract_no || ''),
+    ref_no: isReversal ? (doc.reversal_of || '')
+      : (tierInfo.origin_doc_no || tierInfo.return_ref_no || doc.po_no || doc.contract_no || ''),
     is_reversal: !!isReversal,
     lines,
     logs,
@@ -284,5 +342,40 @@ function sendOutboundDetail(res, doc, isReversal) {
     can_edit: doc.status === 'draft' && !isReversal,
   });
 }
+
+// ==================== 采购退货三档只读接口（2026-11 第五批） ====================
+// 档 1：可选原入库单 + 其可退明细
+router.get('/api/returns/purchase/origins', requirePerm('returns', 'view'), (req, res) => {
+  res.json(getPurchaseReturnOriginOptions());
+});
+
+router.get('/api/returns/purchase/origin-lines', requirePerm('returns', 'view'), (req, res) => {
+  const docNo = String(req.query.docNo || '').trim();
+  if (!docNo) return res.status(400).json({ error: '缺少原入库单号', code: 'ORIGIN_DOC_REQUIRED' });
+  try {
+    res.json(getPurchaseReturnOriginLines(docNo, String(req.query.excludeDocNo || '').trim()));
+  } catch (e) {
+    res.status(400).json({ error: e.message, code: e.code || 'RETURN_SOURCE_FAILED' });
+  }
+});
+
+// 档 2：采购单/合同下拉候选 + 范围内跨多张入库单的可退明细
+router.get('/api/returns/purchase/scope-options', requirePerm('returns', 'view'), (req, res) => {
+  res.json(getPurchaseReturnScopeOptions());
+});
+
+router.get('/api/returns/purchase/scope-lines', requirePerm('returns', 'view'), (req, res) => {
+  const scope = String(req.query.scope || 'po');
+  const refNo = String(req.query.refNo || '').trim();
+  if (!['po', 'contract'].includes(scope)) {
+    return res.status(400).json({ error: '关联范围必须是采购单或合同', code: 'INVALID_RETURN_SCOPE' });
+  }
+  if (!refNo) return res.status(400).json({ error: '缺少采购单号或合同号', code: 'RETURN_REF_REQUIRED' });
+  try {
+    res.json(getPurchaseReturnScopeLines(scope, refNo, String(req.query.excludeDocNo || '').trim()));
+  } catch (e) {
+    res.status(400).json({ error: e.message, code: e.code || 'RETURN_SOURCE_FAILED' });
+  }
+});
 
 module.exports = router;

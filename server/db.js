@@ -354,6 +354,25 @@ function migrateDB() {
     console.log('迁移: 采购合同表已就绪');
   } catch(e) { console.log('迁移 采购合同表:', e.message); }
 
+  // ==================== 采购退货三档关联（2026-11 第五批） ====================
+  // 档位（return_tier）：
+  //   inbound  关联原入库单（默认）：头 origin_doc_no 指向原单，行 origin_line_id 指向原入库行
+  //   po       关联采购单：头 return_ref_no 存采购单号，行 origin_line_id 仍指向具体入库行
+  //   contract 关联合同：头 return_ref_no 存合同号，行 origin_line_id 仍指向具体入库行
+  //   none     无原单（例外，仅 admin/manager）：头 return_reason 必填，行 origin_line_id=0
+  try {
+    try { db.exec("ALTER TABLE inbound_docs ADD COLUMN return_tier TEXT DEFAULT ''"); console.log('迁移: inbound_docs.return_tier 已添加'); } catch(e) {}
+    try { db.exec("ALTER TABLE inbound_docs ADD COLUMN origin_doc_no TEXT DEFAULT ''"); console.log('迁移: inbound_docs.origin_doc_no 已添加'); } catch(e) {}
+    try { db.exec("ALTER TABLE inbound_docs ADD COLUMN return_ref_no TEXT DEFAULT ''"); console.log('迁移: inbound_docs.return_ref_no 已添加'); } catch(e) {}
+    try { db.exec("ALTER TABLE inbound_docs ADD COLUMN return_reason TEXT DEFAULT ''"); console.log('迁移: inbound_docs.return_reason 已添加'); } catch(e) {}
+    try { db.exec("ALTER TABLE inbound ADD COLUMN origin_line_id INTEGER NOT NULL DEFAULT 0"); console.log('迁移: inbound.origin_line_id 已添加'); } catch(e) {}
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ib_originline ON inbound(origin_line_id)");
+    // 存量采购退货单没有入库行级来源，统一归为「无原单」，避免被误认为已纳入新额度口径
+    const legacy = db.prepare("UPDATE inbound_docs SET return_tier='none' WHERE txn_type='采购退货' AND (return_tier='' OR return_tier IS NULL)").run();
+    if (legacy.changes) console.log(`迁移: ${legacy.changes} 张存量采购退货单归为「无原单」档`);
+    console.log('迁移: 采购退货三档字段已就绪');
+  } catch(e) { console.log('迁移 采购退货三档:', e.message); }
+
   // ==================== 采购单状态（2026-11 新增） ====================
   // 对齐入库/出库单据的 draft → posted 流转：
   //   draft 草稿（可编辑，未生效）→ posted 已确认

@@ -270,6 +270,155 @@ Object.assign(App, {
     return `<span class="badge badge-${m[1]}">${m[0]}</span>`;
   },
 
+  // ========== 采购退货三档（第五批）==========
+  ibReturnTierLabel(tier) {
+    const labels = {
+      inbound: this.t('ret_tier_inbound'),
+      po: this.t('ret_tier_po'),
+      contract: this.t('ret_tier_contract'),
+      none: this.t('ret_tier_none'),
+    };
+    return labels[tier] || tier || '';
+  },
+
+  // 新建采购退货单：档位选择 + 关联单据选择（插入 01 表单网格）
+  ibReturnTierFieldsHtml(canNoOrigin) {
+    const origins = this._ibReturnOrigins || [];
+    const originOpts = origins.map(o =>
+      '<option value="' + this.ibEsc(o.doc_no) + '" data-supplier="' + this.ibEsc(o.supplier || '') + '">' +
+      this.ibEsc(o.doc_no) + ' · ' + this.ibEsc(o.date || '') + (o.supplier ? ' · ' + this.ibEsc(o.supplier) : '') + '</option>'
+    ).join('');
+    return '' +
+      '<div class="form-group"><label>' + this.t('ret_tier') + ' *</label>' +
+      '<select id="ib_f_return_tier" onchange="App.ibOnReturnTierChange()">' +
+      '<option value="inbound">' + this.t('ret_tier_inbound') + '</option>' +
+      '<option value="po">' + this.t('ret_tier_po') + '</option>' +
+      '<option value="contract">' + this.t('ret_tier_contract') + '</option>' +
+      (canNoOrigin ? '<option value="none">' + this.t('ret_tier_none') + '</option>' : '') +
+      '</select>' +
+      (canNoOrigin ? '' : '<div style="font-size:12px;color:var(--text-muted)">' + this.t('ret_no_origin_forbidden') + '</div>') +
+      '</div>' +
+      '<div class="form-group" id="ib_f_origin_wrap">' +
+      '<label>' + this.t('ret_origin_inbound_doc') + ' *</label>' +
+      '<select id="ib_f_origin_doc" onchange="App.ibLoadReturnSources()">' +
+      '<option value="">' + this.t('please_select') + '</option>' + originOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group" id="ib_f_scope_wrap" style="display:none">' +
+      '<label id="ib_f_scope_label">' + this.t('ret_po') + ' *</label>' +
+      '<select id="ib_f_scope_ref" onchange="App.ibLoadReturnSources()">' +
+      '<option value="">' + this.t('please_select') + '</option></select>' +
+      '</div>' +
+      '<div class="form-group" id="ib_f_reason_wrap" style="display:none;grid-column:1/-1">' +
+      '<label>' + this.t('ret_no_origin_reason') + ' *</label>' +
+      '<textarea id="ib_f_return_reason" rows="2" placeholder="' + this.t('ret_no_origin_reason_ph') + '"></textarea>' +
+      '</div>';
+  },
+
+  // 档位切换：联动显隐来源单据选择、无原单原因；档 3 仅 admin/manager 可见
+  ibOnReturnTierChange() {
+    const tier = document.getElementById('ib_f_return_tier')?.value || 'inbound';
+    this._ibReturnTier = tier;
+    const ow = document.getElementById('ib_f_origin_wrap');
+    const sw = document.getElementById('ib_f_scope_wrap');
+    const rw = document.getElementById('ib_f_reason_wrap');
+    if (ow) ow.style.display = tier === 'inbound' ? '' : 'none';
+    if (sw) sw.style.display = (tier === 'po' || tier === 'contract') ? '' : 'none';
+    if (rw) rw.style.display = tier === 'none' ? '' : 'none';
+    this._ibPreloadLines = null;
+    const box = document.getElementById('ib-preload');
+    if (box) box.innerHTML = '';
+    if (tier === 'po' || tier === 'contract') this.ibFillReturnScopeOptions(tier);
+    if (tier === 'none') {
+      if (box) box.innerHTML = '<div class="ib-empty-draft">' + this.t('ret_no_origin_hint') + '</div>';
+      return;
+    }
+    this.ibLoadReturnSources();
+  },
+
+  ibFillReturnScopeOptions(tier) {
+    const sel = document.getElementById('ib_f_scope_ref');
+    const label = document.getElementById('ib_f_scope_label');
+    if (label) label.textContent = (tier === 'po' ? this.t('ret_po') : this.t('ret_contract')) + ' *';
+    if (!sel) return;
+    const opts = (this._ibReturnScopeOpts || {})[tier === 'po' ? 'po' : 'contract'] || [];
+    const list = opts.map(o => {
+      const ref = tier === 'po' ? o.po_no : o.contract_no;
+      const extra = tier === 'po' && o.date ? ' · ' + o.date : '';
+      return '<option value="' + this.ibEsc(ref) + '" data-supplier="' + this.ibEsc(o.supplier || '') + '">' +
+        this.ibEsc(ref) + extra + (o.supplier ? ' · ' + this.ibEsc(o.supplier) : '') + '</option>';
+    }).join('');
+    sel.innerHTML = '<option value="">' + this.t('please_select') + '</option>' + list;
+  },
+
+  // 选择原单/采购单/合同后，把供应商带入单头（仍允许人工修改）
+  ibSyncReturnSupplier(tier) {
+    const input = document.getElementById('ib_f_supplier');
+    if (!input) return;
+    const el = tier === 'inbound'
+      ? document.getElementById('ib_f_origin_doc')
+      : document.getElementById('ib_f_scope_ref');
+    if (!el || !el.value) return;
+    const opt = el.options[el.selectedIndex];
+    const sup = opt && opt.dataset ? (opt.dataset.supplier || '') : '';
+    if (sup) input.value = sup;
+  },
+
+  // 载入可退明细（档 1 原入库单；档 2 采购单/合同跨单聚合），数量留空待填写
+  async ibLoadReturnSources() {
+    const tier = this._ibReturnTier || document.getElementById('ib_f_return_tier')?.value || 'inbound';
+    const box = document.getElementById('ib-preload');
+    if (!box) return;
+    this._ibPreloadLines = null;
+    let url = '';
+    if (tier === 'inbound') {
+      const docNo = document.getElementById('ib_f_origin_doc')?.value || '';
+      this.ibSyncReturnSupplier('inbound');
+      if (!docNo) { box.innerHTML = ''; return; }
+      url = '/api/returns/purchase/origin-lines?docNo=' + encodeURIComponent(docNo);
+    } else if (tier === 'po' || tier === 'contract') {
+      const ref = document.getElementById('ib_f_scope_ref')?.value || '';
+      this.ibSyncReturnSupplier(tier);
+      if (!ref) { box.innerHTML = ''; return; }
+      url = '/api/returns/purchase/scope-lines?scope=' + encodeURIComponent(tier) + '&refNo=' + encodeURIComponent(ref);
+    } else {
+      box.innerHTML = '<div class="ib-empty-draft">' + this.t('ret_no_origin_hint') + '</div>';
+      return;
+    }
+    let rows = [];
+    try { rows = await this.api(url); }
+    catch (e) { box.innerHTML = '<div class="ib-empty-draft">' + e.message + '</div>'; return; }
+    const usable = (rows || []).filter(r => Number(r.available) > 0);
+    this._ibPreloadLines = usable.map(r => ({
+      code: r.code, qty: '', price: Number(r.price) || 0,
+      origin_line_id: r.id, source_doc_no: r.doc_no,
+      max_qty: Number(r.available) || 0, available: Number(r.available) || 0,
+      po_no: r.po_no || '', contract_no: r.contract_no || '', order_line_id: r.order_line_id || 0,
+      material_name: r.material_name || '', material_spec: r.material_spec || '',
+      material_brand: r.material_brand || '', material_unit: r.material_unit || '', remarks: ''
+    }));
+    if (usable.length === 0) {
+      box.innerHTML = '<div class="ib-empty-draft">' + this.t('ret_no_returnable') + '</div>';
+      return;
+    }
+    const vp = this.canViewPrice();
+    const body = usable.map(r => '<tr>' +
+      '<td>' + this.ibEsc(r.code) + '</td><td>' + this.ibEsc(r.material_name || '') + '</td><td>' + this.ibEsc(r.material_spec || '') + '</td>' +
+      '<td style="font-size:12px">' + this.ibEsc(r.doc_no || '') + '</td>' +
+      '<td style="font-size:12px">' + this.ibEsc(r.contract_no || '') + '</td>' +
+      '<td class="text-right"><b>' + this.fmtQty(r.available) + '</b></td>' +
+      (vp ? '<td class="text-right">' + this.fmtMoney(r.price) + '</td>' : '') +
+      '</tr>').join('');
+    box.innerHTML = '<div class="pu-card">' +
+      '<div class="pu-card-title"><span>02</span><div>' + this.ibReturnTierLabel(tier) +
+      '<small>' + this.t('ret_source_preview_hint', { n: usable.length }) + '</small></div></div>' +
+      '<div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>' +
+      '<th>' + this.t('mat_code') + '</th><th>' + this.t('mat_name') + '</th><th>' + this.t('mat_spec') + '</th>' +
+      '<th>' + this.t('ret_source_doc') + '</th><th>' + this.t('in_contract') + '</th>' +
+      '<th class="text-right">' + this.t('ret_remaining_qty') + '</th>' +
+      (vp ? '<th class="text-right">' + this.t('in_price') + '</th>' : '') +
+      '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+  },
+
   // ========== 新建入库单据：独立页面，不再使用首屏弹窗 ==========
   // presetType: 传入「采购退货」时由「退货与退库」模块复用本页创建退货单
   async newInboundDoc(presetType) {
@@ -288,6 +437,18 @@ Object.assign(App, {
     const pendingOrders = orders.filter(o => o.has_pending);
     const contracts = await this.api('/api/purchase/contracts').catch(() => []);
     const contractNos = contracts.map(c => c.contract_no).filter(Boolean).sort();
+    // 采购退货三档：档 1 原入库单、档 2 采购单/合同（跨多张入库单合并）
+    let returnOrigins = [];
+    let returnScopeOpts = { po: [], contract: [] };
+    if (preset) {
+      returnOrigins = await this.api('/api/returns/purchase/origins').catch(() => []);
+      returnScopeOpts = await this.api('/api/returns/purchase/scope-options').catch(() => ({ po: [], contract: [] }));
+    }
+    this._ibReturnOrigins = returnOrigins || [];
+    this._ibReturnScopeOpts = returnScopeOpts || { po: [], contract: [] };
+    this._ibReturnTier = 'inbound';
+    const canNoOrigin = ['admin', 'manager'].includes(this.user?.role);
+    const tierFields = preset ? this.ibReturnTierFieldsHtml(canNoOrigin) : '';
     const supOptions = suppliers.map(s => `<option value="${this.ibEsc(s.name)}"></option>`).join('');
     const poOptions = pendingOrders.map(o => `<option value="${o.po_no}">${o.po_no}${o.supplier ? ' · ' + o.supplier : ''}</option>`).join('');
     const contractOptions = contractNos.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -313,6 +474,7 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
             <div class="form-group" id="ib_f_po_wrap"><label>${this.t('in_po_no')}</label><select id="ib_f_po_no" onchange="App.ibLoadPendingLines('po')"><option value="">${this.t('none')}</option>${poOptions || `<option value="">${this.t('in_no_pending_orders')}</option>`}</select></div>
             <div class="form-group" id="ib_f_contract_wrap"><label>${this.t('in_contract')}</label><select id="ib_f_contract_no" onchange="App.ibLoadPendingLines('contract')"><option value="">${this.t('none')}</option>${contractOptions}</select></div>
+            ${tierFields}
             <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2"></textarea></div>
           </div>
         </div>
@@ -354,20 +516,48 @@ Object.assign(App, {
       this._ibPreloadLines = null;
       if (box) box.innerHTML = '';
     }
+    // 采购退货：显示三档联动字段，并载入默认档（关联入库单）的可退明细
+    if (isReturn) {
+      this.ibOnReturnTierChange();
+    }
   },
 
   async createInboundDoc() {
     if (!this.validateForm({ ib_f_date: [{ rule: 'required' }] })) return;
+    const txnType = document.getElementById('ib_f_txn_type')?.value;
+    const isReturn = txnType === '采购退货';
     const body = {
       doc_no: document.getElementById('ib_f_no')?.value || '',
       date: document.getElementById('ib_f_date')?.value,
-      txn_type: document.getElementById('ib_f_txn_type')?.value,
+      txn_type: txnType,
       supplier: document.getElementById('ib_f_supplier')?.value?.trim(),
       handler: document.getElementById('ib_f_handler')?.value.trim(),
       po_no: document.getElementById('ib_f_po_no')?.value,
       contract_no: document.getElementById('ib_f_contract_no')?.value,
       remarks: document.getElementById('ib_f_remarks')?.value.trim()
     };
+    if (isReturn) {
+      const tier = document.getElementById('ib_f_return_tier')?.value || '';
+      const canNoOrigin = ['admin', 'manager'].includes(this.user?.role);
+      if (!tier) { this.toast(this.t('ret_tier_required'), 'error'); return; }
+      if (tier === 'none' && !canNoOrigin) { this.toast(this.t('ret_no_origin_forbidden'), 'error'); return; }
+      body.return_tier = tier;
+      if (tier === 'inbound') {
+        body.origin_doc_no = document.getElementById('ib_f_origin_doc')?.value || '';
+        if (!body.origin_doc_no) { this.toast(this.t('ret_origin_inbound_required'), 'error'); return; }
+      } else if (tier === 'po' || tier === 'contract') {
+        body.return_ref_no = document.getElementById('ib_f_scope_ref')?.value || '';
+        if (!body.return_ref_no) { this.toast(this.t('ret_scope_required'), 'error'); return; }
+      } else {
+        if (!this.validateForm({ ib_f_supplier: [{ rule: 'required' }] })) return;
+        body.return_reason = document.getElementById('ib_f_return_reason')?.value?.trim() || '';
+        if (!body.return_reason) { this.toast(this.t('ret_reason_required'), 'error'); return; }
+      }
+      if (tier !== 'none' && (!this._ibPreloadLines || this._ibPreloadLines.length === 0)) {
+        this.toast(this.t('ret_no_returnable'), 'error');
+        return;
+      }
+    }
     try {
       const r = await this.api('/api/inbound-docs', 'POST', body);
       this.toast(this.t('ibd_created'));
@@ -1208,11 +1398,46 @@ Object.assign(App, {
       price: Math.abs(Number(l.price)),
       remarks: l.remarks || '',
       contract_no: l.contract_no || '',
-      po_no: l.po_no || ''
+      po_no: l.po_no || '',
+      origin_line_id: Number(l.origin_line_id) || 0,
+      source_doc_no: l.source_doc_no || ''
     }));
     // 从采购单/合同「收货」进入时，自动载入未到货明细（数量留空待人工填写）
     if (this._ibEditLines.length === 0 && Array.isArray(preloadLines) && preloadLines.length > 0) {
       this._ibEditLines = preloadLines.map(l => ({ ...l }));
+    }
+
+    // 采购退货三档：关联档锁定来源行与单价，并载入实时可退量（排除本单据）
+    this._ibReturnTier = String(detail.return_tier || '').trim();
+    this._ibReturnLinked = detail.txn_type === '采购退货'
+      && ['inbound', 'po', 'contract'].includes(this._ibReturnTier);
+    this._ibNoOrigin = detail.txn_type === '采购退货' && this._ibReturnTier === 'none';
+    this._ibReturnSourceMap = null;
+    if (this._ibReturnLinked) {
+      let srcUrl = '';
+      if (this._ibReturnTier === 'inbound') {
+        srcUrl = '/api/returns/purchase/origin-lines?docNo=' + encodeURIComponent(detail.origin_doc_no || '')
+          + '&excludeDocNo=' + encodeURIComponent(docNo);
+      } else {
+        srcUrl = '/api/returns/purchase/scope-lines?scope=' + encodeURIComponent(this._ibReturnTier)
+          + '&refNo=' + encodeURIComponent(detail.return_ref_no || '')
+          + '&excludeDocNo=' + encodeURIComponent(docNo);
+      }
+      try {
+        const sources = await this.api(srcUrl);
+        this._ibReturnSourceMap = Object.fromEntries((sources || []).map(s => [String(s.id), s]));
+      } catch (e) { this._ibReturnSourceMap = null; }
+      this._ibEditLines.forEach(l => {
+        const src = this._ibReturnSourceMap && l.origin_line_id
+          ? this._ibReturnSourceMap[String(l.origin_line_id)] : null;
+        if (src) {
+          l.max_qty = Number(src.available) || 0;
+          l.available = l.max_qty;
+          l.source_doc_no = src.doc_no || l.source_doc_no || '';
+        } else if (l.max_qty === undefined) {
+          l.max_qty = 0;
+        }
+      });
     }
 
     // 加载物料和库存数据
@@ -1256,6 +1481,10 @@ Object.assign(App, {
     const isDraft = d.status === 'draft';
     const typeLabel = this.ibTypeLabel(d.txn_type);
     const isOther = d.txn_type === '零星入库';
+    const isReturn = d.txn_type === '采购退货';
+    const tier = this._ibReturnTier || '';
+    const linked = !!this._ibReturnLinked;
+    const noOrigin = !!this._ibNoOrigin;
     const supOptions = (this._ibSupplierList || []).map(s => `<option value="${this.ibEsc(s.name)}"></option>`).join('');
 
     // 01 单据信息（草稿态可编辑；过账后仅提示不可改）
@@ -1265,15 +1494,32 @@ Object.assign(App, {
         // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商/来源单位 → 经手人 → [采购单号 → 合同号] → 备注(整行)
         const supLabel = isOther ? this.t('ibd_source_unit') : this.t('ibd_supplier') + ' *';
         const supPlaceholder = isOther ? this.t('ibd_source_unit_ph') : '';
-        const poFields = isOther ? '' : `
-          <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${this.ibEsc(d.po_no || '')}"></div>
-          <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${this.ibEsc(d.contract_no || '')}"></div>`;
+        let poFields = '';
+        if (isOther) {
+          poFields = '';
+        } else if (isReturn) {
+          // 采购退货：档位与来源只读；无原单档原因可在草稿内补充（必填）
+          poFields = `<div class="form-group"><label>${this.t('ret_tier')}</label><input value="${this.ibEsc(this.ibReturnTierLabel(tier))}" readonly></div>`;
+          if (tier === 'inbound') {
+            poFields += `<div class="form-group"><label>${this.t('ret_origin_inbound_doc')}</label><input value="${this.ibEsc(d.origin_doc_no || '')}" readonly></div>`;
+          } else if (tier === 'po' || tier === 'contract') {
+            poFields += `<div class="form-group"><label>${tier === 'po' ? this.t('ret_po') : this.t('ret_contract')}</label><input value="${this.ibEsc(d.return_ref_no || '')}" readonly></div>`;
+          } else if (noOrigin) {
+            poFields += `<div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_no_origin_reason')} *</label><textarea id="ib_e_return_reason" rows="2">${this.ibEsc(d.return_reason || '')}</textarea></div>`;
+          }
+        } else {
+          poFields = `
+            <div class="form-group"><label>${this.t('in_po_no')}</label><input id="ib_e_po_no" value="${this.ibEsc(d.po_no || '')}"></div>
+            <div class="form-group"><label>${this.t('in_contract')}</label><input id="ib_e_contract_no" value="${this.ibEsc(d.contract_no || '')}"></div>`;
+        }
+        const lockHint = linked
+          ? `<div class="form-group" style="grid-column:1/-1"><div class="ib-posted-hint" style="margin:0">${this.t('ret_line_origin_locked')}</div></div>` : '';
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.ibEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${this.t('ibd_type')}</label><input id="ib_e_type" value="${this.ibEsc(typeLabel)}" readonly></div>
           <div class="form-group"><label>${supLabel}</label><input id="ib_e_supplier" list="ib_e_sup_list" autocomplete="off" placeholder="${supPlaceholder}" value="${this.ibEsc(d.supplier || '')}"><datalist id="ib_e_sup_list">${supOptions}</datalist><div class="form-error"></div></div>
-          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.ibEsc(d.handler || '')}"></div>${poFields}
+          <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.ibEsc(d.handler || '')}"></div>${poFields}${lockHint}
           <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.ibEsc(d.remarks || '')}</textarea></div>
         </div>`;
       } else {
@@ -1285,7 +1531,7 @@ Object.assign(App, {
     const btnBox = document.getElementById('ib-edit-buttons');
     if (btnBox) {
       btnBox.innerHTML = isDraft
-        ? `<button class="btn btn-outline" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button>
+        ? `${linked ? '' : `<button class="btn btn-outline" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button>`}
            <button class="btn btn-outline" onclick="App.saveInboundDraft()">${this.t('ibd_save_draft')}</button>
            <button class="btn btn-primary" onclick="App.confirmInboundDocFromEdit()">${this.t('ibd_confirm')}</button>`
         : '';
@@ -1296,6 +1542,7 @@ Object.assign(App, {
 
   // 添加空行
   addInboundEditRow() {
+    if (this._ibReturnLinked) return; // 关联档的来源行已锁定，不允许新增
     if (!this._ibEditLines) this._ibEditLines = [];
     this._ibEditLines.push({ code: '', qty: '', price: '', remarks: '' });
     this.renderInboundEditTable();
@@ -1306,6 +1553,7 @@ Object.assign(App, {
     const d = this._ibDetail;
     if (!d) return;
     const isDraft = d.status === 'draft';
+    const linked = !!this._ibReturnLinked;
     const vp = this.canViewPrice();
     const lines = this._ibEditLines || [];
     const mats = this._materialsCache || [];
@@ -1316,9 +1564,9 @@ Object.assign(App, {
       <th>${this.t('pu_material')}</th>
       <th>${this.t('in_qty')}</th>
       ${vp ? `<th>${this.t('in_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
-      <th>${this.t('in_contract')}</th>
+      <th>${linked ? this.t('ret_source_doc') : this.t('in_contract')}</th>
       <th>${this.t('in_remarks')}</th>
-      <th class="text-right">${this.t('out_available')}</th>
+      <th class="text-right">${linked ? this.t('ret_remaining_qty') : this.t('out_available')}</th>
       <th></th>
     </tr>`;
 
@@ -1326,15 +1574,17 @@ Object.assign(App, {
     if (lines.length === 0) {
       tbody = `<tr><td colspan="${colCount}" style="text-align:center;padding:26px;color:var(--text-muted)">
         ${this.t('ibd_no_lines')}
-        ${isDraft ? `<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
+        ${isDraft && !linked ? `<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
       </td></tr>`;
     } else {
       tbody = lines.map((l, i) => {
-        const available = this._inboundStockMap[l.code];
+        // 采购退货关联档：可退量取后端实时额度；其他类型取库存
+        const linkedMax = linked ? (l.max_qty === undefined ? (l.available || 0) : l.max_qty) : null;
+        const available = linked ? linkedMax : this._inboundStockMap[l.code];
         const availText = available === undefined || available === null ? '-' : this.fmtQty(available);
         const availColor = available === undefined || available === null ? 'var(--text-muted)'
           : (available < 0 ? 'var(--danger)' : (available === 0 ? 'var(--warning)' : 'var(--success)'));
-        const contract = l.contract_no || d.contract_no || '';
+        const contract = linked ? (l.source_doc_no || '') : (l.contract_no || d.contract_no || '');
         const amt = (Number(l.qty) || 0) * (Number(l.price) || 0);
 
         if (!isDraft) {
@@ -1349,10 +1599,18 @@ Object.assign(App, {
             <td></td>
           </tr>`;
         }
+        // 关联档：物料与单价锁定为原入库行，只允许修改退货数量与备注；留空的行不生成明细
+        const matCell = linked
+          ? `<div style="font-size:13px">${this.ibLineLabel(l)}</div>`
+          : `<select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select>`;
+        const priceCell = linked
+          ? `<td>${this.fmtMoney(l.price)}</td>`
+          : `<td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.price === null || l.price === undefined ? '' : l.price}" oninput="App.ibEditSet(${i},'price',this.value)"></td>`;
+        const qtyMax = linked ? ` max="${linkedMax}"` : '';
         return `<tr>
-          <td style="min-width:220px"><select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select></td>
-          <td style="min-width:100px"><input type="number" step="0.01" min="0.01" value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
-          ${vp ? `<td style="min-width:100px"><input type="number" step="0.01" min="0" value="${l.price === null || l.price === undefined ? '' : l.price}" oninput="App.ibEditSet(${i},'price',this.value)"></td>
+          <td style="min-width:220px">${matCell}</td>
+          <td style="min-width:100px"><input type="number" step="0.01" min="0.01"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
+          ${vp ? `${priceCell}
           <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
           <td style="min-width:120px;font-size:12px">${contract}</td>
           <td style="min-width:140px"><input value="${this.ibEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
@@ -1492,25 +1750,42 @@ Object.assign(App, {
   // 明细行校验：数量必须为正数、单价不能为负；0/非法值显式报错，不再静默丢行
   ibValidateEditLines() {
     const lines = this._ibEditLines || [];
+    const linked = !!this._ibReturnLinked;
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
       // 完全空行（点了添加但未填任何内容）允许忽略
       if (!l.code && !l.qty && !l.price && !l.remarks) continue;
       if (!l.code) return { ok: false, message: this.t('line_material_required', { n: i + 1 }) };
+      // 关联档来源行：数量留空/为 0 表示本次不退货，跳过该行
+      if (linked && (l.qty === '' || l.qty === null || l.qty === undefined || Number(l.qty) === 0)) continue;
       if (!this.qtyIsValid(l.qty)) return { ok: false, message: this.t('qty_line_invalid', { n: i + 1 }) };
       if (!this.priceIsValid(l.price)) return { ok: false, message: this.t('price_line_invalid', { n: i + 1 }) };
+      if (linked) {
+        const max = l.max_qty === undefined ? (l.available || 0) : l.max_qty;
+        if (Number(l.qty) > Number(max) + 1e-4) {
+          return { ok: false, message: this.t('ret_qty_over_available', { n: i + 1, max: this.fmtQty(max) }) };
+        }
+      }
     }
     return { ok: true };
   },
 
+  // 关联档只提交填写了数量的来源行；其他类型提交所有有效物料行
+  ibSelectedEditLines() {
+    const lines = this._ibEditLines || [];
+    if (this._ibReturnLinked) return lines.filter(l => l.code && Number(l.qty) > 0);
+    return lines.filter(l => l.code);
+  },
+
   // ========== 保存草稿 ==========
   // 明细行提交体：带上行级合同号/采购单号（按采购单或合同载入的行可能各不相同），
-  // 为空则交由后端回退到单据头字段。
+  // 保留采购退货三档的 origin_line_id，供后端追溯原入库行成本。
   ibLinesPayload(lines) {
     return (lines || []).map(l => {
       const o = { code: l.code, qty: parseFloat(l.qty) || 0, price: parseFloat(l.price) || 0, remarks: l.remarks || '' };
       if (l.contract_no) o.contract_no = l.contract_no;
       if (l.po_no) o.po_no = l.po_no;
+      if (l.origin_line_id) o.origin_line_id = Number(l.origin_line_id);
       return o;
     });
   },
@@ -1523,7 +1798,7 @@ Object.assign(App, {
       this.toast(check.message, 'error');
       return;
     }
-    const lines = (this._ibEditLines || []).filter(l => l.code);
+    const lines = this.ibSelectedEditLines();
 
     // 草稿允许暂时没有明细；只有确认过账时才强制要求至少一行有效物料。
     const body = {
@@ -1535,6 +1810,9 @@ Object.assign(App, {
       contract_no: document.getElementById('ib_e_contract_no')?.value,
       remarks: document.getElementById('ib_e_remarks')?.value
     };
+    if (this._ibNoOrigin) {
+      body.return_reason = document.getElementById('ib_e_return_reason')?.value?.trim() || '';
+    }
 
     try {
       await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/lines', 'PUT', body);
@@ -1556,7 +1834,7 @@ Object.assign(App, {
       this.toast(check.message, 'error');
       return;
     }
-    const lines = (this._ibEditLines || []).filter(l => l.code);
+    const lines = this.ibSelectedEditLines();
     const s = d?.summary || {};
 
     if (lines.length === 0) {
@@ -1587,6 +1865,9 @@ Object.assign(App, {
           contract_no: document.getElementById('ib_e_contract_no')?.value,
           remarks: document.getElementById('ib_e_remarks')?.value
         };
+        if (this._ibNoOrigin) {
+          body.return_reason = document.getElementById('ib_e_return_reason')?.value?.trim() || '';
+        }
         try {
           await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/lines', 'PUT', body);
           // 确认入库

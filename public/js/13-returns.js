@@ -268,10 +268,24 @@ Object.assign(App, {
     return st || '-';
   },
 
-  retSubTypeBadge(subType) {
-    if (subType === '采购退货') return `<span class="badge badge-danger">${this.t('ret_tab_purchase')}</span>`;
-    if (subType === '退货冲销') return `<span class="badge badge-danger">${this.t('ret_tab_reversal')}</span>`;
-    return `<span class="badge badge-success">${this.t('ret_tab_stock')}</span>`;
+  retTierLabel(tier) {
+    const labels = {
+      inbound: this.t('ret_tier_inbound'),
+      po: this.t('ret_tier_po'),
+      contract: this.t('ret_tier_contract'),
+      none: this.t('ret_tier_none'),
+    };
+    return labels[tier] || tier || '';
+  },
+
+  retSubTypeBadge(subType, noOrigin) {
+    let badge = '';
+    if (subType === '采购退货') badge = `<span class="badge badge-danger">${this.t('ret_tab_purchase')}</span>`;
+    else if (subType === '退货冲销') badge = `<span class="badge badge-danger">${this.t('ret_tab_reversal')}</span>`;
+    else badge = `<span class="badge badge-success">${this.t('ret_tab_stock')}</span>`;
+    // 无原单采购退货（及其红冲单）单独打标，便于列表倒查
+    if (noOrigin) badge += ` <span class="badge badge-warning">${this.t('ret_no_origin')}</span>`;
+    return badge;
   },
 
   retRenderList() {
@@ -308,7 +322,7 @@ Object.assign(App, {
         return `<button type="button" class="pu-lk" onclick="event.stopPropagation();App.retSelectDoc('${this.retEsc(r.doc_no)}')">${this.retEsc(r.doc_no)}</button>${sub}`;
       }],
       ['date', this.t('ret_date'), r => this.fmtDate(r.date)],
-      ['sub_type', this.t('ret_subtype'), r => this.retSubTypeBadge(r.sub_type)],
+      ['sub_type', this.t('ret_subtype'), r => this.retSubTypeBadge(r.sub_type, r.no_origin)],
       ['party', this.t('ret_party'), r => this.retEsc(r.party || '-')],
       ['line_count', this.t('ret_lines'), r => r.line_count || 0, true],
       ['total_qty', this.t('ret_qty'), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
@@ -451,6 +465,8 @@ Object.assign(App, {
       [this.t('ret_lines'), String(lines.length)],
       [this.t('ret_qty'), this.fmtQty(dd * Number(sum.total_qty || 0))],
     ];
+    if (d.return_tier) meta.push([this.t('ret_tier'), this.retTierLabel(d.return_tier)]);
+    if (d.no_origin) meta.push([this.t('ret_no_origin_reason'), d.return_reason || '–']);
     if (vp) meta.push([this.t('ret_amount'), this.fmtMoney(sum.total_amount)]);
     if (!d.is_reversal) {
       meta.push([this.t('ret_reversed'), this.fmtQty(dd * Number(sum.reversed_qty || 0))]);
@@ -690,6 +706,8 @@ Object.assign(App, {
       [this.t('ret_lines'), String((d.lines || []).length)],
       [this.t('ret_qty'), this.fmtQty(dd * Number(sum.total_qty || 0))],
     ];
+    if (d.return_tier) meta.push([this.t('ret_tier'), this.retTierLabel(d.return_tier)]);
+    if (d.no_origin) meta.push([this.t('ret_no_origin_reason'), d.return_reason || '']);
     if (!d.is_reversal) {
       meta.push([this.t('ret_reversed'), this.fmtQty(dd * Number(sum.reversed_qty || 0))]);
       meta.push([this.t('ret_remaining'), this.fmtQty(dd * Number(sum.remaining_qty || 0))]);
