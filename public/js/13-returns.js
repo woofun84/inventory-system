@@ -28,6 +28,8 @@ Object.assign(App, {
         tab: '', kpi: '', kw: '', from: '', to: '', sel: '',
         dt: 'lines', wide: false, dense: false,
         lq: '', lf: '', lim: 15, ex: new Set(),
+        roSupplier: '', roStatus: '', roSortKey: 'date', roSortDir: 'desc',
+        roPage: 1, roPageSize: 15,
       };
     }
     return this._retState;
@@ -39,6 +41,7 @@ Object.assign(App, {
       ['采购退货', this.t('ret_tab_purchase')],
       ['领用退库', this.t('ret_tab_stock')],
       ['退货冲销', this.t('ret_tab_reversal')],
+      ['no_origin', this.t('ret_tab_no_origin')],
     ];
   },
 
@@ -125,7 +128,18 @@ Object.assign(App, {
     const box = document.getElementById('ret-filters');
     if (!box) return;
     const s = this.retState();
-    const ph = this.t('ret_filter_ph');
+    const isReport = s.tab === 'no_origin';
+    const ph = isReport ? this.t('ret_ro_filter_ph') : this.t('ret_filter_ph');
+    const reportFields = isReport ? `
+      <input id="ret_f_supplier" class="input" type="text" value="${this.retEsc(s.roSupplier)}"
+        placeholder="${this.t('ret_supplier')}" aria-label="${this.t('ret_supplier')}"
+        onkeydown="if(event.key==='Enter')App.retApplyFilter()" style="max-width:180px">
+      <select id="ret_f_status" onchange="App.retApplyFilter()" aria-label="${this.t('ret_status')}">
+        <option value="">${this.t('ret_ro_all_status')}</option>
+        ${[['draft', 'ibd_status_draft'], ['posted', 'ibd_status_posted'], ['partially_reversed', 'ibd_status_partial_rev'],
+          ['reversed', 'ibd_status_reversed'], ['cancelled', 'ibd_status_cancelled']]
+          .map(([v, k]) => `<option value="${v}"${s.roStatus === v ? ' selected' : ''}>${this.t(k)}</option>`).join('')}
+      </select>` : '';
     box.innerHTML = `<div class="pu-search" role="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="ret_f_kw" type="search" value="${this.retEsc(s.kw)}" placeholder="${ph}" aria-label="${ph}"
@@ -137,6 +151,7 @@ Object.assign(App, {
         <span class="pu-sep" aria-hidden="true">~</span>
         <input id="ret_f_to" type="date" value="${this.retEsc(s.to)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
       </div>
+      ${reportFields}
       <button type="button" class="btn btn-outline btn-sm" onclick="App.retClearFilter()">${this.t('pu_clear_filter')}</button>
       <button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.dense}" onclick="App.retToggleDense(this)">${this.t('pu_dense')}</button>`;
   },
@@ -145,21 +160,27 @@ Object.assign(App, {
     const box = document.getElementById('ret-head-actions');
     if (!box) return;
     const s = this.retState();
+    const exportBtn = `<button type="button" class="btn btn-outline" onclick="App.retExportReport()">${this.t('ret_export_csv')}</button>`;
+    if (s.tab === 'no_origin' && (!this.can('returns', 'create') || s.tab === '退货冲销')) { box.innerHTML = exportBtn; return; }
     if (!this.can('returns', 'create') || s.tab === '退货冲销') { box.innerHTML = ''; return; }
     box.innerHTML = `<button type="button" class="btn btn-primary" onclick="App.newInboundDoc('采购退货')">+ ${this.t('ret_new_purchase')}</button>
-      <button type="button" class="btn btn-outline" onclick="App.newOutboundDoc('退库出库')">+ ${this.t('ret_new_stock')}</button>`;
+      <button type="button" class="btn btn-outline" onclick="App.newOutboundDoc('退库出库')">+ ${this.t('ret_new_stock')}</button>
+      ${s.tab === 'no_origin' ? exportBtn : ''}`;
   },
 
   retSwitchTab(tab) {
     const s = this.retState();
     s.tab = tab;
     s.sel = '';
+    s.kpi = '';
     const st = this.getTableState('returns');
     st.page = 1;
+    if (tab === 'no_origin') s.roPage = 1;
     this.retCloseInspector();
     this.retRenderTabs();
+    this.retRenderFilters();
     this.retRenderHeadActions();
-    this.retRenderList();
+    this.retLoadList();
   },
 
   retToggleDense(el) {
@@ -176,18 +197,24 @@ Object.assign(App, {
     s.from = document.getElementById('ret_f_from')?.value || '';
     s.to = document.getElementById('ret_f_to')?.value || '';
     s.sel = '';
+    if (s.tab === 'no_origin') {
+      s.roSupplier = (document.getElementById('ret_f_supplier')?.value || '').trim();
+      s.roStatus = document.getElementById('ret_f_status')?.value || '';
+      s.roPage = 1;
+    }
     this.getTableState('returns').page = 1;
     this.retCloseInspector();
-    this.retRenderList();
+    this.retLoadList();
   },
 
   retClearFilter() {
     const s = this.retState();
     s.kw = ''; s.from = ''; s.to = ''; s.kpi = ''; s.sel = '';
+    s.roSupplier = ''; s.roStatus = ''; s.roPage = 1;
     this.getTableState('returns').page = 1;
     this.retRenderFilters();
     this.retCloseInspector();
-    this.retRenderList();
+    this.retLoadList();
   },
 
   retSetKpi(kpi) {
@@ -201,6 +228,8 @@ Object.assign(App, {
 
   // 聚合接口按页返回，这里全量拉取后在前端做筛选/排序/分页，与入库模块口径一致
   async retLoadList() {
+    const s = this.retState();
+    if (s.tab === 'no_origin') { await this.retLoadReport(); return; }
     const PAGE = 200;
     try {
       const first = await this.api('/api/returns/docs?page=1&pageSize=' + PAGE);
@@ -214,6 +243,41 @@ Object.assign(App, {
     } catch (e) {
       this._retList = [];
       this.toast(e.message || this.t('ret_load_failed'), 'error');
+    }
+    this.retRenderList();
+  },
+
+  // 无原单报表：服务端筛选/排序/分页
+  retReportQuery(page) {
+    const s = this.retState();
+    const params = new URLSearchParams();
+    params.set('page', String(page || s.roPage || 1));
+    params.set('pageSize', String(s.roPageSize || 15));
+    params.set('sortBy', s.roSortKey || 'date');
+    params.set('sortOrder', s.roSortDir || 'desc');
+    if (s.kw) params.set('keyword', s.kw);
+    if (s.from) params.set('dateFrom', s.from);
+    if (s.to) params.set('dateTo', s.to);
+    if (s.roSupplier) params.set('supplier', s.roSupplier);
+    if (s.roStatus) params.set('status', s.roStatus);
+    return params.toString();
+  },
+
+  async retLoadReport() {
+    const s = this.retState();
+    if (this._retReportLoading) return;
+    this._retReportLoading = true;
+    try {
+      this._retReport = await this.api('/api/returns/no-origin?' + this.retReportQuery(s.roPage));
+      if (this._retReport.total > 0 && this._retReport.page > this._retReport.totalPages) {
+        s.roPage = this._retReport.totalPages;
+        this._retReport = await this.api('/api/returns/no-origin?' + this.retReportQuery(s.roPage));
+      }
+    } catch (e) {
+      this._retReport = null;
+      this.toast(e.message || this.t('ret_load_failed'), 'error');
+    } finally {
+      this._retReportLoading = false;
     }
     this.retRenderList();
   },
@@ -290,6 +354,7 @@ Object.assign(App, {
 
   retRenderList() {
     const s = this.retState();
+    if (s.tab === 'no_origin') { this.retRenderReport(); return; }
     const kp = document.getElementById('ret-kpis');
     if (kp) {
       const rows = this.retRowsByTab();
@@ -365,16 +430,165 @@ Object.assign(App, {
   },
 
   retPage(delta) {
+    const s = this.retState();
+    if (s.tab === 'no_origin') {
+      s.roPage = Math.max(1, (s.roPage || 1) + Number(delta));
+      this.retLoadReport();
+      return;
+    }
     const st = this.getTableState('returns');
     st.page += Number(delta);
     this.retRenderList();
   },
 
   retSetPageSize(v) {
+    const s = this.retState();
+    const n = parseInt(v, 10) || 15;
+    if (s.tab === 'no_origin') {
+      s.roPageSize = n;
+      s.roPage = 1;
+      this.retLoadReport();
+      return;
+    }
     const st = this.getTableState('returns');
-    st.pageSize = parseInt(v, 10) || 15;
+    st.pageSize = n;
     st.page = 1;
     this.retRenderList();
+  },
+
+  // ========== 无原单退货报表渲染 ==========
+  retRenderReport() {
+    const s = this.retState();
+    const rep = this._retReport;
+    const kp = document.getElementById('ret-kpis');
+    if (kp) {
+      const t = (rep && rep.totals) || {};
+      const items = [
+        [this.t('ret_ro_docs'), Number(t.doc_count || 0)],
+        [this.t('ret_ro_lines'), Number(t.line_count || 0)],
+        [this.t('ret_ro_qty'), this.qtyCell(Number(t.total_qty || 0))],
+        [this.t('ret_amount'), this.fmtMoney(Number(t.total_amount || 0))],
+      ];
+      kp.innerHTML = (this.canViewPrice() ? items : items.slice(0, 3)).map(([label, val]) =>
+        `<button type="button" class="pu-kpi" aria-pressed="false"><small>${label}</small><strong>${val}</strong></button>`
+      ).join('');
+    }
+
+    const scroll = document.getElementById('ret-scroll');
+    if (scroll) {
+      if (!rep) {
+        scroll.innerHTML = `<div class="pu-empty">${this.t('pu_no_result')}</div>`;
+      } else if (!rep.items.length) {
+        scroll.innerHTML = `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.retHasFilter() ? this.t('pu_no_result_hint') : this.t('ret_ro_empty')}</span></div>`;
+      } else {
+        scroll.innerHTML = this.retReportTable(rep.items);
+      }
+    }
+    this.retRenderReportPager(rep);
+    this.retUpdatePagerSticky();
+  },
+
+  retReportSort(key) {
+    const s = this.retState();
+    if (s.roSortKey === key) s.roSortDir = s.roSortDir === 'asc' ? 'desc' : 'asc';
+    else { s.roSortKey = key; s.roSortDir = 'asc'; }
+    s.roPage = 1;
+    this.retLoadReport();
+  },
+
+  retReportTh(key, label, alignRight, sortable) {
+    const s = this.retState();
+    if (sortable === false) return `<th${alignRight ? ' class="text-right"' : ''}>${label}</th>`;
+    const on = s.roSortKey === key;
+    const arrow = on ? (s.roSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable${alignRight ? ' text-right' : ''}" style="cursor:pointer" onclick="App.retReportSort('${key}')">${label}${arrow}</th>`;
+  },
+
+  retReportTable(items) {
+    const vp = this.canViewPrice();
+    const s = this.retState();
+    const cols = [
+      ['doc_no', this.t('ret_no'), r => `<button type="button" class="pu-lk" onclick="event.stopPropagation();App.retSelectDoc('${this.retEsc(r.doc_no)}')">${this.retEsc(r.doc_no)}</button>`, false, 'doc_no'],
+      ['date', this.t('ret_date'), r => this.fmtDate(r.date), false, 'date'],
+      ['supplier', this.t('ret_supplier'), r => this.retEsc(r.supplier || '-'), false, 'supplier'],
+      ['code', this.t('ret_material_code'), r => this.retEsc(r.code || ''), false, 'code'],
+      ['name', this.t('ret_material_name'), r => this.retEsc(r.material_name || ''), false, 'name'],
+      ['qty', this.t('ret_qty'), r => this.qtyCell(Number(r.qty)), true, 'qty'],
+      ['price', this.t('ret_price'), r => this.fmtMoney(Number(r.price)), true, 'price'],
+      ['amount', this.t('ret_amount'), r => this.fmtMoney(Number(r.amount)), true, 'amount'],
+      ['reason', this.t('ret_no_origin_reason'), r => this.retEsc(r.return_reason || ''), false, 'reason'],
+      ['handler', this.t('ret_handler'), r => this.retEsc(r.handler || ''), false, 'handler'],
+      ['status', this.t('ret_status'), r => this.retStatusBadge(r.status), false, 'status'],
+      ['reversal', this.t('ret_ro_reversal_doc'), r => r.reversal_doc_no ? `${this.retEsc(r.reversal_doc_no)}<br><span class="pu-mu">${this.retStatusBadge(r.reversal_status)}</span>` : '-', false, null],
+    ];
+    const th = cols.map(c => this.retReportTh(c[4], c[1], c[3], !!c[4])).join('');
+    const body = items.map(r => {
+      const on = s.sel === r.doc_no;
+      return `<tr class="pu-row${on ? ' sel' : ''}" onclick="App.retSelectDoc('${this.retEsc(r.doc_no)}')">` +
+        cols.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+    }).join('');
+    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+  },
+
+  retRenderReportPager(rep) {
+    const box = document.getElementById('ret-pager');
+    if (!box) return;
+    const s = this.retState();
+    const tp = Math.max(1, Number(rep && rep.totalPages) || 1);
+    if (!rep || !rep.items.length) { box.innerHTML = ''; return; }
+    let tot = `${this.t('pu_sum_orders', { n: rep.total })}`
+      + ` · ${this.t('ret_ro_docs_short', { n: rep.totals.doc_count })}`;
+    if (this.canViewPrice()) tot += ` · ${this.t('ret_amount')} ${this.fmtMoney(Number(rep.totals.total_amount || 0))}`;
+    box.innerHTML = `<span class="pu-tot">${tot}</span>
+      <span>${rep.page} / ${tp} ${this.t('page')}</span>
+      <label>${this.t('pageSize')} <select id="ret-psz">${[10, 15, 20, 50].map(n => `<option value="${n}"${n === s.roPageSize ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+      <button type="button" class="btn btn-outline btn-sm" onclick="App.retPage(-1)"${rep.page <= 1 ? ' disabled' : ''}>${this.t('pu_prev')}</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="App.retPage(1)"${rep.page >= tp ? ' disabled' : ''}>${this.t('pu_next')}</button>`;
+    const sel = box.querySelector('#ret-psz');
+    if (sel) sel.onchange = () => this.retSetPageSize(sel.value);
+  },
+
+  // 导出无原单退货明细（服务端筛选条件下全量拉取）
+  async retExportReport() {
+    const s = this.retState();
+    try {
+      let page = 1;
+      let items = [];
+      let totalPages = 1;
+      do {
+        const r = await this.api('/api/returns/no-origin?' + this.retReportQuery(page).replace(/(^|&)pageSize=\d+/, '$1pageSize=200'));
+        items = items.concat(r.items || []);
+        totalPages = Number(r.totalPages || 1);
+        page++;
+      } while (page <= totalPages);
+      const vp = this.canViewPrice();
+      const cols = [
+        { key: 'doc_no', label: this.t('ret_no') },
+        { key: 'date', label: this.t('ret_date'), get: r => this.fmtDate(r.date) },
+        { key: 'supplier', label: this.t('ret_supplier') },
+        { key: 'code', label: this.t('ret_material_code') },
+        { key: 'material_name', label: this.t('ret_material_name') },
+        { key: 'qty', label: this.t('ret_qty') },
+        { key: 'price', label: this.t('ret_price'), get: r => vp ? this.fmtMoney(Number(r.price)) : '' },
+        { key: 'amount', label: this.t('ret_amount'), get: r => vp ? this.fmtMoney(Number(r.amount)) : '' },
+        { key: 'return_reason', label: this.t('ret_no_origin_reason') },
+        { key: 'handler', label: this.t('ret_handler') },
+        { key: 'status', label: this.t('ret_status'), get: r => this.t({ draft: 'ibd_status_draft', posted: 'ibd_status_posted', partially_reversed: 'ibd_status_partial_rev', reversed: 'ibd_status_reversed', cancelled: 'ibd_status_cancelled' }[r.status] || r.status) },
+        { key: 'reversal_doc_no', label: this.t('ret_ro_reversal_doc'), get: r => r.reversal_doc_no || '' },
+        { key: 'remarks', label: this.t('ibd_remarks') },
+      ];
+      const meta = [
+        [this.t('ret_ro_report'), ''],
+        [this.t('ret_date'), (s.from || s.to) ? `${s.from || '-'} ~ ${s.to || '-'}` : this.t('ret_tab_all')],
+        [this.t('ret_supplier'), s.roSupplier || '-'],
+        [this.t('ret_ro_detail_label'), items.length],
+      ];
+      const filename = `no-origin-returns-${new Date().toISOString().slice(0, 10)}.csv`;
+      this.exportDocCsv({ title: this.t('ret_ro_report'), meta, columns: cols, rows: items, filename });
+      this.toast(this.t('doc_export_done', { name: filename }));
+    } catch (e) {
+      this.toast(e.message || this.t('ret_load_failed'), 'error');
+    }
   },
 
   retUpdatePagerSticky() {

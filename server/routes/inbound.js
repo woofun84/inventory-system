@@ -11,6 +11,8 @@ const {
   resolveOrderLineId,
   loadPurchaseReturnOrigin,
   loadPurchaseReturnScope,
+  getPurchaseReturnOriginLines,
+  getPurchaseReturnScopeLines,
   validatePurchaseReturnLines,
 } = require('../services/stock');
 const docno = require('../services/docno');
@@ -576,6 +578,136 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
     res.status(e.status || 400).json({ error: e.message, code: e.code || 'INBOUND_LINES_SAVE_FAILED' });
   }
 });
+
+// 草稿换档（仅 draft）：重算来源/单价/核销行，失败整体回滚
+router.put('/api/inbound-docs/:docNo/return-tier', requirePerm('inbound', 'edit'), (req, res) => {
+  const docNo = req.params.docNo;
+  const doc = db.prepare("SELECT * FROM inbound_docs WHERE doc_no=?").get(docNo);
+  if (!doc) return res.status(404).json({ error: '入库单据不存在' });
+  if (doc.txn_type !== '采购退货') return res.status(400).json({ error: '仅采购退货单支持切换档位', code: 'RETURN_TIER_NOT_RETURN' });
+  if (doc.status !== 'draft') {
+    return res.status(409).json({ error: '仅草稿态可切换档位，已过账/已冲销单据不可变更', code: 'RETURN_TIER_NOT_DRAFT' });
+  }
+
+  const body = req.body || {};
+  const header = {
+    txn_type: '采购退货',
+    return_tier: body.return_tier,
+    origin_doc_no: body.origin_doc_no !== undefined ? body.origin_doc_no : doc.origin_doc_no,
+    return_ref_no: body.return_ref_no !== undefined ? body.return_ref_no : doc.return_ref_no,
+    return_reason: body.return_reason !== undefined ? body.return_reason : doc.return_reason,
+    supplier: body.supplier !== undefined ? body.supplier : doc.supplier,
+  };
+
+  try {
+    validateReturnTierHeader(header, req.user);
+    const tier = normalizeReturnTier(header.return_tier);
+    const curTier = normalizeReturnTier(doc.return_tier);
+    // 非当前档位的来源字段一律清空：避免旧来源绑定残留
+    const originDocNo = tier === 'inbound' ? String(header.origin_doc_no || '').trim() : '';
+    const refNo = (tier === 'po' || tier === 'contract') ? String(header.return_ref_no || '').trim() : '';
+    let supplier = String(header.supplier || '').trim();
+    let poNo = '';
+    let contractNo = '';
+    let newLines = [];
+    const existing = db.prepare("SELECT * FROM inbound WHERE doc_no=? ORDER BY id").all(docNo);
+
+    // 同档位且来源未变：无原单只更新供应商/原因；关联档直接返回，避免误清零
+    const sameSource = curTier === tier
+      && String(doc.origin_doc_no || '') === originDocNo
+      && String(doc.return_ref_no || '') === refNo;
+
+    if (tier === 'inbound') {
+      const origin = loadPurchaseReturnOrigin(originDocNo);
+      if (!supplier) supplier = origin.supplier || '';
+      if (!sameSource) newLines = allocateReturnLines(existing, getPurchaseReturnOriginLines(originDocNo, docNo));
+    } else if (tier === 'po' || tier === 'contract') {
+      const scopeDoc = loadPurchaseReturnScope(tier, refNo);
+      if (!supplier) supplier = scopeDoc.supplier || '';
+      if (tier === 'po') poNo = refNo; else contractNo = refNo;
+      if (!sameSource) newLines = allocateReturnLines(existing, getPurchaseReturnScopeLines(tier, refNo, docNo));
+    } else {
+      // 无原单：整体失效旧来源，单价清零待手填，明细行保留
+      if (!sameSource) {
+        newLines = existing.map(l => ({
+          code: l.code,
+          qty: sign.normalizeQty(doc.txn_type, Math.abs(Number(l.qty))),
+          price: 0,
+          po_no: '',
+          contract_no: '',
+          order_line_id: 0,
+          origin_line_id: 0,
+          remarks: l.remarks || '',
+          date: l.date,
+        }));
+      }
+    }
+
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE inbound_docs SET return_tier=?, origin_doc_no=?, return_ref_no=?, return_reason=?, supplier=?, po_no=?, contract_no=? WHERE doc_no=?`)
+        .run(tier, originDocNo, refNo, header.return_reason || '', supplier, poNo, contractNo, docNo);
+      if (!sameSource) {
+        db.prepare("DELETE FROM inbound WHERE doc_no=?").run(docNo);
+        const stmt = db.prepare(`INSERT INTO inbound (date, grn_no, doc_no, code, qty, price, supplier, handler, remarks, po_no, contract_no, txn_type, status, order_line_id, origin_line_id)
+          VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id, @origin_line_id)`);
+        const rows = sameSource ? existing : newLines;
+        rows.forEach(l => {
+          stmt.run({
+            date: l.date || doc.date, grn_no: docNo, doc_no: docNo, code: l.code, qty: l.qty,
+            price: l.price, supplier, handler: doc.handler, remarks: l.remarks || '',
+            po_no: l.po_no || '', contract_no: l.contract_no || '',
+            txn_type: doc.txn_type, order_line_id: l.order_line_id || 0, origin_line_id: l.origin_line_id || 0,
+          });
+        });
+      }
+      logInboundDoc(docNo, 'edit', req.user?.name || req.user?.username, `切换退货档位为 ${tier}，重绑定 ${newLines.length} 行`);
+    });
+    tx();
+    res.json({ success: true, return_tier: tier, line_count: newLines.length, unchanged: sameSource && curTier === tier });
+  } catch (e) {
+    const payload = { error: e.message, code: e.code || 'RETURN_TIER_SWITCH_FAILED' };
+    if (e.details) payload.details = e.details;
+    res.status(e.status || 400).json(payload);
+  }
+});
+
+// 换档重绑定：按物料在新来源范围内按日期/单号顺序分配，不足则整体拒绝
+function allocateReturnLines(existing, sources) {
+  const pool = sources.map(s => ({ ...s, available: Number(s.available) || 0 }));
+  const out = [];
+  const shortage = [];
+  for (const l of existing) {
+    let need = Math.abs(Number(l.qty) || 0);
+    if (!need) continue;
+    for (const src of pool) {
+      if (need <= 0) break;
+      if (src.code !== l.code || src.available <= 0) continue;
+      const take = Math.min(need, src.available);
+      out.push({
+        code: l.code, qty: sign.normalizeQty('采购退货', take), price: src.price,
+        po_no: src.po_no, contract_no: src.contract_no, order_line_id: src.order_line_id,
+        origin_line_id: src.id, remarks: l.remarks || '', date: l.date,
+      });
+      src.available -= take;
+      need -= take;
+    }
+    if (need > 0) {
+      const mat = db.prepare("SELECT name FROM materials WHERE code=?").get(l.code);
+      shortage.push({
+        code: l.code, material_name: mat?.name || '',
+        requested: Math.abs(Number(l.qty) || 0), shortage: need,
+        available: Math.abs(Number(l.qty) || 0) - need,
+      });
+    }
+  }
+  if (shortage.length) {
+    const e = routeFail('RETURN_TIER_QTY_INSUFFICIENT',
+      '换档失败：' + shortage.map(x => `物料 ${x.code} 需 ${x.requested}，可退 ${x.available}，差 ${x.shortage}`).join('；'));
+    e.details = shortage;
+    throw e;
+  }
+  return out;
+}
 
 // 确认入库（过账）—— 草稿 → posted，明细行 status → posted，库存流水生效
 router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), (req, res) => {

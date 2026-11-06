@@ -1440,6 +1440,13 @@ Object.assign(App, {
       });
     }
 
+    // 草稿态采购退货：为换档准备来源候选
+    this._ibEditTierInit = null;
+    if (detail.txn_type === '采购退货' && detail.status === 'draft') {
+      try { this._ibReturnOrigins = await this.api('/api/returns/purchase/origins'); } catch (e) { this._ibReturnOrigins = this._ibReturnOrigins || []; }
+      try { this._ibReturnScopeOpts = await this.api('/api/returns/purchase/scope-options'); } catch (e) { this._ibReturnScopeOpts = this._ibReturnScopeOpts || { po: [], contract: [] }; }
+    }
+
     // 加载物料和库存数据
     const materials = await this.api('/api/materials');
     this._materialsCache = materials;
@@ -1498,14 +1505,42 @@ Object.assign(App, {
         if (isOther) {
           poFields = '';
         } else if (isReturn) {
-          // 采购退货：档位与来源只读；无原单档原因可在草稿内补充（必填）
-          poFields = `<div class="form-group"><label>${this.t('ret_tier')}</label><input value="${this.ibEsc(this.ibReturnTierLabel(tier))}" readonly></div>`;
-          if (tier === 'inbound') {
-            poFields += `<div class="form-group"><label>${this.t('ret_origin_inbound_doc')}</label><input value="${this.ibEsc(d.origin_doc_no || '')}" readonly></div>`;
-          } else if (tier === 'po' || tier === 'contract') {
-            poFields += `<div class="form-group"><label>${tier === 'po' ? this.t('ret_po') : this.t('ret_contract')}</label><input value="${this.ibEsc(d.return_ref_no || '')}" readonly></div>`;
-          } else if (noOrigin) {
-            poFields += `<div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_no_origin_reason')} *</label><textarea id="ib_e_return_reason" rows="2">${this.ibEsc(d.return_reason || '')}</textarea></div>`;
+          if (isDraft) {
+            // 草稿态：档位可切换，来源与原因随档位显隐；切换需确认并整体重绑定
+            const canNoOrigin = ['admin', 'manager'].includes(this.user?.role);
+            const curTier = ['inbound', 'po', 'contract', 'none'].includes(tier) ? tier : 'inbound';
+            const originOptions = (this._ibReturnOrigins || []).map(o =>
+              `<option value="${this.ibEsc(o.doc_no)}" data-supplier="${this.ibEsc(o.supplier || '')}">${this.ibEsc(o.doc_no)} · ${this.ibEsc(o.date || '')}${o.supplier ? ' · ' + this.ibEsc(o.supplier) : ''}</option>`
+            ).join('');
+            const tierOpts = [['inbound', this.t('ret_tier_inbound')], ['po', this.t('ret_tier_po')], ['contract', this.t('ret_tier_contract')]]
+              .concat(canNoOrigin ? [['none', this.t('ret_tier_none')]] : [])
+              .map(([v, label]) => `<option value="${v}"${curTier === v ? ' selected' : ''}>${label}</option>`).join('');
+            poFields = `
+              <div class="form-group"><label>${this.t('ret_tier')} *</label><select id="ib_e_return_tier" onchange="App.ibOnEditTierChange()">${tierOpts}</select>
+                ${canNoOrigin ? '' : `<div style="font-size:12px;color:var(--text-muted)">${this.t('ret_no_origin_forbidden')}</div>`}</div>
+              <div class="form-group" id="ib_e_origin_wrap" style="${curTier === 'inbound' ? '' : 'display:none'}">
+                <label>${this.t('ret_origin_inbound_doc')} *</label>
+                <select id="ib_e_origin_doc"><option value="">${this.t('please_select')}</option>${originOptions}</select></div>
+              <div class="form-group" id="ib_e_scope_wrap" style="${(curTier === 'po' || curTier === 'contract') ? '' : 'display:none'}">
+                <label id="ib_e_scope_label">${curTier === 'contract' ? this.t('ret_contract') : this.t('ret_po')} *</label>
+                <select id="ib_e_scope_ref"><option value="">${this.t('please_select')}</option></select></div>
+              <div class="form-group" id="ib_e_reason_wrap" style="grid-column:1/-1;${curTier === 'none' ? '' : 'display:none'}">
+                <label>${this.t('ret_no_origin_reason')} *</label>
+                <textarea id="ib_e_return_reason" rows="2" placeholder="${this.t('ret_no_origin_reason_ph')}">${this.ibEsc(d.return_reason || '')}</textarea></div>
+              <div class="form-group" style="grid-column:1/-1;margin-top:2px">
+                <button type="button" class="btn btn-outline btn-sm" onclick="App.ibApplyReturnTier()">${this.t('ret_tier_apply')}</button>
+                <span style="font-size:12px;color:var(--text-muted);margin-left:8px">${this.t('ret_tier_switch_hint')}</span></div>`;
+            this._ibEditTierInit = { tier: curTier, origin: d.origin_doc_no || '', ref: d.return_ref_no || '' };
+          } else {
+            // 已过账：档位与来源只读展示
+            poFields = `<div class="form-group"><label>${this.t('ret_tier')}</label><input value="${this.ibEsc(this.ibReturnTierLabel(tier))}" readonly></div>`;
+            if (tier === 'inbound') {
+              poFields += `<div class="form-group"><label>${this.t('ret_origin_inbound_doc')}</label><input value="${this.ibEsc(d.origin_doc_no || '')}" readonly></div>`;
+            } else if (tier === 'po' || tier === 'contract') {
+              poFields += `<div class="form-group"><label>${tier === 'po' ? this.t('ret_po') : this.t('ret_contract')}</label><input value="${this.ibEsc(d.return_ref_no || '')}" readonly></div>`;
+            } else if (noOrigin) {
+              poFields += `<div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_no_origin_reason')} *</label><textarea id="ib_e_return_reason" rows="2">${this.ibEsc(d.return_reason || '')}</textarea></div>`;
+            }
           }
         } else {
           poFields = `
@@ -1537,10 +1572,105 @@ Object.assign(App, {
         : '';
     }
 
+    this.ibInitEditTierFields();
     this.renderInboundEditTable();
   },
 
-  // 添加空行
+  // 草稿换档：初始化来源下拉（编辑页专用 id）
+  ibInitEditTierFields() {
+    const init = this._ibEditTierInit;
+    if (!init) return;
+    const sel = document.getElementById('ib_e_origin_doc');
+    if (sel) {
+      const opts = (this._ibReturnOrigins || []).map(o =>
+        `<option value="${this.ibEsc(o.doc_no)}">${this.ibEsc(o.doc_no)} · ${this.ibEsc(o.date || '')}${o.supplier ? ' · ' + this.ibEsc(o.supplier) : ''}</option>`
+      ).join('');
+      sel.innerHTML = `<option value="">${this.t('please_select')}</option>${opts}`;
+      sel.value = init.origin || '';
+    }
+    if (init.tier === 'po' || init.tier === 'contract') this.ibFillEditScopeOptions(init.tier, init.ref);
+  },
+
+  ibFillEditScopeOptions(tier, selected) {
+    const sel = document.getElementById('ib_e_scope_ref');
+    const label = document.getElementById('ib_e_scope_label');
+    if (label) label.textContent = (tier === 'contract' ? this.t('ret_contract') : this.t('ret_po')) + ' *';
+    if (!sel) return;
+    const list = ((this._ibReturnScopeOpts || {})[tier] || []).map(o => {
+      const ref = tier === 'po' ? o.po_no : o.contract_no;
+      return `<option value="${this.ibEsc(ref)}">${this.ibEsc(ref)}${o.supplier ? ' · ' + this.ibEsc(o.supplier) : ''}</option>`;
+    }).join('');
+    sel.innerHTML = `<option value="">${this.t('please_select')}</option>${list}`;
+    sel.value = selected || '';
+  },
+
+  ibOnEditTierChange() {
+    const tier = document.getElementById('ib_e_return_tier')?.value || 'inbound';
+    const originWrap = document.getElementById('ib_e_origin_wrap');
+    const scopeWrap = document.getElementById('ib_e_scope_wrap');
+    const reasonWrap = document.getElementById('ib_e_reason_wrap');
+    if (originWrap) originWrap.style.display = tier === 'inbound' ? '' : 'none';
+    if (scopeWrap) scopeWrap.style.display = (tier === 'po' || tier === 'contract') ? '' : 'none';
+    if (reasonWrap) reasonWrap.style.display = tier === 'none' ? '' : 'none';
+    if (tier === 'po' || tier === 'contract') this.ibFillEditScopeOptions(tier, '');
+  },
+
+  // 应用档位变更：确认后保存表头并调用换档接口（失败保持原档）
+  async ibApplyReturnTier() {
+    const d = this._ibDetail;
+    if (!d || d.txn_type !== '采购退货' || d.status !== 'draft') return;
+    const tierSel = document.getElementById('ib_e_return_tier');
+    const curTier = ['inbound', 'po', 'contract', 'none'].includes(this._ibReturnTier) ? this._ibReturnTier : 'inbound';
+    const tier = tierSel?.value || curTier;
+    const originDocNo = tier === 'inbound' ? (document.getElementById('ib_e_origin_doc')?.value || '') : '';
+    const refNo = (tier === 'po' || tier === 'contract') ? (document.getElementById('ib_e_scope_ref')?.value || '') : '';
+    const reason = document.getElementById('ib_e_return_reason')?.value?.trim() || '';
+
+    if (tier === curTier
+      && originDocNo === String(d.origin_doc_no || '')
+      && refNo === String(d.return_ref_no || '')
+      && (!(tier === 'none') || reason === String(d.return_reason || ''))) {
+      this.toast(this.t('ret_tier_no_change'));
+      return;
+    }
+    if (tier === 'inbound' && !originDocNo) { this.toast(this.t('ret_origin_inbound_required'), 'error'); return; }
+    if ((tier === 'po' || tier === 'contract') && !refNo) { this.toast(this.t('ret_scope_required'), 'error'); return; }
+    if (tier === 'none' && !reason) { this.toast(this.t('ret_reason_required'), 'error'); return; }
+
+    if (!window.confirm(this.t('ret_tier_switch_confirm'))) {
+      if (tierSel) tierSel.value = curTier;
+      this.ibOnEditTierChange();
+      if (curTier === 'po' || curTier === 'contract') this.ibFillEditScopeOptions(curTier, d.return_ref_no || '');
+      return;
+    }
+
+    try {
+      // 先保存表头与现有明细，避免换档后丢失未保存的日期/经手人/备注
+      const check = this.ibValidateEditLines();
+      if (!check.ok) { this.toast(check.message, 'error'); return; }
+      await this.api('/api/inbound-docs/' + encodeURIComponent(d.doc_no) + '/lines', 'PUT', {
+        lines: this.ibLinesPayload(this.ibSelectedEditLines()),
+        date: document.getElementById('ib_e_date')?.value,
+        supplier: document.getElementById('ib_e_supplier')?.value,
+        handler: document.getElementById('ib_e_handler')?.value,
+        po_no: document.getElementById('ib_e_po_no')?.value || d.po_no || '',
+        contract_no: document.getElementById('ib_e_contract_no')?.value || d.contract_no || '',
+        remarks: document.getElementById('ib_e_remarks')?.value,
+        ...(this._ibNoOrigin ? { return_reason: document.getElementById('ib_e_return_reason')?.value?.trim() || '' } : {})
+      });
+      await this.api('/api/inbound-docs/' + encodeURIComponent(d.doc_no) + '/return-tier', 'PUT', {
+        return_tier: tier, origin_doc_no: originDocNo, return_ref_no: refNo, return_reason: reason,
+        supplier: document.getElementById('ib_e_supplier')?.value,
+      });
+      this.toast(this.t('ret_tier_switched'));
+      await this.editInboundDoc(d.doc_no);
+    } catch (e) {
+      this.toast(e.message || this.t('ret_tier_switch_failed'), 'error');
+      if (tierSel) tierSel.value = curTier;
+      this.ibOnEditTierChange();
+      if (curTier === 'po' || curTier === 'contract') this.ibFillEditScopeOptions(curTier, d.return_ref_no || '');
+    }
+  },
   addInboundEditRow() {
     if (this._ibReturnLinked) return; // 关联档的来源行已锁定，不允许新增
     if (!this._ibEditLines) this._ibEditLines = [];

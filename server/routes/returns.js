@@ -378,4 +378,69 @@ router.get('/api/returns/purchase/scope-lines', requirePerm('returns', 'view'), 
   }
 });
 
+// ==================== 无原单退货报表（2026-11 第六批） ====================
+// 明细级数据源：return_tier='none' 的采购退货单及其明细，附冲销单信息便于倒查
+const NO_ORIGIN_SORT = {
+  date: 'd.date', doc_no: 'd.doc_no', supplier: 'd.supplier', code: 'i.code',
+  name: 'm.name', qty: 'i.qty', price: 'i.price', amount: 'i.qty * i.price',
+  reason: 'd.return_reason', handler: 'd.handler', status: 'd.status',
+};
+
+router.get('/api/returns/no-origin', requirePerm('returns', 'view'), (req, res) => {
+  const q = req.query || {};
+  const page = Math.max(1, parseInt(q.page, 10) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(q.pageSize, 10) || 20));
+  const sortKey = NO_ORIGIN_SORT[q.sortBy] ? q.sortBy : 'date';
+  const sortDir = String(q.sortOrder || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  const where = ["d.txn_type = '采购退货'", "COALESCE(d.return_tier, '') = 'none'"];
+  const params = [];
+  if (String(q.dateFrom || '').trim()) { where.push('d.date >= ?'); params.push(String(q.dateFrom).trim()); }
+  if (String(q.dateTo || '').trim()) { where.push('d.date <= ?'); params.push(String(q.dateTo).trim()); }
+  if (String(q.supplier || '').trim()) { where.push('d.supplier LIKE ?'); params.push('%' + String(q.supplier).trim() + '%'); }
+  if (String(q.status || '').trim()) { where.push('d.status = ?'); params.push(String(q.status).trim()); }
+  if (String(q.keyword || '').trim()) {
+    const kw = '%' + String(q.keyword).trim() + '%';
+    where.push("(d.doc_no LIKE ? OR i.code LIKE ? OR COALESCE(m.name, '') LIKE ? OR d.return_reason LIKE ? OR d.handler LIKE ?)");
+    params.push(kw, kw, kw, kw, kw);
+  }
+  const whereSql = where.join(' AND ');
+
+  const fromSql = `FROM inbound i
+    JOIN inbound_docs d ON d.doc_no = i.doc_no
+    LEFT JOIN materials m ON m.code = i.code
+    WHERE ${whereSql}`;
+
+  const totals = db.prepare(`SELECT COUNT(DISTINCT d.doc_no) AS doc_count, COUNT(*) AS line_count,
+      COALESCE(SUM(i.qty), 0) AS total_qty,
+      COALESCE(SUM(i.qty * i.price), 0) AS total_amount
+    ${fromSql}`).get(...params);
+
+  const rows = db.prepare(`SELECT i.id AS line_id, d.doc_no AS doc_no, d.date AS date,
+      COALESCE(d.supplier,'') AS supplier, i.code AS code, COALESCE(m.name,'') AS material_name,
+      COALESCE(m.spec,'') AS material_spec, COALESCE(m.unit,'') AS material_unit,
+      i.qty AS qty, i.price AS price,
+      (i.qty * i.price) AS amount,
+      COALESCE(d.return_reason,'') AS return_reason,
+      COALESCE(d.handler,'') AS handler, d.status AS status,
+      COALESCE(i.remarks,'') AS remarks, COALESCE(d.return_tier,'') AS return_tier,
+      (SELECT rd.doc_no FROM inbound_docs rd WHERE rd.reversal_of = d.doc_no ORDER BY rd.created_at DESC LIMIT 1) AS reversal_doc_no,
+      (SELECT rd.status FROM inbound_docs rd WHERE rd.reversal_of = d.doc_no ORDER BY rd.created_at DESC LIMIT 1) AS reversal_status
+    ${fromSql}
+    ORDER BY ${NO_ORIGIN_SORT[sortKey]} ${sortDir}, d.doc_no DESC, i.id ASC
+    LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize);
+
+  res.json({
+    items: rows, page, pageSize, sortBy: sortKey, sortOrder: sortDir.toLowerCase(),
+    total: Number(totals.line_count || 0),
+    totalPages: Math.max(1, Math.ceil(Number(totals.line_count || 0) / pageSize)),
+    totals: {
+      doc_count: Number(totals.doc_count || 0),
+      line_count: Number(totals.line_count || 0),
+      total_qty: Number(totals.total_qty || 0),
+      total_amount: Number(totals.total_amount || 0),
+    },
+  });
+});
+
 module.exports = router;
