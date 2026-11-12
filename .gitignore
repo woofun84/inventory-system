@@ -1,0 +1,72 @@
+# ---------- 依赖 ----------
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+.yarn/cache
+.yarn/install-state.gz
+
+# ---------- 构建产物 / 缓存 ----------
+dist/
+build/
+out/
+coverage/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# ---------- 数据库（本地数据，含真实业务数据，不入库） ----------
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+seed_data.json
+seed-generated.json
+
+# ---------- 环境变量 / 密钥 / 凭据 ----------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets.json
+credentials.json
+.npmrc
+.netrc
+id_rsa
+id_rsa.pub
+
+# ---------- IDE / 编辑器 ----------
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.claude/
+.workbuddy-ai/
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 运维备份（恢复/清库前的自动快照，含真实数据） ----------
+backups/
+
+# ---------- 运行时临时文件 ----------
+*.pid
+*.seed
+*.pid.lock
+tmp/
+temp/
+uploads/

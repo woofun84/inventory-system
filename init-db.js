@@ -1,0 +1,214 @@
+/**
+ * 数据库初始化脚本 - 创建表结构并导入种子数据
+ */
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
+
+const { DB_PATH } = require('./server/config');
+const SEED_PATH = path.join(__dirname, '..', 'seed_data.json');
+
+// 删除旧数据库
+if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
+
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+// ========== 创建表结构 ==========
+
+// 参数表
+db.exec(`
+CREATE TABLE params (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+INSERT INTO params VALUES ('currency', '¥');
+INSERT INTO params VALUES ('use_icons', '是');
+`);
+
+// 物料类别
+db.exec(`
+CREATE TABLE categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  prefix TEXT
+);
+`);
+
+// 计量单位
+db.exec(`
+CREATE TABLE units (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
+`);
+
+// 领用去向
+db.exec(`
+CREATE TABLE destinations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
+`);
+
+// 物料档案
+db.exec(`
+CREATE TABLE materials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  spec TEXT DEFAULT '',
+  category TEXT DEFAULT '',
+  unit TEXT DEFAULT '',
+  opening_qty INTEGER DEFAULT 0,
+  opening_price INTEGER DEFAULT 0,
+  min_stock INTEGER DEFAULT 0,
+  brand TEXT DEFAULT '',
+  status TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// 供应商档案
+db.exec(`
+CREATE TABLE suppliers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  contact TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  remarks TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// 入库记录
+db.exec(`
+CREATE TABLE inbound (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  grn_no TEXT NOT NULL,
+  code TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  price INTEGER NOT NULL,
+  amount INTEGER GENERATED ALWAYS AS (CAST(ROUND(qty * price / 1000000000000.0) AS INTEGER)) STORED,
+  supplier TEXT DEFAULT '',
+  handler TEXT DEFAULT '',
+  remarks TEXT DEFAULT '',
+  po_no TEXT DEFAULT '',
+  contract_no TEXT DEFAULT '',
+  txn_type TEXT DEFAULT '采购入库',
+  doc_no TEXT DEFAULT '',
+  status TEXT DEFAULT 'posted',
+  order_line_id INTEGER NOT NULL DEFAULT 0,
+  origin_line_id INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (code) REFERENCES materials(code)
+);
+`);
+
+// 出库记录
+db.exec(`
+CREATE TABLE outbound (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  gin_no TEXT NOT NULL,
+  code TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  destination TEXT DEFAULT '',
+  receiver TEXT DEFAULT '',
+  handler TEXT DEFAULT '',
+  remarks TEXT DEFAULT '',
+  cost_price INTEGER DEFAULT 0,
+  cost_amount INTEGER GENERATED ALWAYS AS (CAST(ROUND(qty * cost_price / 1000000000000.0) AS INTEGER)) STORED,
+  txn_type TEXT DEFAULT '正常出库',
+  doc_no TEXT DEFAULT '',
+  status TEXT DEFAULT 'posted',
+  origin_line_id INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (code) REFERENCES materials(code)
+);
+`);
+
+// 采购订单
+db.exec(`
+CREATE TABLE purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_no TEXT NOT NULL UNIQUE,
+  date TEXT NOT NULL,
+  supplier TEXT DEFAULT '',
+  contract_no TEXT DEFAULT '',
+  project TEXT DEFAULT '',
+  expected_date TEXT DEFAULT '',
+  remarks TEXT DEFAULT '',
+  manual_status TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'posted',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
+// 订单明细
+db.exec(`
+CREATE TABLE order_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_no TEXT NOT NULL,
+  code TEXT NOT NULL,
+  order_qty INTEGER NOT NULL,
+  order_price INTEGER NOT NULL,
+  order_amount INTEGER GENERATED ALWAYS AS (CAST(ROUND(order_qty * order_price / 1000000000000.0) AS INTEGER)) STORED,
+  remarks TEXT DEFAULT '',
+  contract_no TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (po_no) REFERENCES purchase_orders(po_no),
+  FOREIGN KEY (code) REFERENCES materials(code)
+);
+`);
+
+// ========== 导入种子数据 ==========
+
+if (fs.existsSync(SEED_PATH)) {
+  const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf-8'));
+  const p = seed.params;
+  const units = require('./server/services/units');
+
+  // 参数
+  const catStmt = db.prepare('INSERT INTO categories (name, prefix) VALUES (?, ?)');
+  p.categories.forEach((name, i) => catStmt.run(name, p.prefixes[i] || ''));
+  p.units.forEach(name => db.prepare('INSERT INTO units (name) VALUES (?)').run(name));
+  p.destinations.forEach(name => db.prepare('INSERT INTO destinations (name) VALUES (?)').run(name));
+
+  // 物料档案（数量 1e6 / 单价 1e8 定点入库）
+  const matStmt = db.prepare(`INSERT INTO materials (code,name,spec,category,unit,opening_qty,opening_price,min_stock,brand,status) VALUES (@code,@name,@spec,@category,@unit,@opening_qty,@opening_price,@min_stock,@brand,@status)`);
+  seed.materials.forEach(m => matStmt.run({
+    ...m,
+    opening_qty: Number(units.toQtyInt(m.opening_qty || 0)),
+    opening_price: Number(units.toPriceInt(m.opening_price || 0)),
+    min_stock: Number(units.toQtyInt(m.min_stock || 0)),
+  }));
+
+  // 供应商
+  const supStmt = db.prepare(`INSERT INTO suppliers (name,contact,phone,remarks) VALUES (@name,@contact,@phone,@remarks)`);
+  seed.suppliers.forEach(s => supStmt.run(s));
+
+  // 业务单据（入库/出库/采购单）不再随初始化导入：开发阶段库是空的，
+  // 需要数据请通过界面或测试脚本建立，避免出现无法追溯的历史业务。
+  console.log(`种子字典导入完成: ${p.categories.length} 类别, ${p.units.length} 单位, ${p.destinations.length} 去向, ${seed.materials.length} 物料, ${seed.suppliers.length} 供应商`);
+} else {
+  console.log('未找到种子数据文件，跳过导入');
+}
+
+// 创建索引
+db.exec(`
+CREATE INDEX idx_inbound_code ON inbound(code);
+CREATE INDEX idx_inbound_date ON inbound(date);
+CREATE INDEX idx_inbound_grn ON inbound(grn_no);
+CREATE INDEX idx_outbound_code ON outbound(code);
+CREATE INDEX idx_outbound_date ON outbound(date);
+CREATE INDEX idx_outbound_gin ON outbound(gin_no);
+CREATE INDEX idx_order_lines_po ON order_lines(po_no);
+CREATE INDEX idx_order_lines_code ON order_lines(code);
+`);
+
+db.close();
+console.log('数据库初始化完成: ' + DB_PATH);

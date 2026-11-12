@@ -1,0 +1,830 @@
+/* ==========================================
+   页面层 —— 响应式适配、表格视觉优化 V2、顶栏工具按钮、
+             确认弹窗、表单校验错误态、表格排序与分页
+   ========================================== */
+
+/* ==========================================
+   响应式 — 平板和手机
+   ========================================== */
+
+@media (max-width: 768px) {
+  :root { --sidebar-w: 64px; }
+  .sidebar-header { padding: 12px 4px; }
+  .sidebar-header h1 { justify-content: center; }
+  .sidebar-header h1 span:last-child,
+  .sidebar-header .subtitle { display: none; }
+  .sidebar-nav { padding: 8px 4px; margin-top: 60px; }
+  .nav-section-label { display: none; }
+  .nav-item { justify-content: center; padding: 12px 0; }
+  .nav-item span:not(.nav-icon) { display: none; }
+  .page-header,
+  .page-header-row { padding: 12px; }
+  .page-body { padding: 12px; }
+  .chart-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  :root { --sidebar-w: 52px; }
+  .sidebar-nav { margin-top: 56px; padding: 6px 2px; }
+  .page-title { font-size: 17px; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ==========================================
+   数据表格优化 V2
+   统一表格视觉效果
+   ========================================== */
+
+/* 表格外层 */
+.table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    border-radius: 6px;
+}
+
+/* 数据页面内：滚动由 .data-scroll 负责，table-wrap 不创建滚动上下文，让 thead sticky 正常生效 */
+.data-scroll .table-wrap {
+    overflow: visible;
+}
+
+/* 表格基础 */
+.table-wrap table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+}
+
+/* 表头 */
+.table-wrap thead th {
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 12px 14px;
+    height: 40px;
+    border-bottom: 1px solid #dbe2ea;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+/* 数据行 */
+.table-wrap tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+/* 数据单元格 */
+.table-wrap tbody td {
+    padding: 10px 14px;
+    height: 38px;
+    border-bottom: 1px solid #edf1f5;
+    color: #334155;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* 隔行背景 */
+.table-wrap tbody tr:nth-child(even) {
+    background-color: #fafbfd;
+}
+
+/* 鼠标悬停 */
+.table-wrap tbody tr:hover {
+    background-color: #eff6ff;
+}
+
+/* 第一列编码突出显示 */
+.table-wrap tbody td:first-child {
+    font-weight: 600;
+    color: #1e3a8a;
+}
+
+/* 操作链接 */
+.table-wrap .action-link {
+    margin-right: 10px;
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.table-wrap .action-link:hover {
+    text-decoration: underline;
+}
+
+/* 状态标签 */
+.table-wrap .badge {
+    padding: 3px 9px;
+    font-size: 11px;
+    border-radius: 12px;
+}
+
+/* 表格内数字右对齐：已有 text-right 类可直接使用 */
+.table-wrap .text-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 空表格状态 */
+.table-wrap .empty-state {
+    padding: 45px 20px;
+}
+
+/* ==========================================
+   单据列表 — 行展开明细子表
+   ========================================== */
+
+/* 小屏幕 */
+@media (max-width: 768px) {
+    .table-wrap tbody td {
+        padding: 9px 10px;
+    }
+
+    .table-wrap thead th {
+        padding: 10px;
+    }
+}
+
+
+/* ==========================================
+   顶栏工具按钮（语言/主题切换）
+   ========================================== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.tool-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.tool-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.tool-btn-sm {
+  width: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+/* ==========================================
+   确认弹窗（替代原生 confirm）
+   ========================================== */
+.confirm-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15,23,42,0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeIn 0.15s ease;
+}
+.confirm-box {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: 90%;
+  max-width: 420px;
+  padding: 24px;
+  animation: scaleIn 0.15s ease;
+}
+.confirm-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.confirm-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-align: center;
+  color: var(--text);
+}
+.confirm-msg {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.confirm-actions .btn { min-width: 90px; justify-content: center; }
+
+/* ==========================================
+   表单校验错误
+   ========================================== */
+.form-group input.error,
+.form-group select.error,
+.form-group textarea.error {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
+}
+.form-error {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 2px;
+  display: none;
+}
+.form-error.show { display: block; }
+
+
+/* ==========================================
+   表格排序 + 分页
+   ========================================== */
+.sort-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sort-th:hover { color: var(--primary); }
+.sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.6; }
+.sort-th.active { color: var(--primary); }
+.sort-th.active .sort-arrow { opacity: 1; }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pager-info { margin-right: 8px; }
+.pager-btn {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  transition: all 0.12s;
+}
+.pager-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.pager-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pager-size {
+  margin-left: 8px;
+}
+.pager-size select {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+
+/* ==========================================
+   公共筛选栏 + 分页条（入库/出库/退货/盘点/采购/查询中心共用）
+   ========================================== */
+.pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; }
+.pu-filter-inner { display: contents; }
+.pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
+.pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
+.pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-daterange { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.pu-daterange label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.pu-daterange input[type=date] { width: 118px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-daterange select { height: 32px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; }
+.pu-toolbar input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.pu-daterange:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+
+.pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
+.pu-pager.pin { position: sticky; bottom: 0; z-index: 5; }
+.pu-pager:empty { display: none; border-top: 0; }
+.pu-pager .btn { height: 26px; padding: 0 10px; font-size: 12px; line-height: 1; }
+.pu-pager select { height: 26px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); color: var(--text); font-size: 12px; }
+.pu-pager label { display: inline-flex; align-items: center; gap: 4px; }
+.pu-pager .pu-tot { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* ==========================================
+   库存盘点详情页 —— 按钮布局与工具栏分区
+   约定：页头保持纯净（仅标题 + 语言/主题），
+        业务按钮全部放在 .data-toolbar，表格滚动时常驻可见。
+   ========================================== */
+
+/* 第一行：单据信息 + 右侧按钮组 */
+.st-detail-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+}
+.st-detail-info {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.st-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 第二行：左侧返回链接 + 右侧主操作组 */
+.st-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.st-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.st-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 返回列表：文字链，与主操作明显区分 */
+.st-back-link {
+  margin-right: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.st-back-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* 详情内子页签：盘点明细 / 关联调整流水 */
+.st-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+.st-tab {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.st-tab:hover { color: var(--primary); }
+.st-tab.active {
+  color: var(--primary);
+  background: rgba(14, 165, 233, .1);
+  font-weight: 600;
+}
+
+/* 作废按钮前的竖分隔线：与主操作组拉开距离，降低误点风险 */
+.st-btn-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  /* --border 在浅色主题下过浅（#e5e7eb），用 --text-muted 才看得清 */
+  background: var(--text-muted);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+/* 窄屏：按钮组换行时不粘连 */
+@media (max-width: 768px) {
+  .st-detail-bar,
+  .st-toolbar-row { flex-direction: column; align-items: flex-start; }
+  .st-toolbar-right { justify-content: flex-start; }
+  .st-btn-divider { display: none; }
+}
+
+/* ========== 查询中心表格排版（库存/单据/领用人三板块共用一套） ==========
+   放在静态样式表里：直接进 #query 也生效，不依赖采购页渲染时注入的 <style>。
+   表头 12px / 40px 单行、正文 12px、行高 1.6、单元格 7px 8px、徽标 11px、排序箭头静态 4px。 */
+#q-root .table-wrap table { font-size: 12px; line-height: 1.6; }
+#q-root .table-wrap thead th {
+  height: 40px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+#q-root .table-wrap thead th .sort-arrow {
+  position: static;
+  transform: none;
+  margin-left: 4px;
+  font-size: 9px;
+  line-height: 1;
+  opacity: .55;
+  vertical-align: middle;
+}
+#q-root .table-wrap tbody td {
+  height: auto;
+  padding: 7px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+#q-root .table-wrap tbody .badge { padding: 2px 7px; font-size: 11px; line-height: 1.5; }
+
+/* --- 查询中心：全局搜索（与板块页签同一行，右侧固定宽度；结果就地展开，不浮层/不抽屉） --- */
+#q-root .q-global-bar { display: flex; align-items: center; gap: 12px; }
+#q-root .q-global-bar #q-tabs { flex: 1 1 auto; min-width: 0; }
+#q-root .q-gsearch { flex: 0 0 280px; max-width: 320px; padding-bottom: 5px; }
+#q-root .q-gsearch .pu-search { width: 100%; }
+#q-root .q-search-panel { margin: 10px 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
+#q-root .q-search-state { padding: 14px 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
+#q-root .q-search-group + .q-search-group { border-top: 1px solid var(--border); }
+#q-root .q-search-ghead { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--text-muted); }
+#q-root .q-search-ghead .q-search-count { font-weight: 400; }
+#q-root .q-search-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+#q-root .q-search-item + .q-search-item { border-top: 1px solid var(--border); }
+#q-root .q-search-item:hover { background: var(--bg); }
+#q-root .q-search-item .q-search-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#q-root .q-search-item .q-search-code { font-weight: 700; margin-right: 8px; }
+#q-root .q-search-item .q-search-sub { color: var(--text-muted); }
+#q-root .q-search-item .q-search-meta { flex: 0 0 auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+#q-root .q-search-item .badge { font-size: 11px; }
+@media (max-width: 900px) {
+  #q-root .q-global-bar { flex-wrap: wrap; }
+  #q-root .q-gsearch { flex: 1 1 100%; max-width: none; }
+}
+
+/* ================= .pu-* 组件样式包 =================
+   原由 10-purchase.js 的 injectPurchaseStyles() 运行时注入 <head>，
+   现改为静态加载，首屏即生效，不依赖任何页面渲染顺序。
+   使用方：入库 / 出库 / 采购 / 退货退库 / 盘点 / 查询中心。 */
+
+/* --- 页头：视图页签（下划线风格，横向铺满） --- */
+.pu-viewtabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.pu-viewtab { border: 0; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 14px; color: var(--text-muted); font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.pu-viewtab:hover { color: var(--text); }
+.pu-viewtab[aria-selected=true] { color: var(--primary); font-weight: 600; border-bottom-color: var(--primary); }
+
+/* --- 条件区 + 主操作：一行铺满 --- */
+.pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; }
+.pu-filter-inner { display: contents; }
+.pu-head-actions { margin-left: auto; display: flex; gap: 8px; }
+.pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
+.pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
+.pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-daterange { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.pu-daterange label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.pu-daterange input[type=date] { width: 118px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-toolbar input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.pu-sep { color: var(--text-muted); font-size: 12px; }
+
+/* --- 状态统计条（栅格卡片，左标签右计数） --- */
+.pu-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 0 0 12px; }
+.pu-kpi { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; padding: 0 14px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; font-family: inherit; text-align: left; }
+button.pu-kpi { cursor: pointer; }
+.pu-kpi small { color: var(--text-muted); font-size: 13px; }
+.pu-kpi strong { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
+.pu-kpi.warn strong { color: var(--warning); }
+.pu-kpi[aria-pressed=true] { border-color: var(--primary); background: var(--primary-light); color: var(--text); }
+
+/* --- 列表 + 右侧详情栏 --- */
+/* 页面整体滚动（.page-body 为滚动容器），表头 sticky 在滚动到页面顶端时吸顶；
+   不能在 .data-scroll 上再做内部滚动，否则移动端工具栏会占满屏幕、数据无空间 */
+/* 去掉滚动容器顶部内边距，让吸顶表头与页面主标题严丝合缝（原 20px 会变成缝隙）；
+   该内边距下沉到 #pu-root，未吸顶时的视觉与原布局一致 */
+.page-body.pu-page-body { padding-top: 0; padding-bottom: 0; }
+#pu-root { padding-top: 20px; }
+.pu-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.pu-split.open { grid-template-columns: minmax(0, 1fr) 480px; }
+.pu-split .data-scroll { overflow: visible; }
+.pu-insp { position: sticky; top: 0; max-height: calc(100vh - 140px); overflow: hidden; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
+.pu-insp[hidden] { display: none; }
+/* 展开（wide）时隐藏列表，并让详情栏独占整行 —— 避免右侧残留空白 */
+.pu-split.wide { grid-template-columns: minmax(0, 1fr); }
+.pu-split.wide .pu-list { display: none; }
+.pu-split.wide .pu-insp { position: static; max-height: none; }
+.pu-split.wide .pu-insp-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pu-lk { background: none; border: 0; padding: 0; color: var(--primary); font-weight: 600; cursor: pointer; font-size: 13px; font-family: inherit; text-align: left; }
+.pu-lk:hover { text-decoration: underline; }
+.pu-lk.danger { color: var(--danger); }
+.pu-lk.plain { color: var(--text-muted); font-weight: 500; }
+.pu-row { cursor: pointer; }
+.pu-row.sel > td { background: var(--primary-light); }
+.pu-row.sel > td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+
+/* --- 徽章 / 进度 --- */
+.pu-badge { display: inline-flex; gap: 5px; align-items: center; }
+.pu-rate { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pu-bar { display: inline-block; width: 64px; height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.pu-bar i { display: block; height: 100%; background: var(--primary); }
+.pu-mu { color: var(--text-muted); }
+
+/* --- 详情栏内部 --- */
+.pu-insp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 12px 10px 8px 16px; }
+.pu-insp-head h2 { font-size: 18px; font-weight: 700; margin: 0 0 2px; font-family: inherit; }
+.pu-insp-head small { color: var(--text-muted); font-size: 12px; }
+.pu-insp-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 0 16px 12px; }
+.pu-insp-meta div { display: flex; flex-direction: column; min-width: 0; }
+.pu-insp-meta dt { color: var(--text-muted); font-size: 12px; }
+.pu-insp-meta dd { margin: 0; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.pu-prog-wrap { padding: 0 16px 12px; }
+.pu-rate-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.pu-prog { height: 10px; border-radius: 5px; background: var(--bg); overflow: hidden; margin-top: 6px; }
+.pu-prog i { display: block; height: 100%; background: var(--success); }
+.pu-dtabs { display: flex; gap: 4px; margin: 0 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.pu-dtab { padding: 7px 12px; border: 0; background: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; margin-bottom: -1px; white-space: nowrap; font-family: inherit; }
+.pu-dtab:hover { color: var(--primary); }
+.pu-dtab[aria-selected=true] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
+/* 详情主体自行滚动：头部/页签/底部按钮固定，明细行在中间滚动 —— 避免按钮被顶到列表中间 */
+.pu-dpanel { padding: 12px 16px; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.pu-insp-foot { flex: 0 0 auto; background: var(--card-bg); border-top: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+.pu-mback { display: none; margin: 12px 16px 0; align-self: flex-start; }
+
+/* --- 明细手风琴 --- */
+.pu-lqtoolbar { position: sticky; top: 0; background: var(--card-bg); z-index: 2; padding: 4px 0 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pu-lqtoolbar input { flex: 1; min-width: 140px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-chips { display: flex; gap: 6px; }
+.pu-chip { border: 1px solid var(--border); background: var(--card-bg); border-radius: 99px; padding: 3px 12px; font-size: 12px; cursor: pointer; color: var(--text-muted); font-family: inherit; }
+.pu-chip[aria-pressed=true] { background: var(--primary); color: #fff; border-color: var(--primary); }
+.pu-lines { list-style: none; margin: 0; padding: 0; }
+.pu-line { border-bottom: 1px solid var(--border); }
+.pu-line:last-child { border-bottom: 0; }
+.pu-line-h { display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: none; padding: 6px 2px; text-align: left; min-height: 40px; cursor: pointer; color: var(--text); font-family: inherit; font-size: 13px; }
+.pu-line-h:hover { background: var(--primary-light); }
+.pu-line-h::before { content: "▸"; color: var(--text-muted); width: 1em; flex-shrink: 0; }
+.pu-line-h[aria-expanded=true]::before { content: "▾"; }
+.pu-line-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pu-line-q { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 12px; }
+.pu-line-bar { height: 3px; background: var(--bg); margin: 0 0 6px 1.4em; }
+.pu-line-bar i { display: block; height: 100%; background: var(--primary); }
+.pu-line-d { padding: 2px 4px 10px 1.4em; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.pu-line-acts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.pu-odm { color: var(--danger); font-weight: 700; }
+.pu-more { width: 100%; margin-top: 10px; }
+.pu-cnt { margin: 2px 0 4px; font-size: 12px; color: var(--text-muted); }
+
+/* --- 列表条目（入库 / 采购单）与日志 --- */
+.pu-items { list-style: none; margin: 0; padding: 0; }
+.pu-item { border-bottom: 1px solid var(--border); padding: 10px 0; display: flex; flex-direction: column; gap: 4px; }
+.pu-item:last-child { border-bottom: 0; }
+.pu-item-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.pu-log { list-style: none; margin: 0; padding: 0; }
+.pu-log li { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 12px; padding-bottom: 14px; }
+.pu-log li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); margin-top: 6px; }
+.pu-log-meta { font-size: 12px; color: var(--text-muted); }
+.pu-empty { padding: 28px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: 13px; }
+
+/* --- 关联单据一行式列表（与入库/出库详情共用同一套标记与样式） --- */
+.rel-list { container-type: inline-size; }
+.rel-item { padding: 10px 0; border-top: 1px solid var(--border); }
+.rel-item:first-child { border-top: 0; padding-top: 2px; }
+.rel-item-voided { opacity: .62; }
+.rel-line { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; min-width: 0; }
+.rel-no { flex: 0 0 auto; white-space: nowrap; }
+.rel-cell { font-size: 12px; color: var(--text-muted); white-space: nowrap; min-width: 0; }
+.rel-cell b { color: var(--text); font-weight: 600; }
+.rel-cell small { font-size: 11px; margin-right: 3px; }
+.rel-status { flex: 0 0 auto; }
+.rel-amount { margin-left: auto; }
+.rel-note { order: 9; color: #b45309; font-size: 11px; }
+.rel-break { display: none; }
+@container (max-width: 620px) {
+  .rel-line { flex-wrap: wrap; gap: 3px 10px; }
+  .rel-no { order: 1; flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
+  .rel-status { order: 2; }
+  .rel-break { display: block; order: 3; flex: 0 0 100%; height: 0; }
+  .rel-date { order: 4; }
+  .rel-type { order: 5; }
+  .rel-party { order: 6; }
+  .rel-qty { order: 7; }
+  .rel-amount { order: 8; margin-left: 0; }
+}
+
+/* --- 分页：内容超出视口时吸附到底部（贴底不留间隙），未超出时随内容排在末尾 --- */
+.pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
+.pu-pager.pin { position: sticky; bottom: 0; z-index: 5; }
+.pu-pager:empty { display: none; border-top: 0; }
+.pu-pager .btn { height: 26px; padding: 0 10px; font-size: 12px; line-height: 1; }
+.pu-pager select { height: 26px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); color: var(--text); font-size: 12px; }
+.pu-pager label { display: inline-flex; align-items: center; gap: 4px; }
+.pu-pager .pu-tot { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- 紧凑行距 --- */
+#pu-root.pu-dense .table-wrap tbody td { padding: 4px 10px; height: auto; }
+#pu-root.pu-dense .table-wrap thead th { padding: 6px 10px; height: auto; }
+
+/* --- 右侧抽屉（到货履历） --- */
+.pu-ov { position: fixed; inset: 0; background: rgba(15, 23, 42, .5); z-index: 1100; display: flex; justify-content: flex-end; }
+.pu-drawer { background: var(--card-bg); width: min(560px, 100%); height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--border); animation: puSlide .18s ease-out; }
+@keyframes puSlide { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+.pu-drawer-h { display: flex; justify-content: space-between; align-items: center; padding: 12px 12px 12px 20px; border-bottom: 1px solid var(--border); }
+.pu-drawer-h h3 { margin: 0; font-size: 16px; font-family: inherit; }
+.pu-drawer-b { padding: 16px 20px; overflow: auto; flex: 1; }
+
+/* --- 可撤销删除的 toast --- */
+.pu-toast-undo { display: flex; align-items: center; gap: 14px; }
+.pu-toast-undo button { background: none; border: 0; color: inherit; text-decoration: underline; font-weight: 700; cursor: pointer; font-family: inherit; font-size: 14px; }
+
+/* --- 采购单编辑页（新建 / 整单编辑） --- */
+.pu-edit-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pu-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+.pu-card-title { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+.pu-card-title span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--primary-light); color: var(--primary); font-size: 12px; font-weight: 700; }
+.pu-card-title small { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+.pu-edit-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pu-edit-sum { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); margin-top: 12px; }
+.pu-edit-lines input, .pu-edit-lines select { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-edit-lines input:focus, .pu-edit-lines select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.pu-edit-lines td { vertical-align: middle; }
+.pu-edit-amt { font-variant-numeric: tabular-nums; text-align: right; color: var(--text-muted); white-space: nowrap; }
+.pu-edit-del { background: none; border: 0; color: var(--danger); cursor: pointer; font-size: 13px; font-family: inherit; padding: 0; }
+.pu-edit-del:hover { text-decoration: underline; }
+/* 明细物料筛选条：类别下拉 + 编码/名称/规格/品牌 模糊筛选 */
+.pu-matfilter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.pu-matfilter label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.pu-matfilter select, .pu-matfilter input { padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.pu-matfilter input { flex: 1; min-width: 180px; }
+.pu-matfilter select:focus, .pu-matfilter input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.pu-matfilter .pu-mu { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* --- 响应式 --- */
+@media (max-width: 1400px) {
+  .pu-split.open { grid-template-columns: minmax(0, 1fr) 420px; }
+}
+@media (max-width: 1000px) {
+  .pu-split.open { grid-template-columns: minmax(0, 1fr); }
+  .pu-split.open .pu-list { display: none; }
+  .pu-insp { position: static; max-height: none; }
+  .pu-mback { display: inline-flex; }
+}
+
+/* ================= 查询中心样式包（原 07-stock.js 运行时注入） =================
+   来源：qInsCss() / qFlowCss(id) / qCardFlowCss()、库存查询板块与库存分析板块
+   拼在 innerHTML 里的 <style> 段。此前这些 <style> 随内容进入 body，靠「后出现」
+   压过 <head> 里的静态表；改为静态加载后，本段必须排在 .pu-* 段与上方
+   @media(max-width:1400px/1000px) 的 .pu-split.open 规则之后，
+   用相同权重 + 同等顺序还原 .q-ins-split.wide 对两栏布局的覆盖，不靠提高权重。
+   作用域：#q-root 内的 .q-ins-* 布局壳，以及 #q_docs_scroll / #q_rcv_scroll /
+   #q_an_alert_box / #q_card_flow_scroll / #q_stock_scroll / #q_stock_insp /
+   #q-analysis 这些查询中心专属 id，不涉及其他模块。
+   仍留在 JS 里的动态部分：流水展开表的列宽 colgroup 与 table min-width
+   （列集合随价格权限切换、按列宽合计生成）、条形图 width 百分比、状态差值颜色、
+   自定义天数输入框显隐 —— 均为运行时算出的值，静态表无法预置。 */
+
+/* --- 三个板块共用的卡片布局壳（原 qInsCss） --- */
+.q-ins-split.wide { grid-template-columns: minmax(0, 1fr); }
+.q-ins-split.wide.has-doc { grid-template-columns: minmax(0, 1fr) 420px; }
+.q-ins-split.doc-wide { grid-template-columns: minmax(0, 1fr); }
+.q-ins-split.doc-wide .q-ins-main { display: none; }
+
+/* 详情卡基本信息：窄态两列、宽态四列等宽，状态整行内联 */
+.q-ins-insp .q-card-meta { margin: 0 0 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
+.q-ins-insp .q-card-meta > div { min-width: 0; }
+.q-ins-insp .q-card-meta dt { font-size: 12px; margin-bottom: 2px; }
+.q-ins-insp .q-card-meta dd { font-size: 13px; }
+.q-ins-insp .q-card-meta .q-card-status { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px; }
+.q-ins-insp .q-card-meta .q-card-status dt { margin: 0; }
+.q-ins-insp .q-card-meta .badge { vertical-align: middle; }
+.q-ins-split.wide .q-ins-insp .q-card-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.q-ins-split.wide .q-ins-insp .q-card-meta .q-card-status { grid-column: auto; flex-direction: column; align-items: flex-start; gap: 0; }
+/* 详情卡内的小表格（页签摘要 / 单据卡明细）：表头单行不折行 */
+.q-ins-insp .q-flow thead th { white-space: nowrap; vertical-align: middle; }
+
+/* --- 库存查询：长列截断与详情卡数字块（原 qBoardStock 内联段） --- */
+#q_stock_scroll tbody td.q-ell { overflow: hidden; text-overflow: ellipsis; }
+#q_stock_insp .q-card-stock { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 0; }
+#q_stock_insp .q-card-stock dd.q-num { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#q_stock_insp .q-card-month { margin-top: 8px; font-size: 13px; color: var(--text-muted); }
+
+/* --- 单据 / 领用人列表与概览预警清单（原 qFlowCss 的三个调用） ---
+   字号、行高、内边距、表头高度由上方 #q-root 公共规则提供，这里只保留
+   列宽截断、行交互与列宽收缩策略。 */
+#q_docs_scroll table,
+#q_rcv_scroll table,
+#q_an_alert_box table { table-layout: auto; }
+#q_docs_scroll th[data-tight],
+#q_rcv_scroll th[data-tight],
+#q_an_alert_box th[data-tight] { width: 1%; white-space: nowrap; }
+#q_docs_scroll tbody tr.q-row,
+#q_rcv_scroll tbody tr.q-row,
+#q_an_alert_box tbody tr.q-row { cursor: pointer; }
+#q_docs_scroll tbody tr.q-row:hover td,
+#q_docs_scroll tbody tr.q-row.on td,
+#q_docs_scroll tbody tr.q-row.sel td,
+#q_rcv_scroll tbody tr.q-row:hover td,
+#q_rcv_scroll tbody tr.q-row.on td,
+#q_rcv_scroll tbody tr.q-row.sel td,
+#q_an_alert_box tbody tr.q-row:hover td,
+#q_an_alert_box tbody tr.q-row.on td,
+#q_an_alert_box tbody tr.q-row.sel td { background: var(--primary-light); }
+#q_docs_scroll tbody tr.q-row.sel td:first-child,
+#q_rcv_scroll tbody tr.q-row.sel td:first-child,
+#q_an_alert_box tbody tr.q-row.sel td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+#q_docs_scroll .q-h-clip,
+#q_rcv_scroll .q-h-clip,
+#q_an_alert_box .q-h-clip { display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+#q_docs_scroll .q-h-w-doc,
+#q_rcv_scroll .q-h-w-doc,
+#q_an_alert_box .q-h-w-doc { max-width: 140px; }
+#q_docs_scroll .q-h-w-party,
+#q_rcv_scroll .q-h-w-party,
+#q_an_alert_box .q-h-w-party { max-width: 90px; }
+#q_docs_scroll .q-h-w-handler,
+#q_rcv_scroll .q-h-w-handler,
+#q_an_alert_box .q-h-w-handler { max-width: 70px; }
+#q_docs_scroll .q-h-w-remarks,
+#q_rcv_scroll .q-h-w-remarks,
+#q_an_alert_box .q-h-w-remarks { max-width: 180px; }
+#q_docs_scroll .q-h-w-name,
+#q_rcv_scroll .q-h-w-name,
+#q_an_alert_box .q-h-w-name { max-width: 180px; }
+#q_docs_scroll .q-h-w-spec,
+#q_rcv_scroll .q-h-w-spec,
+#q_an_alert_box .q-h-w-spec { max-width: 160px; }
+#q_docs_scroll .badge,
+#q_rcv_scroll .badge,
+#q_an_alert_box .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+
+/* --- 物料详情卡：库存流水展开态（原 qCardFlowCss） --- */
+#q_card_flow_scroll table { table-layout: fixed; width: 100%; }
+#q_card_flow_scroll thead th, #q_card_flow_scroll tbody td { overflow: hidden; }
+#q_card_flow_scroll tbody tr.q-row { cursor: pointer; }
+#q_card_flow_scroll tbody tr.q-row:hover td, #q_card_flow_scroll tbody tr.q-row.on td { background: var(--primary-light); }
+#q_card_flow_scroll .q-h-clip { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+#q_card_flow_scroll .q-h-w-doc { max-width: 130px; }
+#q_card_flow_scroll .q-h-w-party, #q_card_flow_scroll .q-h-w-handler { max-width: 100%; }
+#q_card_flow_scroll .q-h-w-remarks { width: 100%; }
+
+/* --- 库存分析四个子页签（原 qBoardAnalysis 内联段） --- */
+#q-analysis .q-an-subtabs { margin-bottom: 12px; }
+#q-analysis .q-an-subtabs .pu-viewtab { padding: 7px 12px; font-size: 12px; }
+#q-analysis .q-an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 12px; }
+#q-analysis .q-an-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+#q-analysis .q-an-card h3 { margin: 0 0 10px; font-size: 13px; }
+#q-analysis .q-an-row { display: grid; grid-template-columns: 96px 1fr 72px; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 6px; }
+#q-analysis .q-an-bar { height: 8px; background: var(--bg-muted, #eef2f7); border-radius: 4px; overflow: hidden; display: flex; }
+#q-analysis .q-an-bar i { display: block; height: 100%; }
+#q-analysis .q-an-class { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+#q-analysis .q-an-class > button { text-align: left; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; }
+#q-analysis .q-an-class > button[aria-pressed=true] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+#q-analysis .q-an-class h4 { margin: 0 0 8px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+#q-analysis .q-an-class dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font-size: 12px; }
+#q-analysis .q-an-class dt { color: var(--text-muted); }
+#q-analysis .q-an-class dd { margin: 0; text-align: right; }
+#q-analysis .q-an-note { font-size: 12px; color: var(--text-muted); margin: 6px 0 10px; }
+#q-analysis .q-an-scroll { max-height: 420px; overflow: auto; }
+@media (max-width: 1180px) {
+  #q-analysis .q-an-class { grid-template-columns: repeat(2, 1fr); }
+}
