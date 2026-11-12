@@ -75,7 +75,6 @@ Object.assign(App, {
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
 
-    this.injectReturnsStyles();
     const root = document.getElementById('ret-root');
     if (root) root.classList.toggle('ret-dense', !!s.dense);
 
@@ -98,17 +97,7 @@ Object.assign(App, {
     }
   },
 
-  injectReturnsStyles() {
-    if (document.getElementById('returns-ui-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'returns-ui-styles';
-    style.textContent = `
-      #ret-root.ret-dense .table-wrap tbody td{padding:4px 10px;height:auto}
-      #ret-root.ret-dense .table-wrap thead th{padding:6px 10px;height:auto}
-      #ret-root .ret-voided-row td{opacity:.72;background:var(--surface,transparent)}
-    `;
-    document.head.appendChild(style);
-  },
+  // 退库页样式已收敛到 public/css/pages.css，不再运行时注入
 
   retRenderTabs() {
     const box = document.getElementById('ret-tabs');
@@ -302,14 +291,9 @@ Object.assign(App, {
   },
 
   retStatusBadge(status) {
-    const map = {
-      draft: ['warning', 'ibd_status_draft'],
-      posted: ['success', 'ibd_status_posted'],
-      voided: ['muted', 'ibd_status_voided'],
-    };
-    const hit = map[status];
-    if (!hit) return `<span class="badge badge-muted">${this.retEsc(status || '-')}</span>`;
-    return `<span class="badge badge-${hit[0]}">${this.t(hit[1])}</span>`;
+    const label = { draft: 'ibd_status_draft', posted: 'ibd_status_posted', voided: 'ibd_status_voided' };
+    if (!label[status]) return `<span class="badge badge-muted">${this.retEsc(status || '-')}</span>`;
+    return `<span class="badge ${this.docStatusMeta(status).cls}">${this.t(label[status])}</span>`;
   },
 
   // 明细页签文案按子类型区分：采购退货/领料退库各有专属叫法
@@ -328,10 +312,9 @@ Object.assign(App, {
   },
 
   retSubTypeBadge(subType) {
-    let badge = '';
-    if (subType === '采购退货') badge = `<span class="badge badge-danger">${this.t('ret_tab_purchase')}</span>`;
-    else badge = `<span class="badge badge-success">${this.t('ret_tab_stock')}</span>`;
-    return badge;
+    const isPurchase = subType === '采购退货';
+    const cls = this.docTypeBadgeClass(isPurchase ? '采购退货' : '领料退库');
+    return `<span class="badge ${cls}">${this.t(isPurchase ? 'ret_tab_purchase' : 'ret_tab_stock')}</span>`;
   },
 
   retRenderList() {
@@ -565,7 +548,7 @@ Object.assign(App, {
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.retEsc(m[0])}</dt><dd>${this.retEsc(m[1])}</dd></div>`).join('')}</dl>
-      ${d.status === 'voided' ? `<div style="margin:8px 0;padding:8px 10px;border-radius:6px;background:var(--danger-bg,rgba(220,38,38,.08));color:var(--danger);font-size:12px;font-weight:600">${this.t('ibd_voided_banner', { time: this.fmtDateTime(d.voided_at) || '–', by: d.voided_by || '–' })}${d.corrected_by_doc_no ? ` <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.retEsc(d.corrected_by_doc_no)}')">${this.retEsc(d.corrected_by_doc_no)}</button>` : ''}</div>` : ''}
+      ${d.status === 'voided' ? `<div style="margin:8px 0;padding:8px 10px;border-radius:6px;background:var(--danger-bg);color:var(--danger);font-size:12px;font-weight:600">${this.t('ibd_voided_banner', { time: this.fmtDateTime(d.voided_at) || '–', by: d.voided_by || '–' })}${d.corrected_by_doc_no ? ` <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.retEsc(d.corrected_by_doc_no)}')">${this.retEsc(d.corrected_by_doc_no)}</button>` : ''}</div>` : ''}
       ${d.status !== 'voided' && d.corrected_by_doc_no ? `<div style="margin:8px 0;font-size:12px">${this.t('ibd_corr_to')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.retEsc(d.corrected_by_doc_no)}')">${this.retEsc(d.corrected_by_doc_no)}</button></div>` : ''}
       ${d.corrects_doc_no ? `<div style="margin:8px 0;font-size:12px">✎ ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.retEsc(d.corrects_doc_no)}')">${this.retEsc(d.corrects_doc_no)}</button></div>` : ''}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" onclick="App.retSetDt('${k}')">${label} ${n}</button>`).join('')}</div>
@@ -637,10 +620,7 @@ Object.assign(App, {
     const vp = lines.length > 0 && this.hasField(lines[0], d.ledger === 'inbound' ? 'price' : 'cost_price');
     if (s.wide) {
       const cols = [
-        [this.t('mat_code'), l => this.retEsc(l.code)],
-        [this.t('mat_name'), l => this.retEsc(l.material_name || '')],
-        [this.t('mat_spec'), l => this.retEsc(l.material_spec || '')],
-        [this.t('mat_unit'), l => this.retEsc(l.material_unit || '')],
+        [this.t('pu_material'), l => this.ibLineLabel(l)],
         [this.t('ret_qty'), l => this.qtyCell(dd * Math.abs(Number(l.qty || 0)))],
       ];
       if (vp) {
@@ -648,8 +628,8 @@ Object.assign(App, {
         cols.push([this.t('ledger_amount'), l => this.fmtMoney(d.ledger === 'inbound' ? l.amount : l.cost_amount)]);
       }
       cols.push([this.t('ibd_remarks'), l => this.retEsc(l.remarks || '')]);
-      box.innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map((c, i) => `<th${i >= 4 && i < cols.length - 1 ? ' class="text-right"' : ''}>${c[0]}</th>`).join('')}</tr></thead><tbody>${
-        lines.map(l => '<tr>' + cols.map((c, i) => `<td${i >= 4 && i < cols.length - 1 ? ' class="text-right"' : ''}>${c[1](l)}</td>`).join('') + '</tr>').join('')
+      box.innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map((c, i) => `<th${i >= 1 && i < cols.length - 1 ? ' class="text-right"' : ''}>${c[0]}</th>`).join('')}</tr></thead><tbody>${
+        lines.map(l => '<tr>' + cols.map((c, i) => `<td${i >= 1 && i < cols.length - 1 ? ' class="text-right"' : ''}>${c[1](l)}</td>`).join('') + '</tr>').join('')
       }</tbody></table></div>`;
       return;
     }
@@ -678,7 +658,7 @@ Object.assign(App, {
       const amount = d.ledger === 'inbound' ? l.amount : l.cost_amount;
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" aria-expanded="${ex}" onclick="App.retToggleEx('${l.id}')">
-          <span class="pu-line-n"><strong>${this.retEsc(l.code)}</strong> ${this.retEsc(l.material_name || '')} <span class="pu-mu">${this.retEsc(l.material_spec || '')}</span></span>
+          <span class="pu-line-n"><strong>${this.retEsc(l.code)}</strong> ${this.retEsc(l.material_name || '')} <span class="pu-mu">${this.retEsc(l.material_spec || '')}${l.material_brand ? ` · ${this.retEsc(l.material_brand)}` : ''}</span></span>
           <span class="pu-line-q">${this.qtyCell(dd * Math.abs(Number(l.qty || 0)))}${this.retEsc(l.material_unit || '')}</span>
         </button>
         ${ex ? `<div class="pu-line-d">
@@ -722,10 +702,13 @@ Object.assign(App, {
     const dd = d.direction === 'in' ? 1 : -1;
     const sum = d.summary || {};
     const cols = [
-      { label: this.t('mat_code'), key: 'code' },
-      { label: this.t('mat_name'), key: 'material_name' },
-      { label: this.t('mat_spec'), key: 'material_spec' },
-      { label: this.t('mat_unit'), key: 'material_unit' },
+      {
+        label: this.t('pu_material'),
+        value: r => {
+          const base = `${r.code || ''} · ${r.material_name || ''} ${r.material_spec || ''}`.trim();
+          return r.material_brand ? `${base} · ${r.material_brand}` : base;
+        },
+      },
       { label: this.t('ret_qty'), align: 'right', value: r => this.fmtQty(dd * Math.abs(Number(r.qty || 0))) },
     ];
     if (vp) {

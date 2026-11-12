@@ -266,7 +266,7 @@ better-sqlite3（WAL）→ inventory.db
 ## 7. 前端组织
 
 - `public/index.html` 按编号顺序加载 `00-i18n.js` 至 `13-returns.js`，全部挂到全局 `window.App`；同时通过 CDN 引入 Chart.js 4 用于看板图表。
-- `public/login.html` 是独立登录页，使用 `public/style.css`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。
+- `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。`public/style.css` 为历史遗留主题，已无页面引用。
 - `01-core.js` 负责：读取 / 保存 token、统一 `api()` 请求与 401 处理、hash 路由、`canDo` / `canViewPrice` 前端判定、登录页。
 - `02-ui-kit.js` 提供通用表格、弹窗、Toast、分页、单据打印与 CSV 导出（UTF-8 BOM，Excel 中文不乱码）。
 - 各业务脚本以 `App.xxx` 方法扩展，页面刷新通过 hash 路由重渲染，不做组件级状态管理。

@@ -41,7 +41,6 @@ Object.assign(App, {
     this.setMain(this.pageWrap('📋 ' + this.t('st_title'), this.t('st_desc'), '', this.stSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
-    this.injectStocktakeStyles();
     this.stBindEvents();
     this.stRenderTabs();
     this.stRenderToolbar();
@@ -249,12 +248,8 @@ Object.assign(App, {
 
   // 状态徽标
   stStatusBadge(status) {
-    const map = {
-      draft: [this.t('st_status_draft'), 'warning'],
-      confirmed: [this.t('st_status_confirmed'), 'success'],
-    };
-    const m = map[status] || [status, 'muted'];
-    return `<span class="badge badge-${m[1]}">${m[0]}</span>`;
+    const label = { draft: 'st_status_draft', confirmed: 'st_status_confirmed' };
+    return `<span class="badge ${this.docStatusMeta(status).cls}">${label[status] ? this.t(label[status]) : status}</span>`;
   },
 
   // 行状态徽标
@@ -443,8 +438,8 @@ Object.assign(App, {
       const diff = hasCount ? Math.round((cnt - book) * 10000) / 10000 : null;
       let diffHtml = '–';
       if (diff !== null) {
-        const color = diff > 0 ? 'var(--success)' : (diff < 0 ? 'var(--danger)' : 'inherit');
-        diffHtml = `<span style="color:${color};font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
+        const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
+        diffHtml = `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
       }
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" data-st="ex" data-id="${l.id}" aria-expanded="${ex}">
@@ -475,8 +470,8 @@ Object.assign(App, {
         const has = r.count_qty !== null && r.count_qty !== undefined;
         if (!has) return '–';
         const diff = Number(r.diff_qty) || 0;
-        const color = diff > 0 ? 'var(--success)' : (diff < 0 ? 'var(--danger)' : 'inherit');
-        return `<span style="color:${color};font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
+        const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
+        return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
       }, true],
       ['status', this.t('st_status_label'), r => this.stLineStatusBadge(r.status)],
       ['remarks', this.t('st_remark'), r => this.stEsc(r.remarks || '')],
@@ -503,7 +498,7 @@ Object.assign(App, {
       return `<div class="pu-item">
         <div class="pu-item-top">
           <span><strong>${this.stEsc(a.code)}</strong> ${this.stEsc(a.material_name || '')} <span class="pu-mu">${this.stEsc(a.material_spec || '')}</span></span>
-          <span class="pu-line-q" style="color:${gain ? 'var(--success)' : 'var(--danger)'};font-weight:600">${gain ? '+' : ''}${this.fmtQty(qty)}${this.stEsc(a.material_unit || '')}</span>
+          <span class="pu-line-q ${gain ? 'num-pos' : 'num-neg'}" style="font-weight:600">${gain ? '+' : ''}${this.fmtQty(qty)}${this.stEsc(a.material_unit || '')}</span>
         </div>
         <div class="pu-mu" style="font-size:12px">${this.stEsc(a.adj_type || '')} · ${this.fmtDate(a.date)} · ${this.stEsc(a.handler || '')}${a.reason ? ' · ' + this.stEsc(a.reason) : ''}${a.cost_basis ? ` · ${this.t('cost_basis_label')} ${this.costBasisBadge(a.cost_basis)}` : ''}</div>
         ${a.remarks ? `<div class="pu-mu" style="font-size:12px">${this.stEsc(a.remarks)}</div>` : ''}
@@ -651,7 +646,7 @@ Object.assign(App, {
       `<div id="st-new-root" class="data-page">
         <div class="pu-edit-bar">
           <span class="action-link" onclick="App.backToStocktakeList()">← ${this.t('st_nav_detail')}</span>
-          <span class="badge badge-warning">${this.t('st_status_draft')}</span>
+          ${this.stStatusBadge('draft')}
         </div>
         <div class="pu-card">
           <div class="pu-card-title"><span>01</span><div>${this.t('st_sec_info')}<small>${this.t('st_sec_info_hint')}</small></div></div>
@@ -667,7 +662,6 @@ Object.assign(App, {
           <button class="btn btn-primary" onclick="App.createStocktake()">${this.t('st_create_go')}</button>
         </div>
       </div>`));
-    this.injectStocktakeStyles();
   },
 
   async createStocktake() {
@@ -730,7 +724,6 @@ Object.assign(App, {
         <div class="pu-edit-actions" id="st-edit-buttons"></div>
       </div>`));
 
-    this.injectStocktakeStyles();
     this.renderStocktakeEdit();
   },
 
@@ -801,8 +794,8 @@ Object.assign(App, {
 
   stDiffCell(diff) {
     if (diff === null || diff === undefined) return '<span class="pu-mu">–</span>';
-    const color = diff > 0 ? 'var(--success)' : (diff < 0 ? 'var(--danger)' : 'inherit');
-    return `<span style="color:${color};font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
+    const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
+    return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
   },
 
   // 实盘输入即时重算差异（只更新当前行的差异单元格，不重建页面，避免打断输入法）
@@ -1108,7 +1101,7 @@ Object.assign(App, {
         const n = (e.details && e.details.counted_count) || e.counted_count || 0;
         this.confirmDialog(this.t('st_load'),
           this.t('st_has_count', { n }) + '\n\n' + this.t('st_load_confirm'),
-          () => this.doStocktakeLoad(true));
+          () => this.doStocktakeLoad(true), null, 'primary');
       } else {
         this.toast(e.message, 'error');
       }
@@ -1145,20 +1138,34 @@ Object.assign(App, {
   onStocktakeAddSearch(kw) {
     if (!this._stAdd) return;
     this._stAdd.keyword = kw;
-    this.searchStocktakeAddCandidates();
+    clearTimeout(this._stAdd.timer);
+    if (!String(kw || '').trim()) {
+      this._stAdd.results = [];
+      this._stAdd.loading = false;
+      this.renderStocktakeAddResults();
+      return;
+    }
+    // 与行内即时搜索一致：200ms 防抖，避免每敲一个字查一次
+    this._stAdd.loading = true;
+    this.renderStocktakeAddResults();
+    this._stAdd.timer = setTimeout(() => this.searchStocktakeAddCandidates(), 200);
   },
 
   async searchStocktakeAddCandidates() {
     const s = this._stAdd;
     if (!s) return;
     const kw = (s.keyword || '').trim();
-    if (!kw) { s.results = []; this.renderStocktakeAddResults(); return; }
+    if (!kw) { s.results = []; s.loading = false; this.renderStocktakeAddResults(); return; }
+    const seq = (s.seq = (s.seq || 0) + 1);
     try {
       const list = await this.api('/api/stocktakes/candidates?scope=specified&limit=100&keyword=' + encodeURIComponent(kw));
+      if (s.seq !== seq) return; // 已有更新的输入，丢弃旧响应
       s.results = Array.isArray(list) ? list : [];
     } catch (e) {
+      if (s.seq !== seq) return;
       s.results = [];
     }
+    s.loading = false;
     this.renderStocktakeAddResults();
   },
 
@@ -1169,6 +1176,10 @@ Object.assign(App, {
     const kw = (s.keyword || '').trim();
     if (!kw) {
       tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('st_pick_search_hint')}</td></tr>`;
+      return;
+    }
+    if (s.loading) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('ms_loading')}</td></tr>`;
       return;
     }
     const list = s.results || [];
@@ -1183,10 +1194,12 @@ Object.assign(App, {
       if (inDoc) btn = `<button class="btn btn-outline btn-sm" disabled>${this.t('st_already_in_doc')}</button>`;
       else if (picked) btn = `<button class="btn btn-outline btn-sm" disabled>${this.t('st_load_added')}</button>`;
       else btn = `<button class="btn btn-primary btn-sm" onclick="App.addStocktakeAddPick('${r.code.replace(/'/g, "\\'")}')">${this.t('st_pick_add')}</button>`;
+      // 规格与品牌拼接展示；品牌为空时不产生多余分隔符（与其它模块的即时候选一致）
+      const specBrand = [r.spec, r.brand].filter(Boolean).join(' · ');
       return `<tr>
         <td>${r.code}</td>
         <td>${r.name || ''}</td>
-        <td>${r.spec || ''}</td>
+        <td>${specBrand}</td>
         <td>${r.unit || ''}</td>
         <td class="text-right">${this.fmtQty(r.book_qty)}</td>
         <td>${btn}</td>
@@ -1271,7 +1284,7 @@ Object.assign(App, {
     const self = this;
     this.confirmDialog(this.t('st_confirm'),
       `${this.t('st_confirm_hint')}\n\n${this.t('st_counted')}: ${s.counted_count || 0} · ${this.t('st_diff')}: ${s.diff_count || 0}`,
-      () => self.doConfirmStocktake(no, false));
+      () => self.doConfirmStocktake(no, false), null, 'primary');
   },
 
   // 真正调用确认接口；force=true 表示用户已知晓盘点期间库存变动并继续
@@ -1295,13 +1308,13 @@ Object.assign(App, {
         const more = items.length > 10 ? `\n${self.t('st_changed_more', { n: items.length - 10 })}` : '';
         self.confirmDialog(self.t('st_confirm'),
           `${self.t('st_stock_changed', { n })}\n\n${rows}${more}\n\n${self.t('st_stock_changed_hint')}`,
-          () => self.doConfirmStocktake(no, true, acceptNoBasis));
+          () => self.doConfirmStocktake(no, true, acceptNoBasis), null, 'primary');
       } else if (e.code === 'NO_COST_BASIS') {
         // 盘盈物料从未有过正库存：0 成本入账需管理员显式确认
         const codes = (e.details || []).map(d => d.code).join('、');
         self.confirmDialog(self.t('cost_basis_none'),
           `${self.t('cost_basis_none_tip')}\n\n${codes}`,
-          () => self.doConfirmStocktake(no, force, true));
+          () => self.doConfirmStocktake(no, force, true), null, 'primary');
       } else if (e.code === 'NO_BASIS_FORBIDDEN') {
         self.toast(self.t('cost_basis_none_forbidden'), 'error');
       } else {
@@ -1331,41 +1344,6 @@ Object.assign(App, {
   async backToStocktakeList() {
     this.stState().sel = null;
     await this.gotoPage('stocktake');
-  },
-
-  // ========== 盘点页专属样式 ==========
-  // .pu-* 组件样式已迁至 pages.css 静态加载；这里只放盘点页补丁与弹窗样式
-  injectStocktakeStyles() {
-    if (document.getElementById('stocktake-ui-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'stocktake-ui-styles';
-    style.textContent = `
-      #st-root{padding-top:20px}
-      #st-root.st-dense .table-wrap tbody td{padding:4px 10px;height:auto}
-      #st-root.st-dense .table-wrap thead th{padding:6px 10px;height:auto}
-      /* 载入清单窗口（三种方式） */
-      .st-load-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px}
-      .st-load-tab{padding:9px 16px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px}
-      .st-load-tab:hover{color:var(--text)}
-      .st-load-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
-      .st-load-panel{min-height:210px}
-      .st-load-hint{font-size:12px;color:var(--text-muted);line-height:1.6;background:var(--info-bg,rgba(14,165,233,.07));border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
-      .st-load-search{width:100%;box-sizing:border-box;margin-bottom:10px}
-      .st-load-cat-list{max-height:230px;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:2px}
-      .st-load-cat-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer}
-      .st-load-cat-item:hover{background:var(--surface,transparent)}
-      .st-load-cat-item input{cursor:pointer}
-      .st-pick-selected{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;min-height:30px}
-      .st-pick-selected-label{font-size:12px;color:var(--text-muted)}
-      .st-pick-selected-empty{font-size:12px;color:var(--text-muted)}
-      .st-pick-chip{display:inline-flex;align-items:center;gap:5px;background:var(--primary-light);color:var(--primary);border-radius:14px;padding:3px 9px;font-size:12px;font-weight:600}
-      .st-pick-chip-x{cursor:pointer;font-size:15px;line-height:1;opacity:.7}
-      .st-pick-chip-x:hover{opacity:1}
-      .st-pick-results{max-height:280px;overflow:auto}
-      .st-load-stat{font-size:12px;color:var(--text-muted);margin-top:10px}
-      @media(max-width:760px){.st-load-cat-list{grid-template-columns:1fr}}
-    `;
-    document.head.appendChild(style);
   },
 
 });

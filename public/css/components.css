@@ -39,43 +39,85 @@
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(37,99,235,0.25); }
 .btn-danger { background: var(--danger); color: #fff; }
-.btn-danger:hover { background: #b91c1c; }
+.btn-danger:hover { background: var(--danger-fg); }
 .btn-outline {
-  background: #fff;
+  background: var(--card-bg);
   border: 1px solid var(--border);
   color: var(--text);
 }
-.btn-outline:hover { background: #f9fafb; border-color: var(--primary); color: var(--primary); }
+.btn-outline:hover { background: var(--table-row-alt); border-color: var(--primary); color: var(--primary); }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn:disabled,
+.btn[disabled] { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+/* 危险描边按钮：破坏性但非主操作的场景（如清空/重置类设置项） */
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+}
+.btn-danger-outline:hover { background: var(--danger-bg); border-color: var(--danger); }
 
-/* ========== 表格 ========== */
-.table-wrap { overflow-x: auto; }
+/* ========== 表格 ==========
+   全项目唯一一份表格定义（含 .table-wrap 与裸 table），颜色全部走 token，
+   亮/暗主题只改变量，不再出现同选择器两套值。 */
+.table-wrap { width: 100%; max-width: 100%; overflow-x: auto; border-radius: 6px; }
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 thead th {
-  background: #f8fafc;
-  padding: 10px 12px;
+  background: var(--table-head-bg);
+  color: var(--table-head-fg);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 12px 14px;
+  height: 40px;
   text-align: left;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 2px solid var(--border);
+  border-bottom: 1px solid var(--table-head-border);
   white-space: nowrap;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
+tbody tr { transition: background-color 0.15s ease; }
 tbody td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 10px 14px;
+  height: 38px;
+  border-bottom: 1px solid var(--table-border);
+  color: var(--table-cell-fg);
+  vertical-align: middle;
   white-space: nowrap;
 }
-tbody tr:hover { background: #f8fafc; }
+tbody tr:nth-child(even) { background-color: var(--table-row-alt); }
+tbody tr:hover { background-color: var(--table-row-hover); }
 tbody tr:last-child td { border-bottom: none; }
+.table-wrap .action-link {
+  margin-right: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.table-wrap .action-link:hover { text-decoration: underline; }
+.table-wrap .badge { padding: 3px 9px; font-size: 11px; border-radius: 12px; }
+.table-wrap .text-right { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap .empty-state { padding: 45px 20px; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
+
+/* ========== 数值语义 ========== */
+.num-pos { color: var(--num-pos); }
+.num-neg { color: var(--num-neg); }
+.num-zero { color: var(--num-zero); }
+.num-warn { color: var(--num-warn); }
+
+/* 首列编码：显式类，替代过去对所有表格首列的全局染色 */
+.cell-code { font-weight: 600; color: var(--table-cell-fg); }
+
+/* 作废行：统一弱底 + 次要文字，不再整行降透明度 */
+.is-voided > td { background: var(--bg-muted); color: var(--text-muted); }
+.is-voided .pu-lk { color: var(--text-muted); text-decoration: line-through; }
 
 /* ========== 状态标签 ========== */
 .badge {
@@ -85,13 +127,13 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 11px;
   font-weight: 600;
 }
-.badge-success { background: #dcfce7; color: #15803d; }
-.badge-warning { background: #fef3c7; color: #b45309; }
-.badge-danger  { background: #fee2e2; color: #b91c1c; }
-.badge-info    { background: #e0f2fe; color: #0369a1; }
-.badge-muted   { background: #f1f5f9; color: #64748b; }
+.badge-success { background: var(--success-bg); color: var(--success-fg); }
+.badge-warning { background: var(--warning-bg); color: var(--warning-fg); }
+.badge-danger  { background: var(--danger-bg); color: var(--danger-fg); }
+.badge-info    { background: var(--info-bg); color: var(--info-fg); }
+.badge-muted   { background: var(--neutral-bg); color: var(--neutral-fg); }
 /* 成本依据：无依据（从未有过正库存）——琥珀色描边，醒目但不刺眼 */
-.badge-no-basis { background: #fffbeb; color: #92400e; border: 1px dashed #d97706; }
+.badge-no-basis { background: var(--warning-bg); color: var(--warning-fg); border: 1px dashed var(--warning-border); }
 
 /* ========== 表单 ========== */
 .form-grid {
@@ -198,7 +240,7 @@ tbody tr:last-child td { border-bottom: none; }
 .metric-card.metric-danger  { border-top-color: var(--danger); }
 .metric-card.metric-info    { border-top-color: var(--info); }
 /* 成本差异超阈值：整卡标黄提示（浅黄底 + 黄色顶边，深浅主题都可见） */
-.metric-card.metric-diff-alert { background: rgba(245, 158, 11, 0.14); border-top-color: var(--warning); }
+.metric-card.metric-diff-alert { background: var(--warning-bg); border-top-color: var(--warning); }
 .metric-label {
   font-size: 12px;
   color: var(--text-muted);
@@ -256,8 +298,10 @@ tbody tr:last-child td { border-bottom: none; }
   font-weight: 500;
   animation: slideIn 0.2s ease;
 }
-.toast-success { background: var(--success); color: #fff; }
-.toast-error   { background: var(--danger); color: #fff; }
+.toast-success { background: var(--toast-success-bg); color: var(--toast-fg); }
+.toast-error   { background: var(--toast-error-bg); color: var(--toast-fg); }
+.toast-warning { background: var(--toast-warning-bg); color: var(--toast-fg); }
+.toast-info    { background: var(--toast-info-bg); color: var(--toast-fg); }
 @keyframes slideIn {
   from { transform: translateX(120%); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
@@ -282,6 +326,53 @@ tbody tr:last-child td { border-bottom: none; }
   color: var(--text-muted);
 }
 .empty-state-icon { font-size: 42px; margin-bottom: 10px; }
+
+/* ========== 日志详情 ========== */
+.audit-detail-cell {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.audit-detail-cell:hover { color: var(--primary); text-decoration: underline dotted; }
+.audit-sec-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+.audit-sec-title + .audit-kv { margin-bottom: 18px; }
+.audit-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.audit-kv dt { color: var(--text-muted); white-space: nowrap; }
+.audit-kv dd { margin: 0; word-break: break-word; }
+.audit-val { white-space: pre-wrap; }
+.audit-nil { color: var(--text-muted); }
+.audit-note { margin: 0 0 8px; font-size: 12px; color: var(--text-muted); }
+.audit-sub {
+  margin: 4px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.audit-sub-h { margin-bottom: 2px; font-size: 12px; color: var(--text-muted); }
+.audit-raw {
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--bg-muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* ========== 分隔线 ========== */
 .divider { height: 1px; background: var(--border); margin: 16px 0; }

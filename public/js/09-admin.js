@@ -35,7 +35,7 @@ Object.assign(App, {
     const statusBadge = s => s === 'active' ? `<span class="badge badge-success">${this.t('status_active')}</span>` : `<span class="badge badge-muted">${this.t('status_disabled')}</span>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(headers.length + 1); }
-    else { tbody = pageData.map(u => `<tr><td><strong>${u.username}</strong>${u.must_change_pwd ? ' <span class="badge badge-warning">⚠</span>' : ''}</td><td>${u.name || ''}</td><td>${roleLabel(u.role)}</td><td>${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td>${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
+    else { tbody = pageData.map(u => `<tr><td class="cell-code">${u.username}${u.must_change_pwd ? ' <span class="badge badge-warning">⚠</span>' : ''}</td><td>${u.name || ''}</td><td>${roleLabel(u.role)}</td><td>${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td>${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
     document.getElementById('users-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('users-pager').innerHTML = this.renderPager(tid, sorted.length);
   },

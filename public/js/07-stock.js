@@ -237,7 +237,7 @@ Object.assign(App, {
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
       const esc = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
-      tbody = pageData.map(m => `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen('${m.code}')"><td><strong>${m.code}</strong></td><td class="q-ell" title="${esc(m.name)}">${m.name}</td><td class="q-ell" title="${esc(m.spec)}">${m.spec || ''}</td><td>${m.category}</td><td class="q-ell" title="${esc(m.brand)}">${m.brand || ''}</td><td>${m.unit}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td></tr>`).join('');
+      tbody = pageData.map(m => `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen('${m.code}')"><td class="cell-code">${m.code}</td><td class="q-ell" title="${esc(m.name)}">${m.name}</td><td class="q-ell" title="${esc(m.spec)}">${m.spec || ''}</td><td>${m.category}</td><td class="q-ell" title="${esc(m.brand)}">${m.brand || ''}</td><td>${m.unit}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td></tr>`).join('');
     }
     const kpis = [[this.t('stock_types'), sorted.length], ...(vp ? [[this.t('stock_total_value'), this.fmtMoney(totalValue)]] : []), [this.t('stock_alerts'), alerts]];
     document.getElementById('q_stock_kpis').innerHTML = kpis.map(k => `<div class="pu-kpi"><small>${k[0]}</small><strong>${k[1]}</strong></div>`).join('');
@@ -784,8 +784,7 @@ Object.assign(App, {
   },
 
   qDocStatusBadge(st) {
-    const cls = st === 'draft' ? 'badge-muted' : (st === 'voided' ? 'badge-danger' : 'badge-success');
-    return `<span class="badge ${cls}">${this.qDocStatusLabel(st)}</span>`;
+    return `<span class="badge ${this.docStatusMeta(st).cls}">${this.qDocStatusLabel(st)}</span>`;
   },
 
   qDocTypeLabel(type) {
@@ -794,11 +793,7 @@ Object.assign(App, {
   },
 
   qDocTypeBadge(type) {
-    const cls = {
-      '采购入库': 'badge-info', '零星入库': 'badge-info', '采购退货': 'badge-danger',
-      '正常出库': 'badge-warning', '领料退库': 'badge-success', '盘点单': 'badge-muted',
-    }[type] || 'badge-muted';
-    return `<span class="badge ${cls}">${this.qDocTypeLabel(type)}</span>`;
+    return `<span class="badge ${this.docTypeBadgeClass(type)}">${this.qDocTypeLabel(type)}</span>`;
   },
 
   // 单号前缀 → 单据来源（入库 GRN / 出库 GIN / 盘点 ST）
@@ -964,12 +959,12 @@ Object.assign(App, {
         );
         cells.push(
           `<td>${this.costBasisBadge(r.cost_basis)}</td>`,
-          `<td>${r.voided ? `<span class="badge badge-danger">${this.t('ledger_voided')}</span>` : `<span class="badge badge-success">${this.t('ledger_active')}</span>`}</td>`,
+          `<td>${r.voided ? `<span class="badge badge-muted">${this.t('ledger_voided')}</span>` : this.t('ledger_active')}</td>`,
           `<td title="${esc(r.party)}"><span class="q-h-clip q-h-w-party">${esc(r.party)}</span></td>`,
           `<td title="${esc(r.handler)}"><span class="q-h-clip q-h-w-handler">${esc(r.handler)}</span></td>`,
           `<td title="${esc(r.remarks)}"><span class="q-h-clip q-h-w-remarks">${esc(r.remarks)}</span></td>`
         );
-        return `<tr class="q-row"${r.voided ? ' style="opacity:.55"' : ''}>${cells.join('')}</tr>`;
+        return `<tr class="q-row${r.voided ? ' is-voided' : ''}">${cells.join('')}</tr>`;
       }).join('');
     }
     const colgroup = `<colgroup>${cols.map(c => c.w ? `<col style="width:${c.w}px">` : '<col>').join('')}</colgroup>`;
@@ -997,13 +992,11 @@ Object.assign(App, {
     panel.innerHTML = `<div id="q-docs">
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
+          <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_d_keyword" autocomplete="off" placeholder="${this.t('q_doc_search_ph')}" aria-label="${this.t('q_doc_search_ph')}" oninput="App.qDocsReload()"></div>
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_doc_type')}</label><select id="q_d_type" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${types}</select></div>
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_start')}</label><input id="q_d_start" type="date" onchange="App.qDocsReload()"></div>
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_d_end" type="date" onchange="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_doc')}</label><input id="q_d_no" style="width:130px" oninput="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_doc_party')}</label><input id="q_d_party" style="width:104px" oninput="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_material')}</label><input id="q_d_mat" style="width:140px" placeholder="${this.t('q_mat_search_ph')}" oninput="App.qDocsReload()"></div>
         </div>
         <div class="pu-head-actions">
           <button class="btn btn-outline btn-sm" onclick="App.qDocsExport()">${this.t('doc_export')}</button>
@@ -1024,11 +1017,11 @@ Object.assign(App, {
     this._tableRenderers = this._tableRenderers || {};
     this._tableRenderers['docs'] = () => this.qDocsTable();
     this._tableRenderers['qdocs_lines'] = () => this.qDocsCardRender();
-    // 全局搜索点单据结果：先按单号过滤列表，再打开该单详情卡
+    // 全局搜索点单据结果：先把单号写进关键字框过滤列表，再打开该单详情卡
     const focus = this._qDocsFocus;
     this._qDocsFocus = null;
-    const noEl = document.getElementById('q_d_no');
-    if (focus && noEl) noEl.value = focus.docNo;
+    const kwEl = document.getElementById('q_d_keyword');
+    if (focus && kwEl) kwEl.value = focus.docNo;
     this.qDocsTable();
     if (focus) this.qDocsCardOpen(focus.docNo, focus.source);
   },
@@ -1041,7 +1034,7 @@ Object.assign(App, {
       p.set('pageSize', st.pageSize);
     }
     if (st.sortKey) { p.set('sortKey', st.sortKey); p.set('sortDir', st.sortDir); }
-    [['docType', 'q_d_type'], ['status', 'q_d_status'], ['startDate', 'q_d_start'], ['endDate', 'q_d_end'], ['docNo', 'q_d_no'], ['party', 'q_d_party'], ['code', 'q_d_mat']]
+    [['docType', 'q_d_type'], ['status', 'q_d_status'], ['startDate', 'q_d_start'], ['endDate', 'q_d_end'], ['keyword', 'q_d_keyword']]
       .forEach(([k, id]) => { const v = (document.getElementById(id)?.value || '').trim(); if (v) p.set(k, v); });
     return p;
   },
@@ -1078,9 +1071,7 @@ Object.assign(App, {
       [this.t('q_doc_status'), val('q_d_status') ? optText('q_d_status') : ''],
       [this.t('ledger_start'), val('q_d_start')],
       [this.t('ledger_end'), val('q_d_end')],
-      [this.t('ledger_doc'), val('q_d_no')],
-      [this.t('q_doc_party'), val('q_d_party')],
-      [this.t('q_material'), val('q_d_mat')]
+      [this.t('q_doc_search'), val('q_d_keyword')]
     ], rows.length);
     const cols = [
       { key: 'doc_no', label: this.t('ledger_doc') },
@@ -1173,7 +1164,7 @@ Object.assign(App, {
     else {
       tbody = d.rows.map(r => {
         const cells = [
-          `<td title="${esc(r.doc_no)}"><span class="q-h-clip q-h-w-doc">${esc(r.doc_no)}</span></td>`,
+          `<td title="${esc(r.doc_no)}"><button type="button" class="pu-lk${r.status === 'voided' ? ' is-voided' : ''}"><span class="q-h-clip q-h-w-doc">${esc(r.doc_no)}</span></button></td>`,
           `<td>${this.qDocTypeBadge(r.doc_type)}</td>`,
           `<td>${esc(r.date)}</td>`,
           `<td title="${esc(r.party)}"><span class="q-h-clip q-h-w-doc">${esc(r.party)}</span></td>`,
@@ -1183,7 +1174,7 @@ Object.assign(App, {
           `<td>${this.qDocStatusBadge(r.status)}</td>`,
           `<td title="${esc(r.handler)}"><span class="q-h-clip q-h-w-handler">${esc(r.handler)}</span></td>`
         );
-        return `<tr class="q-row" data-key="${esc(r.doc_no)}" onclick="App.qDocsCardOpen('${esc(r.doc_no)}','${r.source}')"${r.status === 'voided' ? ' style="opacity:.55"' : ''}>${cells.join('')}</tr>`;
+        return `<tr class="q-row${r.status === 'voided' ? ' is-voided' : ''}" data-key="${esc(r.doc_no)}" onclick="App.qDocsCardOpen('${esc(r.doc_no)}','${r.source}')">${cells.join('')}</tr>`;
       }).join('');
     }
     const t = d.totals || {};
@@ -1608,8 +1599,8 @@ Object.assign(App, {
       shown = this.paginate(rows, ps.page, ps.pageSize);
       if (rows.length > ps.pageSize) pager = `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, rows.length)}</div>`;
     }
-    const body = shown.length ? shown.map(x => `<tr${x.status === 'voided' ? ' style="opacity:.55"' : ''}>
-        <td><button class="pu-lk" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'outbound'})">${esc(x.doc_no)}</button></td>
+    const body = shown.length ? shown.map(x => `<tr${x.status === 'voided' ? ' class="is-voided"' : ''}>
+        <td><button class="pu-lk${x.status === 'voided' ? ' is-voided' : ''}" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'outbound'})">${esc(x.doc_no)}</button></td>
         <td>${esc(x.date)}</td>
         <td class="text-right">${x.qty}</td>
         ${vp ? `<td class="text-right">${this.fmtMoney(x.amount || 0)}</td>` : ''}
@@ -1743,8 +1734,8 @@ Object.assign(App, {
       document.getElementById('q_an_trend').innerHTML = trend.length ? trend.map(m => `<div class="q-an-row">
         <span>${esc(m.label || '')}</span>
         <span style="display:flex;flex-direction:column;gap:3px">
-          <span class="q-an-bar"><i style="width:${Number(m.in_amount || 0) / tmax * 100}%;background:var(--success)"></i></span>
-          <span class="q-an-bar"><i style="width:${Number(m.out_amount || 0) / tmax * 100}%;background:var(--warning)"></i></span>
+          <span class="q-an-bar"><i style="width:${Number(m.in_amount || 0) / tmax * 100}%;background:var(--flow-in)"></i></span>
+          <span class="q-an-bar"><i style="width:${Number(m.out_amount || 0) / tmax * 100}%;background:var(--flow-out)"></i></span>
         </span>
         <span class="text-right" style="font-size:11px">${this.fmtMoney(m.in_amount || 0) + ' / ' + this.fmtMoney(m.out_amount || 0)}</span>
       </div>`).join('') : `<div class="empty-state"><p>${this.t('q_no_data')}</p></div>`;
@@ -1758,7 +1749,7 @@ Object.assign(App, {
         <td title="${esc(m.name + (m.spec ? ' · ' + m.spec : ''))}"><span class="q-h-clip q-h-w-name">${esc(m.name)}${m.spec ? ' · ' + esc(m.spec) : ''}</span></td>
         <td class="text-right">${m.on_hand}</td>
         <td class="text-right">${m.min_stock}</td>
-        <td class="text-right" style="color:var(--danger)">${(m.on_hand - m.min_stock).toFixed(2)}</td>
+        <td class="text-right${(m.on_hand - m.min_stock) < 0 ? ' num-neg' : ''}">${(m.on_hand - m.min_stock).toFixed(2)}</td>
         <td>${this.statusBadge(m.stock_status)}</td>
       </tr>`).join('')}</tbody></table></div>`
       : `<div class="empty-state"><p>${this.t('q_an_no_alert')}</p></div>`;
@@ -2139,23 +2130,23 @@ Object.assign(App, {
   ledgerTypeBadge(r) {
     const bt = r.business_type || '';
     const map = {
-      '采购入库': ['badge-info', '↑', 'in_purchase'],
-      '零星入库': ['badge-info', '↑', 'in_other'],
-      '采购退货': ['badge-danger', '↓', 'in_return'],
-      '正常出库': ['badge-warning', '↓', 'out_normal'],
-      '领料退库': ['badge-success', '↑', 'out_return'],
-      '盘盈': ['badge-muted', '+', 'ledger_adj_gain'],
-      '盘亏': ['badge-muted', '−', 'ledger_adj_loss'],
-      '其它': ['badge-muted', '', 'ledger_adj_other'],
-      '期初结存': ['badge-muted', '', 'ledger_opening_flow'],
+      '采购入库': ['↑', 'in_purchase'],
+      '零星入库': ['↑', 'in_other'],
+      '采购退货': ['↓', 'in_return'],
+      '正常出库': ['↓', 'out_normal'],
+      '领料退库': ['↑', 'out_return'],
+      '盘盈': ['+', 'ledger_adj_gain'],
+      '盘亏': ['−', 'ledger_adj_loss'],
+      '其它': ['', 'ledger_adj_other'],
+      '期初结存': ['', 'ledger_opening_flow'],
     };
     const cfg = map[bt];
     // 空值与未知业务类型统一显示占位，不回退粗方向
     if (!cfg) return '<span class="badge badge-muted">-</span>';
-    const arrow = cfg[1] ? `<span style="opacity:.7;margin-right:3px">${cfg[1]}</span>` : '';
+    const arrow = cfg[0] ? `<span style="opacity:.7;margin-right:3px">${cfg[0]}</span>` : '';
     const noOrigin = (bt === '领料退库' && !Number(r.return_line_id || 0))
       ? ` <span class="badge badge-danger" style="font-size:10px">${this.t('ledger_no_origin')}</span>` : '';
-    return `<span class="badge ${cfg[0]}">${arrow}${this.t(cfg[2])}</span>${noOrigin}`;
+    return `<span class="badge ${this.docTypeBadgeClass(bt)}">${arrow}${this.t(cfg[1])}</span>${noOrigin}`;
   },
 
   // 台账日期列：业务日期为主，过账时分作次行（同一天多笔可区分先后）

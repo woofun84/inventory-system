@@ -579,8 +579,67 @@ function rebuildAll() {
 }
 
 /**
+ * 是否已经发生过期初以外的库存业务（含已作废单据）。
+ * 期初业务日期固定 1970-01-01，必须排在回放最前面；一旦后续已有流水，
+ * 再改期初会倒挂历史成本，因此据此锁定物料档案的期初数量/单价。
+ */
+function hasNonOpeningLedger(code) {
+  return !!db.prepare("SELECT 1 AS ok FROM stock_ledger WHERE code=? AND source_type<>'opening' LIMIT 1").get(code);
+}
+
+/**
+ * 物料保存时同步期初流水（须在调用方事务内执行）。
+ *  - qty=0：删除该物料的期初流水，不保留 0 数量脏记录，并重算余额；
+ *  - 已有期初流水：原位改数量/单价，再从序 1 重算，金额与均价随之一致；
+ *  - 没有期初流水：按 1970-01-01 插入，settle() 保证排在回放最前面。
+ * 同一物料只允许一条期初流水，重复调用是幂等的。
+ */
+function syncOpeningLedger(code, qty, price) {
+  const q = Number(qty) || 0;
+  const p = Number(price) || 0;
+  const opening = db.prepare(`SELECT id FROM stock_ledger
+    WHERE code=? AND source_type='opening' AND status='active' ORDER BY id LIMIT 1`).get(code);
+
+  if (q === 0) {
+    if (!opening) return { action: 'none' };
+    db.prepare("DELETE FROM stock_ledger WHERE code=? AND source_type='opening'").run(code);
+    renumberFrom(code, 1);
+    recomputeFrom(code, 1);
+    return { action: 'deleted' };
+  }
+
+  if (opening) {
+    db.prepare(`UPDATE stock_ledger SET qty_in=@qty_in, qty_out=@qty_out, unit_cost=@unit_cost
+      WHERE id=@id`).run({
+      qty_in: q > 0 ? q : 0,
+      qty_out: q < 0 ? -q : 0,
+      unit_cost: p,
+      id: opening.id,
+    });
+    // 期初固定 1970-01-01，重排后必然仍是 1 号；重算负责刷新金额、均价与余额
+    renumberFrom(code, 1);
+    recomputeFrom(code, 1);
+    return { action: 'updated' };
+  }
+
+  const id = insertLedger({
+    code,
+    sourceType: 'opening',
+    businessType: '期初结存',
+    businessDate: '1970-01-01',
+    postingTime: '1970-01-01 00:00:00',
+    qtyIn: q > 0 ? q : 0,
+    qtyOut: q < 0 ? -q : 0,
+    unitCost: p,
+  });
+  settle(code, [id]);
+  return { action: 'created' };
+}
+
+/**
  * 期初结存流水：为有期初数量的物料补一条最早的有效流水，
  * 保证「库存余额 = 全部有效流水累计」在期初不为零时依然成立。
+ * 仅作历史数据兜底：已有期初流水的物料直接跳过，重复执行不会重复插入。
  */
 function ensureOpeningBalances() {
   const mats = db.prepare('SELECT code, opening_qty, opening_price FROM materials WHERE COALESCE(opening_qty,0) <> 0').all();
@@ -644,5 +703,6 @@ module.exports = {
   COST_BASIS,
   insertLedger, renumberFrom, recomputeFrom, settle,
   postInboundDoc, postOutboundDoc, postAdjustment, voidDocLedger,
-  rebuildAll, ensureOpeningBalances, captureBalances, logCorrection,
+  rebuildAll, ensureOpeningBalances, syncOpeningLedger, hasNonOpeningLedger,
+  captureBalances, logCorrection,
 };

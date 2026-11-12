@@ -38,7 +38,7 @@ Object.assign(App, {
     thHtml += `<th>${this.t('mat_status')}</th><th></th>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(vp ? 11 : 10); }
-    else { tbody = pageData.map(m => `<tr><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.opening_price)}</td>` : ''}<td class="text-right">${m.min_stock}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
+    else { tbody = pageData.map(m => `<tr><td class="cell-code">${m.code}</td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.opening_price)}</td>` : ''}<td class="text-right">${m.min_stock}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
     document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('materials-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
@@ -48,6 +48,9 @@ Object.assign(App, {
     if (code) { const data = await this.api('/api/materials'); m = data.find(d => d.code === code) || m; }
     // 编辑：接口带 opening_price 才渲染该输入；新建：仅 admin/manager 可建，按角色决定
     const showPrice = code ? this.hasField(m, 'opening_price') : this.canViewPrice();
+    // 已有期初以外的流水：期初数量/单价锁定，置灰并说明原因
+    const openingLocked = !!(code && m.opening_locked);
+    const openingTip = openingLocked ? `<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;line-height:1.5">${this.t('mat_opening_locked')}</div>` : '';
     const cats = this.params.categories.map(c => c.name), units = this.params.units.map(u => u.name);
     const sel = (arr, val) => arr.map(a => `<option value="${a}" ${a === val ? 'selected' : ''}>${a}</option>`).join('');
     this.showModal(`<h3>${code ? this.t('mat_edit') : this.t('mat_add')}</h3>`, `<div class="form-grid">
@@ -56,20 +59,43 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('mat_spec')}</label><input id="m_spec" value="${m.spec || ''}"></div>
       <div class="form-group"><label>${this.t('mat_category')} *</label><select id="m_category" onchange="App.onMaterialCategoryChange()"><option value="">${this.t('please_select')}</option>${sel(cats, m.category)}</select><div class="form-error" id="m_category_error"></div></div>
       <div class="form-group"><label>${this.t('mat_unit')} *</label><select id="m_unit" onchange="App.clearFieldError('m_unit')"><option value="">${this.t('please_select')}</option>${sel(units, m.unit)}</select><div class="form-error" id="m_unit_error"></div></div>
-      <div class="form-group"><label>${this.t('mat_opening_qty')}</label><input id="m_opening_qty" type="number" step="0.01" value="${m.opening_qty}"></div>
-      ${showPrice ? `<div class="form-group"><label>${this.t('mat_opening_price')}</label><input id="m_opening_price" type="number" step="0.01" value="${m.opening_price}"></div>` : ''}
+      <div class="form-group"><label>${this.t('mat_opening_qty')}</label><input id="m_opening_qty" type="number" step="0.01" value="${m.opening_qty}" ${openingLocked ? 'disabled' : ''}></div>
+      ${showPrice ? `<div class="form-group"><label>${this.t('mat_opening_price')}</label><input id="m_opening_price" type="number" step="0.01" value="${m.opening_price}" ${openingLocked ? 'disabled' : ''}></div>` : ''}
+      ${openingTip}
       <div class="form-group"><label>${this.t('mat_min_stock')}</label><input id="m_min_stock" type="number" step="0.01" value="${m.min_stock}"></div>
       <div class="form-group"><label>${this.t('mat_brand')}</label><input id="m_brand" value="${m.brand || ''}"></div>
       <div class="form-group"><label>${this.t('mat_status')}</label><select id="m_status"><option value="">${this.t('mat_in_use')}</option><option value="停用" ${m.status === '停用' ? 'selected' : ''}>${this.t('mat_stopped')}</option></select></div>
       </div>`, code ? this.t('save') : this.t('add'), async () => {
       if (!this.validateForm({ m_name: [{rule:'required'}], m_category: [{rule:'required'}], m_unit: [{rule:'required'}] })) return;
-      const body = { code: document.getElementById('m_code').value.trim() || 'auto', name: document.getElementById('m_name').value.trim(), spec: document.getElementById('m_spec').value.trim(), category: document.getElementById('m_category').value, unit: document.getElementById('m_unit').value, opening_qty: parseFloat(document.getElementById('m_opening_qty').value) || 0, min_stock: parseFloat(document.getElementById('m_min_stock').value) || 0, brand: document.getElementById('m_brand').value.trim(), status: document.getElementById('m_status').value };
+      const body = { code: document.getElementById('m_code').value.trim() || 'auto', name: document.getElementById('m_name').value.trim(), spec: document.getElementById('m_spec').value.trim(), category: document.getElementById('m_category').value, unit: document.getElementById('m_unit').value, min_stock: parseFloat(document.getElementById('m_min_stock').value) || 0, brand: document.getElementById('m_brand').value.trim(), status: document.getElementById('m_status').value };
+      // 期初锁定时不提交这两个键，服务端沿用原值；未锁定才按表单提交
+      if (!openingLocked) body.opening_qty = parseFloat(document.getElementById('m_opening_qty').value) || 0;
       // showPrice 为假时输入框不渲染，也不提交该键；服务端会保留原期初单价（新建默认 0）
-      if (showPrice) body.opening_price = parseFloat(document.getElementById('m_opening_price').value) || 0;
-      try { await this.api('/api/materials' + (code ? '/' + code : ''), code ? 'PUT' : 'POST', body); this.closeModal(); this.toast(code ? this.t('updated') : this.t('added')); this.renderMaterials(); } catch (e) { this.toast(e.message, 'error'); }
+      if (showPrice && !openingLocked) body.opening_price = parseFloat(document.getElementById('m_opening_price').value) || 0;
+      // 保存前前置校验：与本列表已有物料比对四字段（编辑时排除自身）
+      const dup = this.findMaterialDuplicate(body, code || '');
+      if (dup) { this.toast(this.materialDupMessage(body, dup.code), 'error'); return; }
+      try { await this.api('/api/materials' + (code ? '/' + code : ''), code ? 'PUT' : 'POST', body); this.closeModal(); this.toast(code ? this.t('updated') : this.t('added')); this.renderMaterials(); }
+      catch (e) { this.toast(this.lang === 'en' && e.error_en ? e.error_en : e.message, 'error'); }
     });
     // 新增模式下，初始如果有类别就触发
     if (!code && m.category) this.onMaterialCategoryChange();
+  },
+
+  // 与后端 uq_materials_identity 同口径：trim + 忽略 ASCII 大小写，空值按空串
+  materialIdentityKey(m) {
+    const norm = v => String(v === undefined || v === null ? '' : v).trim().replace(/[A-Z]/g, c => c.toLowerCase());
+    return [norm(m.category), norm(m.name), norm(m.spec), norm(m.brand)].join('\u0001');
+  },
+
+  findMaterialDuplicate(m, selfCode) {
+    const key = this.materialIdentityKey(m);
+    return (this._materialsData || []).find(x => x.code !== selfCode && this.materialIdentityKey(x) === key) || null;
+  },
+
+  materialDupMessage(m, code) {
+    const v = k => String(m[k] === undefined || m[k] === null ? '' : m[k]).trim() || this.t('mat_dup_empty');
+    return this.t('mat_dup_identity', { category: v('category'), name: v('name'), spec: v('spec'), brand: v('brand'), code });
   },
 
   async onMaterialCategoryChange() {

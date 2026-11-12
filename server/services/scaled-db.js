@@ -16,7 +16,7 @@ const units = require('./units');
 const QTY_COLS = new Set([
   'qty', 'opening_qty', 'min_stock', 'order_qty',
   'book_qty', 'count_qty', 'diff_qty',
-  'stock_qty', 'qty_in', 'qty_out', 'balance_qty', 'received_qty', 'total_qty',
+  'stock_qty', 'qty_in', 'qty_out', 'balance_qty', 'received_qty', 'total_qty', 'on_hand',
   'qty_before', 'qty_after',
 ]);
 

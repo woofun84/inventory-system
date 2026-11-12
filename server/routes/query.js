@@ -83,19 +83,22 @@ function docsWhere(q) {
   }
   if (has(q.startDate)) { w.push('date >= ?'); p.push(text(q.startDate)); }
   if (has(q.endDate)) { w.push('date <= ?'); p.push(text(q.endDate)); }
-  if (has(q.docNo)) { w.push('doc_no LIKE ?'); p.push(like(q.docNo)); }
-  if (has(q.party)) { w.push('party LIKE ?'); p.push(like(q.party)); }
-  if (has(q.code)) {
-    const k = like(q.code);
+  // 单一关键字：空格分隔多个词（与库存查询一致），每个词需在单号 / 对方 / 明细物料编码、名称、规格中任一命中
+  // 通配符与反斜杠按字面量转义
+  const terms = text(q.keyword).split(/\s+/).filter(Boolean);
+  for (const term of terms) {
+    const k = likeEsc(term);
     w.push(`(
-      (source='inbound' AND EXISTS (SELECT 1 FROM inbound l LEFT JOIN materials m ON m.code=l.code
-        WHERE l.doc_no = x.doc_no AND (l.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ?)))
+      doc_no LIKE ? ESCAPE '\\'
+      OR party LIKE ? ESCAPE '\\'
+      OR (source='inbound' AND EXISTS (SELECT 1 FROM inbound l LEFT JOIN materials m ON m.code=l.code
+        WHERE l.doc_no = x.doc_no AND (l.code LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\' OR m.spec LIKE ? ESCAPE '\\')))
       OR (source='outbound' AND EXISTS (SELECT 1 FROM outbound l LEFT JOIN materials m ON m.code=l.code
-        WHERE l.doc_no = x.doc_no AND (l.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ?)))
+        WHERE l.doc_no = x.doc_no AND (l.code LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\' OR m.spec LIKE ? ESCAPE '\\')))
       OR (source='stocktake' AND EXISTS (SELECT 1 FROM stocktake_lines l LEFT JOIN materials m ON m.code=l.code
-        WHERE l.stocktake_no = x.doc_no AND (l.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ?)))
+        WHERE l.stocktake_no = x.doc_no AND (l.code LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\' OR m.spec LIKE ? ESCAPE '\\')))
     )`);
-    p.push(k, k, k, k, k, k, k, k, k);
+    p.push(k, k, k, k, k, k, k, k, k, k, k);
   }
   return { sql: w.length ? ' WHERE ' + w.join(' AND ') : '', params: p };
 }

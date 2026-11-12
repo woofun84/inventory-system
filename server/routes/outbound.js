@@ -23,6 +23,7 @@ const sign = require('../services/sign');
 const audit = require('../services/audit');
 const { packDetail } = require('../services/logdetail');
 const { maskRows } = require('../services/price-mask');
+const { isBusy, busyBody, businessError, withEn, stockBody, bizBody } = require('../services/errors');
 
 const router = express.Router();
 
@@ -212,14 +213,12 @@ router.post('/api/outbound-docs', requirePerm('outbound', 'create'), (req, res) 
   const body = req.body;
   const date = body.date || time.todayLocal();
   const txnType = body.txn_type || '正常出库';
-  const docNo = body.doc_no || genOutboundDocNo(date, txnType);
+  // 单号在事务内生成，避免多实例并发建单时撞号
+  let docNo = body.doc_no ? String(body.doc_no).trim() : '';
   // 2C：只有领料退库允许关联原出库单；其他类型忽略该字段
   const originDocNo = txnType === '领料退库' ? String(body.origin_doc_no || '').trim() : '';
   let originDoc = null;
   try {
-    const exist = db.prepare("SELECT doc_no FROM outbound_docs WHERE doc_no=?").get(docNo);
-    if (exist) return res.status(400).json({ error: '单据号已存在: ' + docNo });
-
     if (originDocNo) originDoc = loadReturnableOrigin(originDocNo);
     // 退库单去向/领用人只补空：前端未带出时后端兜底继承原单
     const header = fillReturnHeaderFromOrigin(txnType, originDoc, {
@@ -252,6 +251,10 @@ router.post('/api/outbound-docs', requirePerm('outbound', 'create'), (req, res) 
     }
 
     const tx = db.transaction(() => {
+      if (!docNo) docNo = genOutboundDocNo(date, txnType);
+      if (db.prepare("SELECT 1 AS ok FROM outbound_docs WHERE doc_no=?").get(docNo)) {
+        throw businessError('DOC_NO_CONFLICT', `单据号 ${docNo} 已被其他请求占用，请重试`, undefined, 409);
+      }
       db.prepare(`INSERT INTO outbound_docs (doc_no, date, txn_type, destination, receiver, handler, status, remarks, created_by, origin_doc_no, return_reason)
         VALUES (@doc_no, @date, @txn_type, @destination, @receiver, @handler, 'draft', @remarks, @created_by, @origin_doc_no, @return_reason)`)
         .run({
@@ -279,10 +282,17 @@ router.post('/api/outbound-docs', requirePerm('outbound', 'create'), (req, res) 
           ? { key: 'audit_detail_ob_create_return', params: { doc: originDocNo } }
           : { key: 'audit_detail_ob_create' });
     });
-    tx();
+    tx.immediate();
     res.json({ success: true, doc_no: docNo });
   } catch (e) {
-    res.status(400).json({ error: e.message, code: e.code });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    if (/UNIQUE constraint failed: outbound_docs\.doc_no/.test(String(e.message || ''))) {
+      return res.status(409).json(withEn({
+        code: 'DOC_NO_CONFLICT',
+        error: `单据号 ${docNo} 已被其他请求占用，请重试`,
+      }));
+    }
+    res.status(400).json(withEn(bizBody(e, 'OUTBOUND_DOC_CREATE_FAILED')));
   }
 });
 
@@ -511,26 +521,14 @@ router.post('/api/outbound-docs/:docNo/confirm', requirePerm('outbound', 'edit')
   if (!doc) return res.status(404).json({ error: '出库单据不存在' });
   if (doc.status !== 'draft') return res.status(400).json({ error: '只有草稿单据可以确认', code: 'DOC_NOT_DRAFT' });
 
-  const lines = db.prepare("SELECT * FROM outbound WHERE doc_no=?").all(docNo);
-  if (lines.length === 0) return res.status(400).json({ error: '单据没有明细行，无法确认' });
-
   // 无原单退库：过账前再校验单头三项（防止历史草稿绕过）
   const hdrErr = noOriginReturnHeaderError(doc.txn_type, doc.origin_doc_no, {
     destination: doc.destination, receiver: doc.receiver, return_reason: doc.return_reason,
   });
   if (hdrErr) return res.status(400).json(hdrErr);
 
-  // 2C：退库单必须再次校验可退量（期间可能有其他退库单占用原行），并回写原行成本
+  // 2C：退库单的可退量校验放在过账事务内（见下），避免跨实例并发时两张退库单同时通过
   const originDocNo = doc.txn_type === '领料退库' ? (doc.origin_doc_no || '') : '';
-  if (originDocNo) {
-    try {
-      validateReturnAgainstOrigin(
-        lines.map(l => ({ code: l.code, qty: sign.absQty(l.qty), origin_line_id: l.origin_line_id })),
-        originDocNo, docNo);
-    } catch (e) {
-      return res.status(400).json({ error: e.message, code: e.code });
-    }
-  }
 
   // 无成本依据（该物料从未有过正库存）：须管理员显式确认后带 accept_no_basis 重提
   const acceptNoBasis = req.body && req.body.accept_no_basis === true;
@@ -538,17 +536,32 @@ router.post('/api/outbound-docs/:docNo/confirm', requirePerm('outbound', 'edit')
     return res.status(403).json({ error: '仅管理员可确认按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
   }
 
+  const operator = req.user?.name || req.user?.username || '';
+  let lineCount = 0;
   try {
+    // BEGIN IMMEDIATE：事务开始即拿写锁，状态判断、可退量、库存判断与扣减在同一临界区
     const tx = db.transaction(() => {
+      // 事务内重读明细，避免读到过期的草稿行
+      const lines = db.prepare("SELECT * FROM outbound WHERE doc_no=?").all(docNo);
+      if (lines.length === 0) throw businessError('NO_LINES', '单据没有明细行，无法确认');
+      // 有原单退库：可退量校验与过账同事务，跨实例并发退库只有一张能通过
+      if (originDocNo) {
+        validateReturnAgainstOrigin(
+          lines.map(l => ({ code: l.code, qty: sign.absQty(l.qty), origin_line_id: l.origin_line_id })),
+          originDocNo, docNo);
+      }
       // 负库存硬拦：出库/退库数量超过可用库存直接拒绝，不再提供强制放行
       validateOutboundStock(lines);
+      // 校验全部通过后再翻转状态：状态守卫保证跨实例重复确认只有第一个能改到行
+      const posted = db.prepare(`UPDATE outbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
+        WHERE doc_no=? AND status='draft'`).run(operator, docNo);
+      if (posted.changes === 0) {
+        throw businessError('DOC_STATE_CHANGED', '单据已被其他请求处理（可能已确认或作废），请刷新后重试', undefined, 409);
+      }
       // 明细行过账（成本单价由统一成本服务按流水核算并回写）
       db.prepare("UPDATE outbound SET status='posted' WHERE doc_no=?").run(docNo);
       costing.postOutboundDoc(doc, lines, null, { acceptNoBasis, triggerDoc: docNo });
-      // 单据头过账
-      db.prepare("UPDATE outbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now') WHERE doc_no=?")
-        .run(req.user?.name || req.user?.username || '', docNo);
-      logOutboundDoc(docNo, 'confirm', req.user?.name || req.user?.username,
+      logOutboundDoc(docNo, 'confirm', operator,
         { key: 'audit_detail_ob_confirm', params: { n: lines.length } });
       if (acceptNoBasis) {
         audit.record({
@@ -558,21 +571,17 @@ router.post('/api/outbound-docs/:docNo/confirm', requirePerm('outbound', 'edit')
           detail: { key: 'audit_detail_accept_no_basis', params: { doc: docNo, n: lines.length } },
         });
       }
+      lineCount = lines.length;
     });
-    tx();
-    res.json({ success: true, line_count: lines.length });
+    tx.immediate();
+    res.json({ success: true, line_count: lineCount });
   } catch (e) {
-    if (e.stockError) {
-      return res.status(400).json({
-        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
-        code: 'INSUFFICIENT_STOCK',
-        details: e.details
-      });
-    }
+    if (e.stockError) return res.status(400).json(stockBody(e));
     if (e.code === 'NO_COST_BASIS') {
-      return res.status(400).json({ error: e.message, code: 'NO_COST_BASIS', details: e.details });
+      return res.status(400).json(withEn({ error: e.message, code: 'NO_COST_BASIS', details: e.details }));
     }
-    res.status(400).json({ error: e.message });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(bizBody(e, 'OUTBOUND_CONFIRM_FAILED'));
   }
 });
 
@@ -779,10 +788,26 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outboun
 
   try {
     const tx = db.transaction(() => {
+      // 事务内复核：跨实例并发退库/更正时，以写锁内读到的最新数据为准
+      if (reopen) {
+        if (orig.txn_type === '领料退库' && orig.origin_doc_no) {
+          validateReturnAgainstOrigin(
+            draftLines.map(l => ({ code: l.code, qty: sign.absQty(l.qty), origin_line_id: l.origin_line_id })),
+            orig.origin_doc_no, orig.doc_no);
+        }
+        origLines.forEach((ol, idx) => {
+          const target = newKeyMap.map.get(origKeyMap.keys[idx]);
+          const newQty = target ? sign.absQty(target.qty) : 0;
+          if (getReturnedQtyByLine(ol.id) > newQty + 0.0001) {
+            throw businessError('RETURN_EXCEEDS_CORRECTED_QTY',
+              `物料 ${ol.code}：已确认退库量已超过更正后的新数量 ${newQty}，请先更正相关退库单`);
+          }
+        });
+      }
       const voided = db.prepare(`UPDATE outbound_docs SET status='voided', voided_at=datetime('now'), voided_by=?,
           corrected_by_doc_no=? WHERE doc_no=? AND status='posted'`)
         .run(operator, reopen ? docNo : '', orig.doc_no);
-      if (voided.changes === 0) throw routeFail('DOC_STATE_CHANGED', '原单状态已变化，请刷新后重试');
+      if (voided.changes === 0) throw businessError('DOC_STATE_CHANGED', '原单状态已变化，请刷新后重试', undefined, 409);
       db.prepare("UPDATE outbound SET status='voided' WHERE doc_no=?").run(orig.doc_no);
 
       // 原单流水置无效；重开时先不重算，等新单在原核算位置落位后一次性重算后续流水
@@ -817,8 +842,9 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outboun
           ...(ledgerVoid.anchor || {}),
           correctionOf: orig.doc_no,
         });
-        db.prepare(`UPDATE outbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
-          WHERE doc_no=?`).run(operator, docNo);
+        const postedNew = db.prepare(`UPDATE outbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
+          WHERE doc_no=? AND status='draft'`).run(operator, docNo);
+        if (postedNew.changes === 0) throw businessError('DOC_STATE_CHANGED', '更正草稿状态已变化，请刷新后重试', undefined, 409);
       } else {
         db.prepare("DELETE FROM outbound WHERE doc_no=?").run(docNo);
         db.prepare("DELETE FROM outbound_docs WHERE doc_no=?").run(docNo);
@@ -857,7 +883,7 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outboun
         retargeted_returns: retargeted
       };
     });
-    tx();
+    tx.immediate();
     try {
       costing.logCorrection({
         kind: reopen ? 'void-reopen' : 'void-only',
@@ -874,7 +900,8 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outboun
         operator, before: balBefore, status: 'failed', message: e.message,
       });
     } catch (le) { console.error('重算日志写入失败:', le.message); }
-    res.status(e.status || 400).json({ error: e.message, code: e.code || 'CORRECTION_CONFIRM_FAILED', details: e.details });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(withEn({ error: e.message, code: e.code || 'CORRECTION_CONFIRM_FAILED', details: e.details }));
   }
 });
 

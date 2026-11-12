@@ -5,7 +5,6 @@
 Object.assign(App, {
   // ========== 仪表盘 ==========
   async renderDashboard() {
-    this.injectDashCompStyles();
     this.setMain(this.pageWrap('🏠 ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
     try {
       const data = await this.api('/api/dashboard');
@@ -41,32 +40,16 @@ Object.assign(App, {
   },
 
   // 本月业务构成：样式与入库/出库/采购保持同一套 pu-card 卡片规范
-  injectDashCompStyles() {
-    if (document.getElementById('dash-comp-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'dash-comp-styles';
-    style.textContent = `
-      .pu-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:14px}
-      .pu-card-title{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;margin-bottom:14px}
-      .pu-card-title span{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--primary-light);color:var(--primary);font-size:12px;font-weight:700;flex:0 0 auto}
-      .pu-card-title small{font-weight:400;color:var(--text-muted);font-size:12px}
-      .comp-type{display:inline-flex;align-items:center;gap:8px}
-      .comp-total-row td{font-weight:700;border-top:2px solid var(--border)}
-      .comp-empty{padding:26px 10px;text-align:center;color:var(--text-muted);font-size:13px}
-    `;
-    document.head.appendChild(style);
-  },
-
   renderMonthBreakdown(data, vp) {
     const rows = data.month_breakdown || [];
     const total = data.month_breakdown_total || { doc_count: 0, qty: 0, amount: 0 };
     const dirs = {
-      purchase_in: ['badge-info', 'dash_dir_in'],
-      misc_in: ['badge-info', 'dash_dir_in'],
-      purchase_return: ['badge-warning', 'dash_dir_return'],
-      normal_out: ['badge-warning', 'dash_dir_out'],
-      return_with: ['badge-success', 'dash_dir_return_in'],
-      return_without: ['badge-success', 'dash_dir_return_in'],
+      purchase_in: [this.docTypeBadgeClass('采购入库'), 'dash_dir_in'],
+      misc_in: [this.docTypeBadgeClass('零星入库'), 'dash_dir_in'],
+      purchase_return: [this.docTypeBadgeClass('采购退货'), 'dash_dir_return'],
+      normal_out: [this.docTypeBadgeClass('正常出库'), 'dash_dir_out'],
+      return_with: [this.docTypeBadgeClass('领料退库'), 'dash_dir_return_in'],
+      return_without: [this.docTypeBadgeClass('领料退库'), 'dash_dir_return_in'],
     };
     let body;
     if (!total.doc_count) {
@@ -139,9 +122,10 @@ Object.assign(App, {
   renderTrendChart(data) {
     const ctx = document.getElementById('trendChart'); if (!ctx) return;
     const tc = this.chartTextColor(), gc = this.chartGridColor();
+    const inColor = this.cssVar('--flow-in', '#16a34a'), outColor = this.cssVar('--flow-out', '#f59e0b');
     this.charts.push(new Chart(ctx, { type: 'bar', data: { labels: data.map(d => d.label), datasets: [
-      { label: this.t('dash_in_amount'), data: data.map(d => d.in_amount), backgroundColor: '#3b82f6', borderRadius: 4 },
-      { label: this.t('dash_out_cost'), data: data.map(d => d.out_amount), backgroundColor: '#f59e0b', borderRadius: 4 }] },
+      { label: this.t('dash_in_amount'), data: data.map(d => d.in_amount), backgroundColor: inColor, borderRadius: 4 },
+      { label: this.t('dash_out_cost'), data: data.map(d => d.out_amount), backgroundColor: outColor, borderRadius: 4 }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, color: tc } } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 }, color: tc }, grid: { color: gc } }, x: { ticks: { font: { size: 10 }, color: tc }, grid: { color: gc } } } } }));
   },
 
@@ -149,14 +133,14 @@ Object.assign(App, {
     const ctx = document.getElementById('categoryChart'); if (!ctx) return;
     const tc = this.chartTextColor();
     const labels = Object.keys(data), values = Object.values(data);
-    const colors = ['#3b82f6','#f59e0b','#16a34a','#dc2626','#0891b2','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1'];
+    const colors = Array.from({ length: 10 }, (_, i) => this.cssVar('--chart-' + (i + 1), '#3b82f6'));
     this.charts.push(new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data: values, backgroundColor: colors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, color: tc } } } } }));
   },
 
   renderTopChart(data) {
     const ctx = document.getElementById('topChart'); if (!ctx) return;
     const tc = this.chartTextColor(), gc = this.chartGridColor();
-    this.charts.push(new Chart(ctx, { type: 'bar', data: { labels: data.map(d => d.name), datasets: [{ label: this.t('dash_stock_value'), data: data.map(d => d.value), backgroundColor: '#3b82f6', borderRadius: 4 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { font: { size: 10 }, color: tc }, grid: { color: gc } }, y: { ticks: { font: { size: 11 }, color: tc }, grid: { color: gc } } } } }));
+    this.charts.push(new Chart(ctx, { type: 'bar', data: { labels: data.map(d => d.name), datasets: [{ label: this.t('dash_stock_value'), data: data.map(d => d.value), backgroundColor: this.cssVar('--chart-1', '#3b82f6'), borderRadius: 4 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { font: { size: 10 }, color: tc }, grid: { color: gc } }, y: { ticks: { font: { size: 11 }, color: tc }, grid: { color: gc } } } } }));
   },
 
 });

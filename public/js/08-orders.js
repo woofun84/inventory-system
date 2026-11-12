@@ -65,39 +65,9 @@ Object.assign(App, {
 
   // ========== 参数设置 ==========
   // 页面样式：与入库 / 出库 / 采购保持同一套 pu-card 卡片规范
-  injectSettingsStyles() {
-    if (document.getElementById('settings-ui-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'settings-ui-styles';
-    style.textContent = `
-      .pu-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:14px}
-      .pu-card-title{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;margin-bottom:14px}
-      .pu-card-title span{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--primary-light);color:var(--primary);font-size:12px;font-weight:700;flex:0 0 auto}
-      .pu-card-title small{font-weight:400;color:var(--text-muted);font-size:12px}
-      .set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start}
-      .set-grid .pu-card{margin-bottom:0}
-      .set-add{margin-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
-      .set-add .form-group{min-width:140px}
-      .set-empty{text-align:center;color:var(--text-muted)}
-      .set-op{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
-      .set-op-main{flex:1 1 320px;min-width:0}
-      .set-op-main b{font-size:13px;display:block;margin-bottom:4px}
-      .set-op-main p{margin:0;color:var(--text-muted);font-size:12px;line-height:1.7}
-      .set-op-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-      .set-file{font-size:12px;max-width:240px;color:var(--text-muted)}
-      .set-sep{height:1px;background:var(--border);margin:16px 0}
-      .set-btn-danger{border-color:rgba(220,38,38,.45);color:var(--danger);background:transparent}
-      .set-btn-danger:hover{background:rgba(220,38,38,.07);border-color:var(--danger);color:var(--danger)}
-      .set-btn-strong{border-color:rgba(220,38,38,.65)}
-      .set-note{color:var(--text-muted);font-size:12px;line-height:1.7;margin:0 0 10px}
-      .set-danger-card{border-color:rgba(220,38,38,.22)}
-      .set-loading{margin:20px 0;text-align:center;color:var(--text-muted)}
-    `;
-    document.head.appendChild(style);
-  },
+  // 设置页样式已收敛到 public/css/pages.css，不再运行时注入
 
   async renderSettings() {
-    this.injectSettingsStyles();
     this.setMain(this.pageWrap('⚙ ' + this.t('set_title'), this.t('set_desc'), '', `<div id="settings-content" class="set-page"><p class="set-loading">${this.t('loading')}</p></div>`));
     try {
       const data = await this.api('/api/params');
@@ -160,7 +130,7 @@ Object.assign(App, {
         <div class="set-op-main"><b>${this.t('set_restore_title')}</b><p>${this.t('set_restore_desc')}</p></div>
         <div class="set-op-actions">
           <input type="file" id="set_restore_file" accept=".db" class="set-file">
-          <button class="btn btn-outline set-btn-danger" onclick="App.confirmRestore()">${this.t('set_restore_btn')}</button>
+          <button class="btn btn-danger-outline" onclick="App.confirmRestore()">${this.t('set_restore_btn')}</button>
         </div>
       </div>
     </div>`;
@@ -183,12 +153,12 @@ Object.assign(App, {
       <div class="pu-card-title"><span>07</span><div>${this.t('set_clear_title')}<small>${this.t('set_clear_desc')}</small></div></div>
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_clear_business')}</b><p>${this.t('set_clear_business_desc')}</p></div>
-        <button class="btn btn-outline set-btn-danger" onclick="App.confirmClear('business')">${this.t('set_clear_business_btn')}</button>
+        <button class="btn btn-danger-outline" onclick="App.confirmClear('business')">${this.t('set_clear_business_btn')}</button>
       </div>
       <div class="set-sep"></div>
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_reset_all')}</b><p>${this.t('set_reset_all_desc')}</p></div>
-        <button class="btn btn-outline set-btn-danger set-btn-strong" onclick="App.confirmClear('reset')">${this.t('set_reset_all_btn')}</button>
+        <button class="btn btn-danger-outline" onclick="App.confirmClear('reset')">${this.t('set_reset_all_btn')}</button>
       </div>
     </div>`;
   },
@@ -239,7 +209,7 @@ Object.assign(App, {
     box.innerHTML = this.docNoTypeKeys().map(k => {
       const el = document.getElementById('docno_' + k);
       const prefix = String((el && el.value) || '').trim().toUpperCase() || '?';
-      return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted,#f2f4f7);font-family:monospace">${prefix}-${date}-${'1'.padStart(pad, '0')}</span>`;
+      return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted);font-family:monospace">${prefix}-${date}-${'1'.padStart(pad, '0')}</span>`;
     }).join('');
   },
 
@@ -374,7 +344,7 @@ Object.assign(App, {
     if (!s || !s.count) { this.toast(this.t('set_cv_nothing')); return; }
     this.confirmDialog(this.t('set_cv_confirm_title'),
       this.t('set_cv_confirm_msg', { n: s.count, amount: this.fmtMoney(s.total) }),
-      () => this.doSettleVariance());
+      () => this.doSettleVariance(), null, 'primary');
   },
 
   async doSettleVariance() {

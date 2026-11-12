@@ -360,6 +360,8 @@ const App = {
   },
 
   setMain(html) {
+    // 页面整体重渲染时收起即时搜索浮层，避免固定定位面板残留到新页面
+    if (this.msClose) this.msClose();
     document.getElementById('app').innerHTML = `<div class="layout">${this.renderSidebar()}<div class="main">${html}</div></div>`;
   },
 
@@ -377,8 +379,11 @@ const App = {
     if (res.status === 401) { this.logout(); throw new Error(this.t('session_expired')); }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: this.t('requestFailed') }));
-      const e = new Error(err.error || this.t('requestFailed'));
+      // 英文界面优先展示服务端 error_en；没有时回落中文 error
+      const msg = (this.lang === 'en' && err.error_en) ? err.error_en : (err.error || this.t('requestFailed'));
+      const e = new Error(msg);
       e.code = err.code;          // 业务错误码，如 INSUFFICIENT_STOCK
+      e.error_en = err.error_en;  // 英文文案，英文界面优先展示
       e.details = err.details;    // 结构化明细，供前端展示
       e.status = res.status;
       throw e;
@@ -395,10 +400,11 @@ const App = {
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
   },
 
-  confirmDialog(title, msg, onConfirm, onCancel) {
+  confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger') {
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
-    overlay.innerHTML = `<div class="confirm-box"><div class="confirm-icon">${this.t('cf_warning')}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn btn-danger" id="cf-ok">${this.t('confirm')}</button></div></div>`;
+    const okCls = intent === 'primary' ? 'btn-primary' : 'btn-danger';
+    overlay.innerHTML = `<div class="confirm-box"><div class="confirm-icon">${this.t('cf_warning')}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
     const close = () => { overlay.remove(); if (onCancel) onCancel(); };
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
@@ -406,9 +412,45 @@ const App = {
     document.getElementById('cf-ok').onclick = () => { overlay.remove(); onConfirm(); };
   },
 
+  // ===== 徽标单一事实源 =====
+  // 单据状态 → 徽标类：草稿/作废/取消/关闭 一律灰；已过账 绿；更正/部分/调整 青；
+  // 未到货/补货 橙；缺货 红。各模块只能从这里取类名，不得自建映射。
+  docStatusMeta(status) {
+    const map = {
+      draft: 'badge-muted',
+      voided: 'badge-muted',
+      cancelled: 'badge-muted',
+      closed: 'badge-muted',
+      posted: 'badge-success',
+      confirmed: 'badge-success',
+      revised: 'badge-info',
+      partial: 'badge-info',
+      adjusted: 'badge-info',
+      not_arrived: 'badge-warning',
+      restock: 'badge-warning',
+      out_of_stock: 'badge-danger',
+    };
+    return { cls: map[status] || 'badge-muted' };
+  },
+
+  // 业务类型 → 徽标类：同一业务类型在全项目必须同色
+  docTypeBadgeClass(type) {
+    const map = {
+      '采购入库': 'badge-info',
+      '零星入库': 'badge-info',
+      '采购退货': 'badge-danger',
+      '正常出库': 'badge-warning',
+      '领料退库': 'badge-success',
+      '盘点单': 'badge-muted',
+      '盘盈': 'badge-success',
+      '盘亏': 'badge-danger',
+    };
+    return map[type] || 'badge-muted';
+  },
+
   statusBadge(status) {
     const map = { '正常': this.t('st_normal'), '补货': this.t('st_restock'), '缺货': this.t('st_out'), '停用': this.t('mat_stopped'), '已到货': this.t('st_arrived'), '未到货': this.t('st_not_arrived'), '部分到货': this.t('st_partial'), '无明细': this.t('st_no_detail'), '已关闭': this.t('po_status_closed'), '已取消': this.t('po_status_cancelled') };
-    const clsMap = { '正常': 'success', '补货': 'warning', '缺货': 'danger', '停用': 'muted', '已到货': 'success', '未到货': 'warning', '部分到货': 'info', '无明细': 'muted', '已关闭': 'muted', '已取消': 'danger' };
+    const clsMap = { '正常': 'success', '补货': 'warning', '缺货': 'danger', '停用': 'muted', '已到货': 'success', '未到货': 'warning', '部分到货': 'info', '无明细': 'muted', '已关闭': 'muted', '已取消': 'muted' };
     return `<span class="badge badge-${clsMap[status] || 'muted'}">${map[status] || status}</span>`;
   },
 

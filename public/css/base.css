@@ -27,9 +27,79 @@
   --sidebar-active-bg: #2563eb;
   --sidebar-active-text: #ffffff;
   --sidebar-hover-bg: #334155;
+  /* 侧边栏前景色：独立于页面正文色，避免亮色主题下深底浅字失效 */
+  --sidebar-fg: #e2e8f0;
+  --sidebar-fg-muted: #94a3b8;
   --radius: 10px;
   --radius-sm: 6px;
   --sidebar-w: 200px;
+
+  /* ===== 语义状态色（底色 / 前景 / 描边） ===== */
+  --success-bg: #dcfce7;
+  --success-fg: #15803d;
+  --success-border: #86efac;
+  --warning-bg: #fef3c7;
+  --warning-fg: #b45309;
+  --warning-border: #fcd34d;
+  --danger-bg: #fee2e2;
+  --danger-fg: #b91c1c;
+  --danger-border: #fca5a5;
+  --info-bg: #e0f2fe;
+  --info-fg: #0369a1;
+  --info-border: #7dd3fc;
+  --neutral-bg: #f1f5f9;
+  --neutral-fg: #64748b;
+  --neutral-border: #e2e8f0;
+
+  /* 主色弱底与焦点环 */
+  --primary-bg: #eff6ff;
+  --primary-ring: rgba(37,99,235,0.15);
+  --danger-ring: rgba(220,38,38,0.12);
+
+  /* 基础弱底色与卡片表面色 */
+  --bg-muted: #f1f5f9;
+  --surface: #ffffff;
+
+  /* ===== 表格 ===== */
+  --table-head-bg: #f1f5f9;
+  --table-head-fg: #475569;
+  --table-head-border: #dbe2ea;
+  --table-border: #edf1f5;
+  --table-row-alt: #fafbfd;
+  --table-row-hover: #eff6ff;
+  --table-row-selected: var(--primary-light);
+  --table-cell-fg: #334155;
+
+  /* ===== 图表 ===== */
+  --chart-1: #3b82f6;
+  --chart-2: #f59e0b;
+  --chart-3: #16a34a;
+  --chart-4: #dc2626;
+  --chart-5: #0891b2;
+  --chart-6: #8b5cf6;
+  --chart-7: #ec4899;
+  --chart-8: #14b8a6;
+  --chart-9: #f97316;
+  --chart-10: #6366f1;
+  --chart-text: #6b7280;
+  --chart-grid: rgba(229,231,235,0.5);
+
+  /* ===== Toast：固定深色底 + 白字，不随主题反转 ===== */
+  --toast-success-bg: #15803d;
+  --toast-error-bg: #b91c1c;
+  --toast-warning-bg: #b45309;
+  --toast-info-bg: #0369a1;
+  --toast-fg: #ffffff;
+
+  /* ===== 流向（入库 / 出库） ===== */
+  --flow-in: #16a34a;
+  --flow-out: #f59e0b;
+
+  /* ===== 数值语义 ===== */
+  --num-pos: #15803d;
+  --num-neg: #b91c1c;
+  --num-zero: #b45309;
+  --num-warn: #b45309;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -135,14 +205,14 @@ body {
 .sidebar-user-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--sidebar-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .sidebar-user-role {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--sidebar-fg-muted);
 }
 
 .nav-section-label {

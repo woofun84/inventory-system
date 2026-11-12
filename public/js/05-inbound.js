@@ -39,7 +39,6 @@ Object.assign(App, {
     this.setMain(this.pageWrap('📥 ' + this.t('ibd_title'), this.t('ibd_desc'), '', this.ibSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
-    this.injectInboundStyles();
     this.ibBindEvents();
     this.ibRenderTabs();
     this.ibRenderToolbar();
@@ -244,9 +243,8 @@ Object.assign(App, {
   },
 
   ibTypeBadge(t) {
-    if (t === '采购退货') return `<span class="badge badge-danger">${this.t('in_return')}</span>`;
-    if (t === '零星入库') return `<span class="badge badge-success">${this.t('in_other')}</span>`;
-    if (t === '采购入库') return `<span class="badge badge-info">${this.t('in_purchase')}</span>`;
+    const keyMap = { '采购入库': 'in_purchase', '零星入库': 'in_other', '采购退货': 'in_return' };
+    if (keyMap[t]) return `<span class="badge ${this.docTypeBadgeClass(t)}">${this.t(keyMap[t])}</span>`;
     return `<span class="badge badge-muted">${this.ibEsc(t || this.t('ibd_unknown_type'))}</span>`;
   },
 
@@ -286,13 +284,9 @@ Object.assign(App, {
 
   // 状态徽标
   ibdStatusBadge(status) {
-    const map = {
-      draft: [this.t('ibd_status_draft'), 'warning'],
-      posted: [this.t('ibd_status_posted'), 'success'],
-      voided: [this.t('ibd_status_voided'), 'muted'],
-    };
-    const m = map[status] || [status, 'muted'];
-    return `<span class="badge badge-${m[1]}">${m[0]}</span>`;
+    const label = { draft: 'ibd_status_draft', posted: 'ibd_status_posted', voided: 'ibd_status_voided' };
+    const cls = this.docStatusMeta(status).cls;
+    return `<span class="badge ${cls}">${label[status] ? this.t(label[status]) : status}</span>`;
   },
 
   // ========== 采购退货：只认原入库单 ==========
@@ -426,7 +420,7 @@ Object.assign(App, {
       `<div class="data-page" id="ib-new-root">
         <div class="pu-edit-bar">
           <span class="action-link" onclick="App.backToInboundList()">← ${this.t('ibd_back_list')}</span>
-          <span class="badge badge-warning">${this.t('ibd_status_draft')}</span>
+          ${this.ibdStatusBadge('draft')}
         </div>
         <div class="pu-card">
           <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
@@ -434,7 +428,7 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly></div>
             <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_f_date" type="date" value="${date}"></div>
             ${typeField}
-            <div class="form-group"><label id="ib_f_supplier_label">${this.t('ibd_supplier')} *</label><input id="ib_f_supplier" list="ib_sup_list" autocomplete="off"><datalist id="ib_sup_list">${supOptions}</datalist><div class="form-error" id="ib_f_supplier_error"></div></div>
+            <div class="form-group"><label id="ib_f_supplier_label">${this.t('ibd_supplier')} *</label><input id="ib_f_supplier" list="ib_sup_list" autocomplete="off" oninput="this.dataset.auto=''"><datalist id="ib_sup_list">${supOptions}</datalist><div class="form-error" id="ib_f_supplier_error"></div></div>
             <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
             <div class="form-group" id="ib_f_source_wrap"><label>${this.t('ibd_source')} *</label><select id="ib_f_source" onchange="App.ibOnSourceChange()"><option value="">${this.t('ibd_src_pick')}</option>${sourceOptions}</select></div>
             <div class="form-group" id="ib_f_source_refs_wrap"><label>${this.t('ibd_source_refs')}</label><input id="ib_f_source_refs" readonly></div>
@@ -448,7 +442,6 @@ Object.assign(App, {
           <button class="btn btn-primary" onclick="App.createInboundDoc()">${this.t('pu_create_and_add')}</button>
         </div>
       </div>`));
-    this.injectInboundStyles();
     this.ibOnTypeChange();
   },
 
@@ -546,7 +539,7 @@ Object.assign(App, {
     this.confirmDialog(this.t('ibd_switch_mismatch_title'),
       `${this.t('ibd_switch_mismatch')}<br>${text}`,
       () => this.ibApplySource(next, lines, mismatch),
-      () => { el.value = prev; });
+      () => { el.value = prev; }, 'primary');
   },
 
   ibMismatchLines(lines) {
@@ -686,6 +679,18 @@ Object.assign(App, {
   },
 
   // 新建入库单：选择来源（采购单/合同）后，自动带出该来源下全部未到货明细（数量留空）
+  // 手选采购单/合同后把供应商带到单头（采购单与合同都用 inbound-sources 的 supplier 字段）。
+  // 只补空值或仍为自动带入的值，用户手填后不再覆盖；零星入库与编辑页不调用本方法。
+  ibApplySourceSupplier(src) {
+    const input = document.getElementById('ib_f_supplier');
+    if (!input) return;
+    const sup = String((src && src.supplier) || '').trim();
+    if (!sup) return;
+    if (input.value.trim() && input.dataset.auto !== '1') return;
+    input.value = sup;
+    input.dataset.auto = '1';
+  },
+
   async ibOnSourceChange() {
     const srcEl = document.getElementById('ib_f_source');
     const refsEl = document.getElementById('ib_f_source_refs');
@@ -701,6 +706,7 @@ Object.assign(App, {
     if (!this._ibSource) return;
     const src = (this._ibSourceList || []).find(s => s.kind === this._ibSource.kind && s.no === this._ibSource.no);
     if (refsEl && src) refsEl.value = (src.refs || []).join('、') || '—';
+    this.ibApplySourceSupplier(src);
 
     const qs = this._ibSource.kind === 'po'
       ? 'poNo=' + encodeURIComponent(this._ibSource.no)
@@ -747,53 +753,6 @@ Object.assign(App, {
         <td class="text-right"><b>${this.fmtQty(l.unreceived_qty)}</b></td>
       </tr>`).join('')}</tbody></table></div>
     </div>`;
-  },
-
-  injectInboundStyles() {
-    if (document.getElementById('inbound-ui-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'inbound-ui-styles';
-    style.textContent = `
-      .ib-empty-draft{padding:22px;text-align:center;background:var(--info-bg,rgba(14,165,233,.07));border:1px dashed var(--border);border-radius:9px;margin:12px 0}
-      .ib-over-hint{margin:10px 0 0;padding:9px 11px;border:1px solid #f5c26b;background:#fff8ea;border-radius:8px;color:#b45309;font-size:12px;line-height:1.7}
-      .ib-over-hint-tip{margin-top:4px;color:#92400e;font-weight:600}
-      .ib-qty-over{border-color:#dc2626 !important;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
-      .ib-out-scope{color:#b45309}
-      .ib-posted-hint{padding:10px;background:var(--info-bg,rgba(14,165,233,.1));border-left:3px solid var(--info,#0ea5e9);border-radius:6px;font-size:12px}
-      #ib-root.ib-dense .table-wrap tbody td{padding:4px 10px;height:auto}
-      #ib-root.ib-dense .table-wrap thead th{padding:6px 10px;height:auto}
-      .ib-corr-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;margin:0 0 10px;background:var(--warning-bg,rgba(245,158,11,.08));border-left:3px solid var(--warning,#f59e0b);border-radius:6px;font-size:12px;line-height:1.6}
-      .ib-corr-bar i{font-style:normal;color:var(--text-muted)}
-      .ib-corr-bar .pu-lk{padding:0;font-size:12px}
-      .ib-voided-row td{opacity:.55}
-      .ib-voided-row td .pu-lk{color:var(--text-muted);text-decoration:line-through}
-      .rel-list{container-type:inline-size}
-      .rel-item{padding:10px 0;border-top:1px solid var(--border)}
-      .rel-item:first-child{border-top:0;padding-top:2px}
-      .rel-item-voided{opacity:.62}
-      .rel-line{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;min-width:0}
-      .rel-no{flex:0 0 auto;white-space:nowrap}
-      .rel-cell{font-size:12px;color:var(--text-muted);white-space:nowrap;min-width:0}
-      .rel-cell b{color:var(--text);font-weight:600}
-      .rel-cell small{font-size:11px;margin-right:3px}
-      .rel-status{flex:0 0 auto}
-      .rel-amount{margin-left:auto}
-      .rel-break{display:none}
-      @container (max-width:620px){
-        .rel-line{flex-wrap:wrap;gap:3px 10px}
-        .rel-no{order:1;flex:1 1 auto;white-space:normal;overflow-wrap:anywhere}
-        .rel-status{order:2}
-        .rel-break{display:block;order:3;flex:0 0 100%;height:0}
-        .rel-date{order:4}
-        .rel-type{order:5}
-        .rel-party{order:6}
-        .rel-qty{order:7}
-        .rel-amount{order:8;margin-left:0}
-      }
-      .ib-voided-panel .pu-dpanel,.ib-voided-panel .pu-insp-meta{opacity:.65}
-      .ib-corr-bar .ib-corr-void{color:var(--danger,#ef4444);font-weight:600}
-    `;
-    document.head.appendChild(style);
   },
 
   // ========== 详情栏（对齐采购：点行原地展开，不再整页跳转） ==========
@@ -959,7 +918,7 @@ Object.assign(App, {
           <small>${typeLabel}</small>
           <h2>${this.ibEsc(d.doc_no)} ${this.docRevisionBadge(d.doc_no)}</h2>
           <span class="pu-badge">${this.ibdStatusBadge(d.status)}</span>
-          ${d.status === 'voided' ? `<span class="badge badge-danger">${this.t('ibd_voided_badge')}</span>` : ''}
+          ${d.status === 'voided' ? `<span class="badge badge-muted">${this.t('ibd_voided_badge')}</span>` : ''}
         </div>
         <div>
           <button type="button" class="btn btn-outline btn-sm" data-ib="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${s.wide ? '⤡' : '⤢'}</button>
@@ -1475,7 +1434,6 @@ Object.assign(App, {
         <div class="pu-edit-actions" id="ib-edit-buttons"></div>
       </div>`));
 
-    this.injectInboundStyles();
     this.renderInboundEdit();
   },
 
@@ -1583,6 +1541,7 @@ Object.assign(App, {
 
   // 只重渲染 02 明细区（物料筛选条 + 明细表 + 汇总），不重建 01 表单与底部按钮
   renderInboundEditTable() {
+    this.msClose();
     const d = this._ibDetail;
     if (!d) return;
     const isDraft = d.status === 'draft';
@@ -1655,8 +1614,8 @@ Object.assign(App, {
             : (linked ? linkedMax : this._inboundStockMap[l.code]);
         }
         const availText = available === undefined || available === null ? '-' : this.fmtQty(available);
-        const availColor = available === undefined || available === null ? 'var(--text-muted)'
-          : (available < 0 ? 'var(--danger)' : (available === 0 ? 'var(--warning)' : 'var(--success)'));
+        const availCls = available === undefined || available === null ? 'num-zero'
+          : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : ''));
         // 更正采购入库：另加一列「未到货」。更正单确认后原单作废，
         // 基准 = 该采购行可到总量（订单量 − 排除原单后的已过账量，_ibSourceLines 已按 excludeDocNo 取数），
         // 再减本单该采购行目标数量合计（同一采购行拆多行只扣一次）
@@ -1690,12 +1649,12 @@ Object.assign(App, {
           const qty = Number(l.qty) || 0;
           return `<tr>
             <td>${this.ibLineLabel(l)}</td>
-            <td${qty < 0 ? ' style="color:var(--danger)"' : ''}>${this.fmtQty(qty)}</td>
+            <td${qty < 0 ? ' class="num-neg"' : ''}>${this.fmtQty(qty)}</td>
             ${vp ? `<td>${this.fmtMoney(l.price)}</td><td class="pu-edit-amt">${this.fmtMoney(amt)}</td>` : ''}
             <td style="font-size:12px">${contract}</td>
             <td>${l.remarks || ''}</td>
             ${corrUnrecCell}
-            <td class="pu-edit-amt" style="color:${availColor}"${isCorr ? ` title="${this.ibEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${availText}</td>
+            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}"${isCorr ? ` title="${this.ibEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${availText}</td>
             <td></td>
           </tr>`;
         }
@@ -1728,7 +1687,7 @@ Object.assign(App, {
           <td style="min-width:120px;font-size:12px">${contract}</td>
           <td style="min-width:140px"><input value="${this.ibEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
           ${corrUnrecCell}
-          <td class="pu-edit-amt" style="font-size:12px;color:${availColor}"${(availTitle || isCorr) ? ` title="${this.ibEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
+          <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px"${(availTitle || isCorr) ? ` title="${this.ibEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
           <td><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
       }).join('');
@@ -1745,23 +1704,25 @@ Object.assign(App, {
     const box = document.getElementById('ib-edit-lines');
     if (box) {
       let filterHtml = '';
-      // 采购入库的物料从单头来源内的采购明细行里选，类别/关键字筛选无实际作用，不再渲染；
-      // 采购退货关联档的物料来自原入库单，筛选同样无作用；无原单档仍是全量物料，保留筛选。
+      // 采购入库：候选限定在单头来源的未到货采购行内；点选即按采购行加入明细。
+      // 采购退货关联档的物料来自原入库单，不能越出可退范围，不渲染筛选条。
       if (isDraft && !linked) {
-        if (d.txn_type !== '采购入库') {
+        if (isPurchaseIn) {
+          const pending = (this._ibSourceLines || []).filter(x => Number(x.unreceived_qty) > 0);
+          filterHtml = `<div class="pu-matfilter">
+            <span class="pu-msearch-host"><input id="ib_ol_kw" type="search" value="" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.ibOlKwInput(this)" onfocus="App.ibOlMsOpen(this)" onblur="App.msBlur()" onkeydown="App.msKey(event)" oncompositionstart="App.msCompositionStart()" oncompositionend="App.msCompositionEnd(this)"></span>
+            <span class="pu-mu" id="ib_ol_cnt">${pending.length}</span>
+            ${isCorr ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.loadInboundCorrectionPending()">${this.t('ibd_corr_load_pending')}</button>` : ''}
+          </div>`;
+        } else {
           const cats = [...new Set(mats.map(m => m.category).filter(Boolean))].sort();
           const catOpts = `<option value="">${this.t('all')}</option>` + cats.map(c =>
             `<option value="${this.ibEsc(c)}"${this._ibMatCat === c ? ' selected' : ''}>${this.ibEsc(c)}</option>`).join('');
           filterHtml = `<div class="pu-matfilter">
             <label>${this.t('mat_category')}<select id="ib_mat_cat">${catOpts}</select></label>
-            <input id="ib_mat_kw" type="search" value="${this.ibEsc(this._ibMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}">
+            <span class="pu-msearch-host"><input id="ib_mat_kw" type="search" value="${this.ibEsc(this._ibMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.ibMatKwInput(this)" onfocus="App.ibMsOpen(this)" onblur="App.msBlur()" onkeydown="App.msKey(event)" oncompositionstart="App.msCompositionStart()" oncompositionend="App.msCompositionEnd(this)"></span>
             <span class="pu-mu" id="ib_mat_cnt">${this.ibMatFiltered().length} / ${mats.length}</span>
             ${isCorr ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.loadInboundCorrectionPending()">${this.t('ibd_corr_load_pending')}</button>` : ''}
-          </div>`;
-        } else if (isCorr) {
-          // 更正草稿仍需「载入未到货」，但不带类别/关键字筛选
-          filterHtml = `<div class="pu-matfilter">
-            <button type="button" class="btn btn-outline btn-sm" onclick="App.loadInboundCorrectionPending()">${this.t('ibd_corr_load_pending')}</button>
           </div>`;
         }
       }
@@ -1883,6 +1844,72 @@ Object.assign(App, {
       requested: this.fmtQty(o.requested),
       over: this.fmtQty(o.over),
     })).join('<br>') + `<div class="ib-over-hint-tip">${this.t('ibd_over_receipt_soft_tip')}</div>`;
+  },
+
+  // ========== 添加明细：物料即时搜索 ==========
+  // 零星入库用全量物料；采购入库用所选来源的未到货采购行（见 ibOlMsOpen）
+  ibMatKwInput(el) {
+    this._ibMatKw = (el && el.value) || '';
+    this.ibRefreshMatOptions();
+    if (!this._ms || this._ms.input !== el) this.ibMsOpen(el);
+    else this.msInput(el);
+  },
+
+  ibMsOpen(el) {
+    if (this._msSuppressFocus) return;
+    this.msOpen(el, {
+      mode: 'materials',
+      category: () => this._ibMatCat || '',
+      stockOf: code => (this._inboundStockMap || {})[code],
+      isAdded: m => (this._ibEditLines || []).some(l => l.code === m.code),
+      onPick: m => this.ibAddFromSearch(m),
+    });
+  },
+
+  ibAddFromSearch(m) {
+    if (!this._ibEditLines) this._ibEditLines = [];
+    this._ibMatKw = '';
+    const price = this.hasField(m, 'opening_price') ? (m.opening_price || '') : '';
+    this._ibEditLines.push({ code: m.code, qty: '', price, remarks: '', order_line_id: 0, _locked: false });
+    this.renderInboundEditTable();
+  },
+
+  ibOlKwInput(el) {
+    if (!this._ms || this._ms.input !== el) this.ibOlMsOpen(el);
+    else this.msInput(el);
+  },
+
+  ibOlMsOpen(el) {
+    if (this._msSuppressFocus) return;
+    this.msOpen(el, {
+      mode: 'lines',
+      rows: () => (this._ibSourceLines || []).filter(x => Number(x.unreceived_qty) > 0),
+      sourceReady: () => !!this._ibSource,
+      stockOf: code => (this._inboundStockMap || {})[code],
+      isAdded: src => (this._ibEditLines || []).some(l => Number(l.order_line_id) === Number(src.id)),
+      onPick: src => this.ibAddOrderLineFromSearch(src),
+    });
+  },
+
+  // 点选采购行：字段与 ibPickOrderLine 完全一致，保证超收按 OL:<id> 分组校验
+  ibAddOrderLineFromSearch(src) {
+    if (!this._ibEditLines) this._ibEditLines = [];
+    this._ibEditLines.push({
+      code: src.code,
+      qty: '',
+      price: this.hasField(src, 'order_price') ? (Number(src.order_price) || 0) : '',
+      remarks: '',
+      po_no: src.po_no || '',
+      contract_no: src.contract_no_eff || '',
+      order_line_id: Number(src.id) || 0,
+      material_name: src.material_name || '',
+      material_spec: src.material_spec || '',
+      material_brand: src.material_brand || '',
+      material_unit: src.material_unit || '',
+      _outOfScope: false,
+      _locked: false,
+    });
+    this.renderInboundEditTable();
   },
 
   // 物料筛选：类别（精确）+ 编码/名称/规格/品牌（多关键字模糊）
@@ -2168,12 +2195,12 @@ Object.assign(App, {
             `${x.code}：${self.t('out_available')} ${self.fmtQty(x.available)}，${self.t('ibd_corr_after')} ${self.fmtQty(x.after)}`
           ).join('\n');
           self.confirmDialog(self.t('out_stock_short'),
-            `${e.message}${details ? '\n' + details : ''}\n\n${self.t('ibd_corr_fix_outbound')}`, () => {});
+            `${e.message}${details ? '\n' + details : ''}\n\n${self.t('ibd_corr_fix_outbound')}`, () => {}, null, 'primary');
         } else {
           self.toast(e.message, 'error');
         }
       }
-    });
+    }, null, 'primary');
   },
 
   // 退货量冲突：列出具体退货单，确认后跳转到退货模块对应单据
@@ -2189,7 +2216,7 @@ Object.assign(App, {
     this.confirmDialog(this.t('ibd_corr_return_conflict'),
       `${err.message}\n\n${details}` +
       (firstDoc ? `\n\n${this.t('ibd_corr_goto_return_hint')}` : ''),
-      firstDoc ? () => self.gotoReturnDoc(firstDoc) : null);
+      firstDoc ? () => self.gotoReturnDoc(firstDoc) : null, null, 'primary');
   },
 
   // 跳转到退货模块并定位退货单
@@ -2227,7 +2254,7 @@ Object.assign(App, {
     })).join('<br>');
     this.confirmDialog(this.t('ibd_over_receipt_title'),
       `${text}<br><br><b>${this.t('ibd_over_receipt_confirm_hint')}</b>`,
-      () => onDecided(true));
+      () => onDecided(true), null, 'primary');
   },
 
   ibShowOverReceiptError(e, retry) {
@@ -2239,7 +2266,7 @@ Object.assign(App, {
     })).join('<br>');
     this.confirmDialog(this.t('ibd_over_receipt_title'),
       `${details || this.ibEsc(e.message)}<br><br><b>${this.t('ibd_over_receipt_confirm_hint')}</b>`,
-      () => retry());
+      () => retry(), null, 'primary');
   },
 
   async saveInboundDraft() {
@@ -2374,7 +2401,7 @@ Object.assign(App, {
           }
           this.toast(e.message, 'error');
         }
-      });
+      }, null, 'primary');
   },
 
   // 确认入库（从详情页面，草稿已有明细行）
@@ -2414,7 +2441,7 @@ Object.assign(App, {
             this.toast(e.message, 'error');
           }
         }
-      });
+      }, null, 'primary');
   },
 
   // 采购退货库存不足：负库存硬拦，直接提示错误，不提供强制放行

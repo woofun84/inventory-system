@@ -45,7 +45,7 @@ npm start
 
 默认访问地址：`http://localhost:4000`。服务启动时会同时打印可用的局域网地址。
 
-`npm run init-db` 是可选的一次性初始化脚本，用于显式创建基础表与索引；正常启动时 `server/db.js` 也会完成建表与迁移，因此不是必须步骤。
+`npm run init-db` 是首次安装时的一次性初始化脚本，用于创建基础表、索引并导入种子字典；正常启动时 `server/db.js` 也会自动完成首次建库，因此通常不是必须步骤。目标库已存在时脚本默认拒绝执行、不会改动任何数据；确需重建请执行 `npm run init-db -- --force`（旧库会先整体备份为 `.bak-时间戳`，不会删除）。
 
 ### 环境变量
 
@@ -97,8 +97,8 @@ warehouse_cn/
 │     └─ time.js              # 时间处理辅助
 ├─ public/
 │  ├─ index.html              # SPA 入口（加载 css/ 与 js/ 编号脚本）
-│  ├─ login.html              # 独立登录页（使用 style.css）
-│  ├─ style.css               # 登录页样式
+│  ├─ login.html              # 独立登录页（加载 css/ 主题 + 页内登录样式）
+│  ├─ style.css               # 历史遗留主题，已无页面引用（勿新增引用）
 │  ├─ js/                     # 按编号顺序加载的前端脚本
 │  └─ css/                    # base / components / pages / theme-dark
 └─ backups/                   # 运行时生成：备份与危险操作前的自动快照

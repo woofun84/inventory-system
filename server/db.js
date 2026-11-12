@@ -12,12 +12,14 @@ const { DB_PATH, INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('./c
 // 自动初始化数据库
 if (!fs.existsSync(DB_PATH)) {
   console.log('数据库不存在，正在初始化...');
-  require('../init-db.js');
+  require('../init-db.js').initDatabase();
 }
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// 多实例共用一个库时，BEGIN IMMEDIATE 的写锁等待上限；超时抛 SQLITE_BUSY 由路由转成 DB_BUSY
+db.pragma('busy_timeout = 5000');
 
 // 判断表是否已存在：用于区分「首次建表」和「结构已就绪」，避免每次启动都输出「建表」
 const tableExists = name => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
@@ -35,6 +37,28 @@ function initSchema() {
     last_login TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
   )`);
+
+  // ==================== 物料档案唯一性约束 ====================
+  // 唯一键：类别 + 名称 + 规格 + 品牌。比较时 trim 并忽略大小写，空值按空串（COALESCE）。
+  // 建索引前先检测重复组：有冲突直接阻断启动并列出记录，不静默跳过、不自动合并。
+  const materialIdentityCols = `lower(trim(COALESCE(category,''))), lower(trim(COALESCE(name,''))),
+    lower(trim(COALESCE(spec,''))), lower(trim(COALESCE(brand,'')))`;
+  const materialDups = db.prepare(`SELECT COUNT(*) cnt, group_concat(code, '、') codes,
+      MIN(category) category, MIN(name) name, MIN(spec) spec, MIN(brand) brand
+    FROM materials
+    GROUP BY ${materialIdentityCols}
+    HAVING COUNT(*) > 1`).all();
+  if (materialDups.length) {
+    const lines = materialDups.map(g => {
+      const show = v => String(v || '').trim();
+      return `  类别「${show(g.category)}」名称「${show(g.name)}」规格「${show(g.spec)}」品牌「${show(g.brand)}」→ ${g.codes}`;
+    }).join('\n');
+    throw new Error(`物料档案存在 ${materialDups.length} 组「类别+名称+规格+品牌」重复记录（忽略大小写与首尾空格），无法建立唯一约束：\n${lines}\n请先人工合并或调整这些记录后再启动。`);
+  }
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='uq_materials_identity'").get()) {
+    db.exec(`CREATE UNIQUE INDEX uq_materials_identity ON materials(${materialIdentityCols})`);
+    console.log('索引: 物料档案 类别+名称+规格+品牌 唯一');
+  }
 
   // ==================== 入库单据头表 + 修改记录表 ====================
   // 设计要点：

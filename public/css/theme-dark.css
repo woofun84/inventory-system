@@ -25,34 +25,58 @@
   --sidebar-active-bg: #1d4ed8;
   --sidebar-active-text: #ffffff;
   --sidebar-hover-bg: #1e293b;
+  --sidebar-fg: #e2e8f0;
+  --sidebar-fg-muted: #94a3b8;
+
+  /* ===== 语义状态色 ===== */
+  --success-bg: rgba(34,197,94,0.15);
+  --success-fg: #4ade80;
+  --success-border: rgba(34,197,94,0.35);
+  --warning-bg: rgba(245,158,11,0.15);
+  --warning-fg: #fbbf24;
+  --warning-border: rgba(245,158,11,0.35);
+  --danger-bg: rgba(239,68,68,0.15);
+  --danger-fg: #f87171;
+  --danger-border: rgba(239,68,68,0.35);
+  --info-bg: rgba(6,182,212,0.15);
+  --info-fg: #22d3ee;
+  --info-border: rgba(6,182,212,0.35);
+  --neutral-bg: rgba(148,163,184,0.15);
+  --neutral-fg: #94a3b8;
+  --neutral-border: rgba(148,163,184,0.25);
+
+  --primary-bg: rgba(59,130,246,0.15);
+  --primary-ring: rgba(59,130,246,0.25);
+  --danger-ring: rgba(239,68,68,0.25);
+
+  /* 弱底色（条形图轨道等） */
+  --bg-muted: #334155;
+  --surface: #1e293b;
+
+  /* ===== 表格 ===== */
+  --table-head-bg: #1e293b;
+  --table-head-fg: #94a3b8;
+  --table-head-border: #334155;
+  --table-border: #1e293b;
+  --table-row-alt: rgba(30,41,59,0.5);
+  --table-row-hover: rgba(59,130,246,0.1);
+  --table-row-selected: rgba(59,130,246,0.18);
+  --table-cell-fg: #cbd5e1;
+
+  /* ===== 图表文字 / 网格 ===== */
+  --chart-text: #94a3b8;
+  --chart-grid: rgba(51,65,85,0.3);
+
+  /* ===== 流向 / 数值 ===== */
+  --flow-in: #22c55e;
+  --flow-out: #f59e0b;
+  --num-pos: #4ade80;
+  --num-neg: #f87171;
+  --num-zero: #fbbf24;
+  --num-warn: #fbbf24;
 }
 
-/* 暗色主题：表格 */
-[data-theme="dark"] .table-wrap thead th {
-  background: #1e293b;
-  color: #94a3b8;
-  border-bottom-color: #334155;
-}
-[data-theme="dark"] .table-wrap tbody td {
-  border-bottom-color: #1e293b;
-  color: #cbd5e1;
-}
-[data-theme="dark"] .table-wrap tbody tr:nth-child(even) {
-  background-color: rgba(30,41,59,0.5);
-}
-[data-theme="dark"] .table-wrap tbody tr:hover {
-  background-color: rgba(59,130,246,0.1);
-}
-[data-theme="dark"] .table-wrap tbody td:first-child {
-  color: #60a5fa;
-}
-
-/* 暗色主题：状态标签 */
-[data-theme="dark"] .badge-success { background: rgba(34,197,94,0.15); color: #4ade80; }
-[data-theme="dark"] .badge-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
-[data-theme="dark"] .badge-danger  { background: rgba(239,68,68,0.15); color: #f87171; }
-[data-theme="dark"] .badge-info    { background: rgba(6,182,212,0.15); color: #22d3ee; }
-[data-theme="dark"] .badge-muted   { background: rgba(148,163,184,0.15); color: #94a3b8; }
+/* 表格与徽标颜色全部由语义 token 驱动，暗色无需再单独覆盖 */
 
 /* 暗色主题：表单 */
 [data-theme="dark"] .form-group input,
@@ -61,6 +85,33 @@
   background: #0f172a;
   border-color: #334155;
   color: #e2e8f0;
+}
+
+/* 暗色主题：所有输入类控件的公共底色。
+   用 :where() 保持零特异性，已有 .pu-* / .form-group 等规则照常覆盖，
+   这里只兜住没有单独写样式的控件（如筛选栏里的裸 input/select、分析页下拉、表格内联编辑）。 */
+[data-theme="dark"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea
+) {
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  color-scheme: dark;
+}
+/* 筛选栏直接暴露在页面底色上的控件，跟随搜索框用卡片色 */
+[data-theme="dark"] .pu-toolbar :where(input, select) {
+  background-color: var(--card-bg);
+}
+/* 日期段 / 筛选 chip：容器自带底色与描边，内部控件保持透明无边框 */
+[data-theme="dark"] .pu-daterange :where(input, select) {
+  background-color: transparent;
+  border: 0;
+}
+[data-theme="dark"] :where(input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 [data-theme="dark"] .btn-outline {
   background: #1e293b;

@@ -39,7 +39,6 @@ Object.assign(App, {
     this.setMain(this.pageWrap('📤 ' + this.t('obd_title'), this.t('obd_desc'), '', this.obSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
-    this.injectOutboundStyles();
     this.obBindEvents();
     this.obRenderTabs();
     this.obRenderFilters();
@@ -211,7 +210,7 @@ Object.assign(App, {
         + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : '')],
       ['destination', this.t('obd_destination'), r => this.ibEsc(r.destination || '')],
       ['line_count', this.t('obd_lines'), r => r.line_count || 0, true],
-      ['total_qty', this.t('obd_qty'), r => this.qtyCell(r.total_qty), true],
+      ['total_qty', this.t('obd_qty'), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
       ['total_amount', this.t('obd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('obd_handler'), r => this.ibEsc(r.handler || '')],
       ['status', this.t('obd_status'), r => this.obdStatusBadge(r.status)],
@@ -229,8 +228,8 @@ Object.assign(App, {
   },
 
   obTypeBadge(t) {
-    if (t === '领料退库') return `<span class="badge badge-danger">${this.t('out_return')}</span>`;
-    return `<span class="badge badge-info">${this.t('out_normal')}</span>`;
+    const key = t === '领料退库' ? 'out_return' : 'out_normal';
+    return `<span class="badge ${this.docTypeBadgeClass(t === '领料退库' ? '领料退库' : '正常出库')}">${this.t(key)}</span>`;
   },
 
   obTypeLabel(t) {
@@ -386,13 +385,9 @@ Object.assign(App, {
 
   // 状态徽标
   obdStatusBadge(status) {
-    const map = {
-      draft: [this.t('obd_status_draft'), 'warning'],
-      posted: [this.t('obd_status_posted'), 'success'],
-      voided: [this.t('ibd_status_voided'), 'muted']
-    };
-    const m = map[status] || [status, 'muted'];
-    return `<span class="badge badge-${m[1]}">${m[0]}</span>`;
+    const label = { draft: 'obd_status_draft', posted: 'obd_status_posted', voided: 'ibd_status_voided' };
+    const cls = this.docStatusMeta(status).cls;
+    return `<span class="badge ${cls}">${label[status] ? this.t(label[status]) : status}</span>`;
   },
 
   // 出库编辑页统一壳：新建 / 编辑 / 更正三态共用（对齐入库、采购编辑页）
@@ -415,7 +410,6 @@ Object.assign(App, {
         ${o.extraHtml || ''}
         <div class="pu-edit-actions" id="ob-edit-buttons">${o.actions || ''}</div>
       </div>`));
-    this.injectOutboundStyles();
   },
 
   // 去向候选：destinations 词库 + 最近出库单实际值（去重）
@@ -515,7 +509,7 @@ Object.assign(App, {
       title: pageTitle,
       desc: this._obNoOrigin ? this.t('ret_no_origin_hint') : this.t('obd_create_hint'),
       backHtml: `<span class="action-link" onclick="App.backToOutboundList()">← ${this.t('obd_back_list')}</span>`,
-      badge: `<span class="badge badge-warning">${this.t('obd_status_draft')}</span>`,
+      badge: this.obdStatusBadge('draft'),
       formHtml,
       extraHtml: '<div id="ob-preload"></div>',
       actions: `<button class="btn btn-outline" onclick="App.backToOutboundList()">${this.t('cancel')}</button>
@@ -559,11 +553,11 @@ Object.assign(App, {
     if (!usable.length) { box.innerHTML = `<div class="ib-empty-draft">${this.t('ret_no_returnable')}</div>`; return; }
     this._obPreloadLines = usable.map(r => ({
       code: r.code, qty: '', origin_line_id: r.id, max_qty: Number(r.remaining) || 0,
-      cost_price: r.cost_price, material_name: r.material_name, material_spec: r.material_spec, remarks: ''
+      cost_price: r.cost_price, material_name: r.material_name, material_spec: r.material_spec, material_brand: r.material_brand, remarks: ''
     }));
     const vp = usable.length > 0 && this.hasField(usable[0], 'cost_price');
     const trs = usable.map((r, i) => `<tr>
-      <td>${this.ibEsc(r.code)}</td><td>${this.ibEsc(r.material_name || '')}</td><td>${this.ibEsc(r.material_spec || '')}</td>
+      <td>${this.ibLineLabel(r)}</td>
       <td class="text-right">${this.fmtQty(r.qty)}</td><td class="text-right">${this.fmtQty(r.returned_qty)}</td>
       <td class="text-right"><b>${this.fmtQty(r.remaining)}</b></td>
       <td style="min-width:110px"><input type="number" step="0.01" min="0.01" max="${r.remaining}" id="ob_pre_qty_${i}" oninput="App.obPreQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
@@ -571,7 +565,7 @@ Object.assign(App, {
     box.innerHTML = `<div class="pu-card">
       <div class="pu-card-title"><span>02</span><div>${this.t('ret_lines_stock')}<small>${this.t('ret_source_preview_hint', { n: usable.length })}</small></div></div>
       <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>
-        <th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th>
+        <th>${this.t('pu_material')}</th>
         <th class="text-right">${this.t('ret_source_orig_qty')}</th><th class="text-right">${this.t('ret_source_returned_qty')}</th>
         <th class="text-right">${this.t('ret_remaining_qty')}</th><th>${this.t('ret_qty')}</th>
         ${vp ? `<th class="text-right">${this.t('out_cost_price')}</th>` : ''}
@@ -679,75 +673,7 @@ Object.assign(App, {
     } catch (e) { this.toast(e.message, 'error'); }
   },
 
-  injectOutboundStyles() {
-    if (document.getElementById('outbound-ui-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'outbound-ui-styles';
-    style.textContent = `
-      .ib-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:12px;margin:4px 0 16px}
-      .ib-stat{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:13px 15px;min-width:0}
-      .ib-stat small{display:block;color:var(--text-muted);font-size:12px;margin-bottom:7px}
-      .ib-stat strong{font-size:22px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
-      .ib-stat em{font-style:normal;font-size:11px;color:var(--text-muted);margin-left:5px}
-      .ib-form-section{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:18px;margin:8px 0 16px}
-      .ib-section-title{display:flex;align-items:center;gap:11px;margin-bottom:16px}
-      .ib-section-title>span{display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--primary-bg,rgba(59,130,246,.12));color:var(--primary);font-weight:700}
-      .ib-section-title b,.ib-section-title small,.ib-next-step b,.ib-next-step small{display:block}
-      .ib-section-title small,.ib-next-step small{font-size:12px;color:var(--text-muted);margin-top:3px}
-      .ib-next-step{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--info-bg,rgba(14,165,233,.08));border:1px solid var(--border);border-radius:10px;padding:14px 16px}
-      .ib-new-actions{display:flex;gap:8px;flex-wrap:wrap}
-      .ib-doc-no{font-weight:650;font-variant-numeric:tabular-nums}
-      .ib-posted-hint{padding:10px;background:var(--info-bg,rgba(14,165,233,.1));border-left:3px solid var(--info,#0ea5e9);border-radius:6px;font-size:12px}
-      .ob-ref-hint{margin-top:8px;font-size:12px;color:var(--text-muted)}
-      .ob-batch-cb{width:auto}
-      .ib-empty-draft{padding:22px;text-align:center;background:var(--info-bg,rgba(14,165,233,.07));border:1px dashed var(--border);border-radius:9px;margin:12px 0}
-      @media(max-width:760px){.ib-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ib-next-step{align-items:flex-start;flex-direction:column}.ib-new-actions{width:100%}.ib-new-actions button{flex:1}}
-      .ob-voided-row{opacity:.72;background:var(--surface,transparent)}
-      .ob-voided-row td{color:var(--text-muted)}
-      .ob-voided-row .ib-doc-no{color:var(--text-muted)}
-      .ob-link-bar{margin:0 16px 10px;font-size:12px;color:var(--text-muted)}
-      .ob-link-bar .pu-lk{font-variant-numeric:tabular-nums}
-      .ib-corr-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 16px 12px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface,transparent);font-size:12px}
-      .ib-corr-bar i{font-style:normal;color:var(--text-muted)}
-      .ib-corr-void{display:inline-flex;align-items:center;gap:6px;color:var(--danger);font-weight:600;flex-wrap:wrap}
-      .ob-voided-panel{border-left:3px solid var(--danger)}
-      #ob-root.ob-dense .table-wrap tbody td{padding:4px 10px;height:auto;line-height:1.4}
-      #ob-root.ob-dense .table-wrap thead th{padding:6px 10px;height:auto}
-      .pu-dtabs{display:flex;gap:4px;margin:0 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
-      .pu-dtab{padding:7px 12px;border:0;background:none;border-bottom:3px solid transparent;color:var(--text-muted);font-size:13px;cursor:pointer;margin-bottom:-1px;white-space:nowrap;font-family:inherit}
-      .pu-dtab:hover{color:var(--primary)}
-      .pu-dtab[aria-selected=true]{color:var(--primary);border-bottom-color:var(--primary);font-weight:700}
-      .pu-lk{background:none;border:0;padding:0;color:var(--primary);font-weight:600;cursor:pointer;font-size:13px;font-family:inherit;text-align:left}
-      .pu-insp-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:0 16px 12px}
-      .pu-insp-meta div{display:flex;flex-direction:column;min-width:0}
-      .pu-insp-meta dt{color:var(--text-muted);font-size:12px}
-      .pu-insp-meta dd{margin:0;font-weight:600;font-size:13px;overflow-wrap:anywhere}
-      .rel-list{container-type:inline-size}
-      .rel-item{padding:10px 0;border-top:1px solid var(--border)}
-      .rel-item:first-child{border-top:0;padding-top:2px}
-      .rel-item-voided{opacity:.62}
-      .rel-line{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;min-width:0}
-      .rel-no{flex:0 0 auto;white-space:nowrap}
-      .rel-cell{font-size:12px;color:var(--text-muted);white-space:nowrap;min-width:0}
-      .rel-cell b{color:var(--text);font-weight:600}
-      .rel-cell small{font-size:11px;margin-right:3px}
-      .rel-status{flex:0 0 auto}
-      .rel-amount{margin-left:auto}
-      .rel-break{display:none}
-      @container (max-width:620px){
-        .rel-line{flex-wrap:wrap;gap:3px 10px}
-        .rel-no{order:1;flex:1 1 auto;white-space:normal;overflow-wrap:anywhere}
-        .rel-status{order:2}
-        .rel-break{display:block;order:3;flex:0 0 100%;height:0}
-        .rel-date{order:4}
-        .rel-type{order:5}
-        .rel-party{order:6}
-        .rel-qty{order:7}
-        .rel-amount{order:8;margin-left:0}
-      }
-    `;
-    document.head.appendChild(style);
-  },
+  // 出库/入库共用样式已收敛到 public/css/pages.css，不再运行时注入
 
   // ========== 出库单据详情（右侧栏，原地展开） ==========
   // 对外入口保持不变，入库/采购跨模块互链仍调用这个函数
@@ -959,8 +885,8 @@ Object.assign(App, {
       const ex = s.ex.has(String(l.id));
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" data-ob="ex" data-id="${l.id}" aria-expanded="${ex}">
-          <span class="pu-line-n"><strong>${this.ibEsc(l.code)}</strong> ${this.ibEsc(l.material_name || '')} <span class="pu-mu">${this.ibEsc(l.material_spec || '')}</span></span>
-          <span class="pu-line-q">${this.qtyCell(l.qty)}${this.ibEsc(l.material_unit || '')}</span>
+          <span class="pu-line-n"><strong>${this.ibEsc(l.code)}</strong> ${this.ibEsc(l.material_name || '')} <span class="pu-mu">${this.ibEsc(l.material_spec || '')}${l.material_brand ? ` · ${this.ibEsc(l.material_brand)}` : ''}</span></span>
+          <span class="pu-line-q">${this.fmtQty(this.qtyAbs(l.qty))}${this.ibEsc(l.material_unit || '')}</span>
         </button>
         ${ex ? `<div class="pu-line-d">
           <div class="pu-mu">${this.hasField(l, 'cost_price') ? `${this.t('out_cost_price')} ${this.fmtMoney(l.cost_price)} · ${this.t('out_cost_amount')} ${this.fmtMoney(l.cost_amount)}` : ''}${l.cost_basis ? `${this.hasField(l, 'cost_price') ? ' · ' : ''}${this.t('cost_basis_label')} ${this.costBasisBadge(l.cost_basis)}` : ''}${l.receiver ? `${(this.hasField(l, 'cost_price') || l.cost_basis) ? ' · ' : ''}${this.t('out_receiver')} ${this.ibEsc(l.receiver)}` : ''}</div>
@@ -976,12 +902,8 @@ Object.assign(App, {
     const vp = lines.length > 0 && this.hasField(lines[0], 'cost_price');
     const tid = 'outbound_detail_lines';
     const cols = [
-      ['code', this.t('mat_code'), r => this.ibEsc(r.code)],
-      ['material_name', this.t('mat_name'), r => this.ibEsc(r.material_name || '')],
-      ['material_spec', this.t('mat_spec'), r => this.ibEsc(r.material_spec || '')],
-      ['material_brand', this.t('mat_brand'), r => this.ibEsc(r.material_brand || '')],
-      ['material_unit', this.t('mat_unit'), r => this.ibEsc(r.material_unit || '')],
-      ['qty', this.t('out_qty'), r => this.qtyCell(r.qty), true],
+      ['code', this.t('pu_material'), r => this.ibLineLabel(r)],
+      ['qty', this.t('out_qty'), r => this.fmtQty(this.qtyAbs(r.qty)), true],
       ['cost_basis', this.t('cost_basis_label'), r => this.costBasisBadge(r.cost_basis)],
       ['cost_price', this.t('out_cost_price'), r => this.fmtMoney(r.cost_price), true, vp],
       ['cost_amount', this.t('out_cost_amount'), r => this.fmtMoney(r.cost_amount), true, vp],
@@ -1110,15 +1032,16 @@ Object.assign(App, {
     this._materialsCache = materials;
     let stockMap = {};
     let avgMap = {};
+    let stockRows = [];
     try {
-      const stock = await this.api('/api/stock-summary');
-      stockMap = Object.fromEntries(stock.map(s => [s.code, s.on_hand]));
-      avgMap = Object.fromEntries(stock.map(s => [s.code, Number(s.avg_price) || 0]));
+      stockRows = await this.api('/api/stock-summary');
+      stockMap = Object.fromEntries(stockRows.map(s => [s.code, s.on_hand]));
+      avgMap = Object.fromEntries(stockRows.map(s => [s.code, Number(s.avg_price) || 0]));
     } catch (e) {}
     this._outboundStockMap = stockMap;
     this._outboundAvgMap = avgMap;
     // 参考单价的可见性以 stock-summary 是否下发 avg_price 为准（新页面没有单据明细可判断）
-    this._obPriceVisibleByStock = stock.length > 0 ? this.hasField(stock[0], 'avg_price') : null;
+    this._obPriceVisibleByStock = stockRows.length > 0 ? this.hasField(stockRows[0], 'avg_price') : null;
     await this.obEnsureDestDocs();
 
     // 2C：退库单加载原出库单候选与可退量上限
@@ -1271,6 +1194,7 @@ Object.assign(App, {
 
   // 只重渲染表格部分（避免重建工具栏打断 IME）
   renderOutboundEditTable() {
+    this.msClose();
     const d = this._obDetail;
     if (!d) return;
     const isDraft = d.status === 'draft';
@@ -1286,14 +1210,13 @@ Object.assign(App, {
     const refAmtLabel = isDraft ? this.t('obd_ref_amount') : this.t('pu_line_amount');
 
     const headers = [
-      this.t('mat_code'), this.t('mat_name'), this.t('mat_spec'),
-      this.t('mat_brand'), this.t('mat_unit'),
+      this.t('pu_material'),
       this.t('out_qty'), availLabel,
       ...(vp ? [refLabel, refAmtLabel] : []),
       this.t('out_remarks'), ''
     ];
     const numCols = 2 + (vp ? 2 : 0);
-    let thHtml = headers.map((h, i) => `<th${i >= 5 && i < 5 + numCols ? ' class="text-right"' : ''}>${h}</th>`).join('');
+    let thHtml = headers.map((h, i) => `<th${i >= 1 && i < 1 + numCols ? ' class="text-right"' : ''}>${h}</th>`).join('');
 
     let tbody = '';
     if (lines.length === 0) {
@@ -1313,10 +1236,10 @@ Object.assign(App, {
         const availText = locked ? (origLine ? origLine.qty : '-')
           : isLinked ? (remain === undefined ? '-' : remain)
           : (available === undefined || available === null ? '-' : available);
-        const availColor = isLinked
-          ? (remain === 0 ? 'var(--warning)' : 'var(--success)')
-          : (available === undefined || available === null ? 'var(--text-muted)'
-            : (available < 0 ? 'var(--danger)' : (available === 0 ? 'var(--warning)' : 'var(--success)')));
+        const availCls = isLinked
+          ? (remain === 0 ? 'num-warn' : '')
+          : (available === undefined || available === null ? 'num-zero'
+            : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : '')));
         // 参考单价：过账单取实际成本；草稿按来源（原出库行 / 原单行 / 当前加权平均）估算，不参与保存
         const refPrice = this.obRefPrice(l, locked, origLine);
         const refText = l.code ? this.fmtMoney(refPrice) : '-';
@@ -1325,7 +1248,7 @@ Object.assign(App, {
         if (isDraft) {
           // 已关联原出库行的退库明细不允许换料，避免绕过可退量校验；更正草稿的预填行同样锁定物料
           const codeCell = (isLinked || locked)
-            ? `<span class="ib-doc-no">${this.ibEsc(l.code)}</span>`
+            ? `<span class="ib-doc-no">${this.ibLineLabel(l)}</span>`
             : `<select class="ob-line-mat" data-idx="${i}" onchange="App.obPickMaterial(${i}, this.value)">${this.obMatOpts(l.code)}</select>`;
           const maxAttr = isLinked && remain !== undefined ? ` max="${remain}"` : '';
           const qtyInput = `<input type="number" step="0.01" min="0.01"${maxAttr} class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">`;
@@ -1333,27 +1256,19 @@ Object.assign(App, {
           const delBtn = `<button type="button" class="pu-edit-del" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</button>`;
           return `<tr>
             <td style="min-width:220px">${codeCell}</td>
-            <td>${l.material_name || ''}</td>
-            <td>${l.material_spec || ''}</td>
-            <td>${l.material_brand || ''}</td>
-            <td>${l.material_unit || ''}</td>
             <td style="min-width:100px">${qtyInput}</td>
-            <td class="pu-edit-amt" style="font-size:12px;color:${availColor}">${availText}</td>
+            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
             ${vp ? `<td class="pu-edit-amt" style="color:var(--text-muted)" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt" style="color:var(--text-muted)" data-line-amount="${i}">${refAmountText}</td>` : ''}
             <td style="min-width:140px">${remarksInput}</td>
             <td>${delBtn}</td>
           </tr>`;
         } else {
           const qty = l.qty || 0;
-          const qtyColor = qty < 0 ? 'var(--danger)' : 'var(--text)';
+          const qtyCls = qty < 0 ? 'num-neg' : '';
           return `<tr>
-            <td>${l.code}</td>
-            <td>${l.material_name || ''}</td>
-            <td>${l.material_spec || ''}</td>
-            <td>${l.material_brand || ''}</td>
-            <td>${l.material_unit || ''}</td>
-            <td class="text-right" style="color:${qtyColor}">${qty}</td>
-            <td class="pu-edit-amt" style="font-size:12px;color:${availColor}">${availText}</td>
+            <td>${this.ibLineLabel(l)}</td>
+            <td class="text-right${qtyCls ? ' ' + qtyCls : ''}">${qty}</td>
+            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
             ${vp ? `<td class="pu-edit-amt">${refText}</td><td class="pu-edit-amt">${refAmountText}</td>` : ''}
             <td>${l.remarks || ''}</td>
             <td></td>
@@ -1380,7 +1295,7 @@ Object.assign(App, {
         `<option value="${this.ibEsc(c)}"${this._obMatCat === c ? ' selected' : ''}>${this.ibEsc(c)}</option>`).join('');
       filterHtml = `<div class="pu-matfilter">
         <label>${this.t('mat_category')}<select id="ob_mat_cat" onchange="App.obSetMatCat(this.value)">${catOpts}</select></label>
-        <input id="ob_mat_kw" type="search" value="${this.ibEsc(this._obMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.obSetMatKw(this.value)">
+        <span class="pu-msearch-host"><input id="ob_mat_kw" type="search" value="${this.ibEsc(this._obMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.obMatKwInput(this)" onfocus="App.obMsOpen(this)" onblur="App.msBlur()" onkeydown="App.msKey(event)" oncompositionstart="App.msCompositionStart()" oncompositionend="App.msCompositionEnd(this)"></span>
         <span class="pu-mu" id="ob_mat_cnt">${this.obMatFiltered().length} / ${mats.length}</span>
       </div>`;
     }
@@ -1439,7 +1354,32 @@ Object.assign(App, {
 
   obSetMatCat(val) { this._obMatCat = val || ''; this.obRefreshMatOptions(); },
 
-  obSetMatKw(val) { this._obMatKw = val || ''; this.obRefreshMatOptions(); },
+  // 输入：既刷新行内下拉候选（原有行为），又触发即时搜索面板
+  obMatKwInput(el) {
+    this._obMatKw = (el && el.value) || '';
+    this.obRefreshMatOptions();
+    if (!this._ms || this._ms.input !== el) this.obMsOpen(el);
+    else this.msInput(el);
+  },
+
+  obMsOpen(el) {
+    if (this._msSuppressFocus) return;
+    this.msOpen(el, {
+      mode: 'materials',
+      category: () => this._obMatCat || '',
+      stockOf: code => (this._outboundStockMap || {})[code],
+      isAdded: m => (this._obEditLines || []).some(l => l.code === m.code),
+      onPick: m => this.obAddFromSearch(m),
+    });
+  },
+
+  // 点选候选项：直接加入一行明细（不做来源限制，与行内下拉同口径）
+  obAddFromSearch(m) {
+    if (!this._obEditLines) this._obEditLines = [];
+    this._obMatKw = '';
+    this._obEditLines.push({ code: m.code, qty: '', cost_price: 0, remarks: '' });
+    this.renderOutboundEditTable();
+  },
 
   // 筛选变化时就地刷新各行物料下拉（不重建整张表，避免输入焦点丢失）
   obRefreshMatOptions() {
@@ -1581,7 +1521,7 @@ Object.assign(App, {
     } else {
       tbody.innerHTML = list.map(m => {
         const q = this.obStockOf(m.code);
-        const color = q < 0 ? 'var(--danger)' : (q === 0 ? 'var(--warning)' : 'var(--success)');
+        const cls = q < 0 ? 'num-neg' : (q === 0 ? 'num-warn' : '');
         return `<tr>
           <td><input type="checkbox" class="ob-batch-cb" data-code="${this.ibEsc(m.code)}"${st.sel.has(m.code) ? ' checked' : ''} onchange="App.obBatchToggle(this.dataset.code, this.checked)"></td>
           <td>${this.ibEsc(m.code)}</td>
@@ -1589,7 +1529,7 @@ Object.assign(App, {
           <td>${this.ibEsc(m.spec || '')}</td>
           <td>${this.ibEsc(m.brand || '')}</td>
           <td>${this.ibEsc(m.unit || '')}</td>
-          <td class="text-right" style="color:${color};font-variant-numeric:tabular-nums">${this.fmtQty(q)}</td>
+          <td class="text-right${cls ? ' ' + cls : ''}" style="font-variant-numeric:tabular-nums">${this.fmtQty(q)}</td>
         </tr>`;
       }).join('');
     }
@@ -1819,7 +1759,7 @@ Object.assign(App, {
                   } catch (e2) {
                     this.toast(e2.code === 'NO_BASIS_FORBIDDEN' ? this.t('cost_basis_none_forbidden') : e2.message, 'error');
                   }
-                });
+                }, null, 'primary');
             } else {
               this.toast(e.message, 'error');
             }
@@ -1827,7 +1767,7 @@ Object.assign(App, {
         } catch (e) {
           this.toast(e.message, 'error');
         }
-      });
+      }, null, 'primary');
   },
 
   // ========== 更正重开（出库 / 退库） ==========
@@ -1915,7 +1855,7 @@ Object.assign(App, {
       } catch (e) {
         self.toast(e.message, 'error');
       }
-    });
+    }, null, 'primary');
   },
 
   // 确认出库（从详情页面，草稿已有明细行）
@@ -1951,7 +1891,7 @@ Object.assign(App, {
             this.toast(e.message, 'error');
           }
         }
-      });
+      }, null, 'primary');
   },
 
   // 出库库存不足：负库存硬拦，直接提示错误，不提供强制放行

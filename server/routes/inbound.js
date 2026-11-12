@@ -22,6 +22,7 @@ const sign = require('../services/sign');
 const audit = require('../services/audit');
 const { packDetail } = require('../services/logdetail');
 const { maskRows } = require('../services/price-mask');
+const { isBusy, busyBody, businessError, withEn, stockBody, bizBody } = require('../services/errors');
 
 // ==================== 采购退货三档（2026-11 第五批） ====================
 // 档 1 inbound  关联原入库单；档 2 po/contract 关联采购单/合同；
@@ -500,11 +501,9 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
   if (!['采购入库', '采购退货', '零星入库'].includes(txnType)) {
     return res.status(400).json({ error: '入库类型不合法', code: 'INVALID_TXN_TYPE' });
   }
-  const docNo = body.doc_no || genInboundDocNo(date, txnType);
+  // 单号在事务内生成，避免多实例并发建单时撞号
+  let docNo = body.doc_no ? String(body.doc_no).trim() : '';
   try {
-    const exist = db.prepare("SELECT doc_no FROM inbound_docs WHERE doc_no=?").get(docNo);
-    if (exist) return res.status(400).json({ error: '单据号已存在: ' + docNo });
-
     // 空草稿兜底：无任何有效明细，且单头无关键字段（供应商/来源/备注/原单）时拒绝建单
     const validLineCount = Array.isArray(body.lines) ? body.lines.filter(l => l && l.code).length : 0;
     const hasHeaderContent = [body.supplier, body.po_no, body.contract_no, body.origin_doc_no,
@@ -518,6 +517,10 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
 
     // 单头 + 明细同一事务：明细校验失败时回滚单头，避免留下空草稿
     const createdTx = db.transaction(() => {
+    if (!docNo) docNo = genInboundDocNo(date, txnType);
+    if (db.prepare("SELECT 1 AS ok FROM inbound_docs WHERE doc_no=?").get(docNo)) {
+      throw businessError('DOC_NO_CONFLICT', `单据号 ${docNo} 已被其他请求占用，请重试`, undefined, 409);
+    }
     db.prepare(`INSERT INTO inbound_docs (doc_no, date, txn_type, supplier, handler, po_no, contract_no, status, remarks, created_by,
         return_tier, origin_doc_no, return_ref_no, return_reason)
       VALUES (@doc_no, @date, @txn_type, @supplier, @handler, @po_no, @contract_no, 'draft', @remarks, @created_by,
@@ -560,12 +563,19 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
       });
     }
     });
-    createdTx();
+    createdTx.immediate();
 
     logInboundDoc(docNo, 'create', req.user?.name || req.user?.username, { key: 'audit_detail_ib_create' });
     res.json({ success: true, doc_no: docNo });
   } catch (e) {
-    res.status(e.status || 400).json({ error: e.message, code: e.code || 'INBOUND_DOC_CREATE_FAILED' });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    if (/UNIQUE constraint failed: inbound_docs\.doc_no/.test(String(e.message || ''))) {
+      return res.status(409).json(withEn({
+        code: 'DOC_NO_CONFLICT',
+        error: `单据号 ${docNo} 已被其他请求占用，请重试`,
+      }));
+    }
+    res.status(e.status || 400).json(withEn(bizBody(e, 'INBOUND_DOC_CREATE_FAILED')));
   }
 });
 
@@ -780,66 +790,66 @@ router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), 
     return res.status(400).json({ error: '更正草稿必须走「确认更正」接口', code: 'USE_CORRECTION_CONFIRM' });
   }
 
-  const lines = db.prepare("SELECT * FROM inbound WHERE doc_no=?").all(docNo);
-  if (lines.length === 0) return res.status(400).json({ error: '单据没有明细行，无法确认' });
-
   // 采购入库/采购退货必须有供应商；零星入库允许空供应商
   if (['采购入库', '采购退货'].includes(doc.txn_type) && !String(doc.supplier || '').trim()) {
     return res.status(400).json({ error: '采购入库/采购退货必须填写供应商', code: 'SUPPLIER_REQUIRED' });
   }
 
   let overReceipt = [];
+  let lineCount = 0;
+  const operator = req.user?.name || req.user?.username || '';
 
   try {
-    // 采购退货：确认时再次校验档位/权限/原因
+    // 采购退货：确认时再次校验档位/权限/原因（只读单头，放在事务外）
     validateReturnTierHeader(doc, req.user);
-    // 采购入库：来源归属 + 超收（确认强制要求来源；超收需前端二次确认后显式放行）
-    overReceipt = validatePurchaseInboundScope(doc, lines, {
-      requireSource: true,
-      allowOver: req.body.over_receipt_confirm === true,
-    });
-    let sources = new Map();
-    if (isPurchaseReturnDoc(doc) && normalizeReturnTier(doc.return_tier) !== 'none') {
-      sources = validatePurchaseReturnLines(doc, lines);
-      // 关联档单价必须等于原入库行单价，防止绕过前端改写成本
-      lines.forEach(l => {
-        const src = sources.get(String(l.origin_line_id));
-        if (!src) return; // validatePurchaseReturnLines 已抛出
-        if (Math.abs(sign.storedAbs(l.price) - src.price) > 1e-6) {
-          throw routeFail('RETURN_PRICE_MISMATCH', `物料 ${l.code} 的退货单价必须继承原入库行单价 ${src.price}`);
-        }
-      });
-    }
+    // BEGIN IMMEDIATE：状态守卫、超收/可退量校验、库存校验与写流水在同一临界区
     const tx = db.transaction(() => {
+      // 事务内重读明细，避免读到过期的草稿行
+      const lines = db.prepare("SELECT * FROM inbound WHERE doc_no=?").all(docNo);
+      if (lines.length === 0) throw businessError('NO_LINES', '单据没有明细行，无法确认');
+      // 采购入库：来源归属 + 超收（确认强制要求来源；超收需前端二次确认后显式放行）
+      overReceipt = validatePurchaseInboundScope(doc, lines, {
+        requireSource: true,
+        allowOver: req.body.over_receipt_confirm === true,
+      });
+      if (isPurchaseReturnDoc(doc) && normalizeReturnTier(doc.return_tier) !== 'none') {
+        const sources = validatePurchaseReturnLines(doc, lines);
+        // 关联档单价必须等于原入库行单价，防止绕过前端改写成本
+        lines.forEach(l => {
+          const src = sources.get(String(l.origin_line_id));
+          if (!src) return; // validatePurchaseReturnLines 已抛出
+          if (Math.abs(sign.storedAbs(l.price) - src.price) > 1e-6) {
+            throw routeFail('RETURN_PRICE_MISMATCH', `物料 ${l.code} 的退货单价必须继承原入库行单价 ${src.price}`);
+          }
+        });
+      }
       // 采购退货库存校验：负库存硬拦，不提供强制放行
       validateInboundReturnStock(lines);
+      // 校验全部通过后再翻转单据状态：状态守卫保证跨实例重复确认只有第一个能改到行
+      // （必须先校验后改状态，否则退货单会把自己算进“已过账退货量”而误判超退）
+      const posted = db.prepare(`UPDATE inbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
+        WHERE doc_no=? AND status='draft'`).run(operator, docNo);
+      if (posted.changes === 0) {
+        throw businessError('DOC_STATE_CHANGED', '单据已被其他请求处理（可能已确认或作废），请刷新后重试', undefined, 409);
+      }
       // 明细行过账
       db.prepare("UPDATE inbound SET status='posted' WHERE doc_no=?").run(docNo);
       // 统一成本服务：生成入库/退货流水并刷新结存（幂等，按核算顺序重算该物料）
       costing.postInboundDoc(doc, lines);
-      // 单据头过账
-      db.prepare("UPDATE inbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now') WHERE doc_no=?")
-        .run(req.user?.name || req.user?.username || '', docNo);
-      logInboundDoc(docNo, 'confirm', req.user?.name || req.user?.username,
+      logInboundDoc(docNo, 'confirm', operator,
         { key: 'audit_detail_ib_confirm', params: { n: lines.length } });
+      lineCount = lines.length;
     });
-    tx();
+    tx.immediate();
     if (overReceipt.length) {
-      logInboundDoc(docNo, 'over-receipt', req.user?.name || req.user?.username,
+      logInboundDoc(docNo, 'over-receipt', operator,
         { key: 'audit_detail_ib_confirm_over', params: { list: overReceiptLineParams(overReceipt) } });
     }
-    res.json({ success: true, line_count: lines.length, over_receipt: overReceipt });
+    res.json({ success: true, line_count: lineCount, over_receipt: overReceipt });
   } catch (e) {
-    if (e.stockError) {
-      return res.status(400).json({
-        error: `库存不足：${e.details.map(d => `${d.code} 需 ${d.requested}，可用 ${d.available}`).join('；')}`,
-        code: 'INSUFFICIENT_STOCK',
-        details: e.details
-      });
-    }
-    const body = { error: e.message, code: e.code || 'INBOUND_CONFIRM_FAILED' };
-    if (e.details) body.details = e.details;
-    res.status(e.status || 400).json(body);
+    if (e.stockError) return res.status(400).json(stockBody(e));
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(bizBody(e, 'INBOUND_CONFIRM_FAILED'));
   }
 });
 
@@ -1100,12 +1110,32 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
   const balBefore = costing.captureBalances();
   try {
     const tx = db.transaction(() => {
+      // 事务内复核：跨实例并发退货/更正时，以写锁内最新数据为准
+      if (reopen) {
+        if (doc.txn_type === '采购入库') {
+          overReceipt = validatePurchaseInboundScope(doc, draftLines, {
+            requireSource: false,
+            allowOver: req.body.over_receipt_confirm === true,
+          });
+        }
+        if (isPurchaseReturnDoc(orig)) {
+          validatePurchaseReturnLines(orig, draftLines, orig.doc_no);
+        }
+        origLines.forEach(ol => {
+          const target = newByKey.get(correctionLineKey(ol));
+          const newQty = target ? sign.absQty(target.qty) : 0;
+          if (getPurchaseReturnedQtyByLine(ol.id) > newQty + 0.0001) {
+            throw businessError('RETURN_EXCEEDS_CORRECTED_QTY',
+              `物料 ${ol.code}：已确认退货量已超过更正后的新数量 ${newQty}，请先更正相关退货单`);
+          }
+        });
+      }
       // 1) 原单及明细作废（系统设置，用户不能手动作废）
       const voided = db.prepare(`UPDATE inbound_docs SET status='voided', voided_at=datetime('now'), voided_by=?,
           corrected_by_doc_no=? WHERE doc_no=? AND status='posted'`)
         .run(operator, reopen ? docNo : '', orig.doc_no);
       if (voided.changes === 0) {
-        throw routeFail('DOC_STATE_CHANGED', '原单状态已变化，请刷新后重试');
+        throw businessError('DOC_STATE_CHANGED', '原单状态已变化，请刷新后重试', undefined, 409);
       }
       db.prepare("UPDATE inbound SET status='voided' WHERE doc_no=?").run(orig.doc_no);
 
@@ -1137,8 +1167,9 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
           ...(ledgerVoid.anchor || {}),
           correctionOf: orig.doc_no,
         });
-        db.prepare(`UPDATE inbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
-          WHERE doc_no=?`).run(operator, docNo);
+        const postedNew = db.prepare(`UPDATE inbound_docs SET status='posted', confirmed_by=?, confirmed_at=datetime('now')
+          WHERE doc_no=? AND status='draft'`).run(operator, docNo);
+        if (postedNew.changes === 0) throw businessError('DOC_STATE_CHANGED', '更正草稿状态已变化，请刷新后重试', undefined, 409);
       } else {
         db.prepare("DELETE FROM inbound WHERE doc_no=?").run(docNo);
         db.prepare("DELETE FROM inbound_docs WHERE doc_no=?").run(docNo);
@@ -1183,7 +1214,7 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
         over_receipt: overReceipt
       };
     });
-    tx();
+    tx.immediate();
     try {
       costing.logCorrection({
         kind: reopen ? 'void-reopen' : 'void-only',
@@ -1200,7 +1231,8 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
         operator, before: balBefore, status: 'failed', message: e.message,
       });
     } catch (le) { console.error('重算日志写入失败:', le.message); }
-    res.status(e.status || 400).json({ error: e.message, code: e.code || 'CORRECTION_CONFIRM_FAILED', details: e.details });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(withEn({ error: e.message, code: e.code || 'CORRECTION_CONFIRM_FAILED', details: e.details }));
   }
 });
 

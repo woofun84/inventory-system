@@ -130,7 +130,7 @@ Object.assign(App, {
   docRevisionBadge(docNo) {
     const m = String(docNo == null ? '' : docNo).match(/-R(\d+)$/);
     if (!m) return '';
-    return `<span class="badge badge-muted">${this.t('doc_revision', { n: Number(m[1]) })}</span>`;
+    return `<span class="badge badge-info">${this.t('doc_revision', { n: Number(m[1]) })}</span>`;
   },
 
   // 生成可排序的表头（right=true 时右对齐，与数字列的数据单元格保持一致）
@@ -286,6 +286,269 @@ Object.assign(App, {
     });
   },
 
+  // ========== 添加明细：物料即时搜索 ==========
+  // 统一入口：候选的取数与过滤只在这里实现，出库/入库/采购单共用。
+  // 物料与来源行在打开编辑页时已全量缓存，这里按关键字在本地过滤，按键不产生网络请求；
+  // 200ms 防抖合并连续输入，最多渲染 20 条，避免大列表造成卡顿。
+  msLimit() { return 20; },
+
+  msDebounceMs() { return 200; },
+
+  msOpen(input, opts) {
+    if (!input) return;
+    this.msClose();
+    this._ms = {
+      input, opts: opts || {}, rows: [], active: -1,
+      timer: null, composing: false, truncated: false,
+    };
+    input.setAttribute('autocomplete', 'off');
+    // 用 addEventListener 绑定组词事件（内联 oncompositionstart/end 在部分浏览器不生效）
+    const st = this._ms;
+    st.onCompStart = () => { if (this._ms === st) st.composing = true; };
+    st.onCompEnd = () => {
+      if (this._ms !== st) return;
+      st.composing = false;
+      this.msInput(input);
+    };
+    input.addEventListener('compositionstart', st.onCompStart);
+    input.addEventListener('compositionend', st.onCompEnd);
+    // 页面内滚动/窗口尺寸变化时收起，避免固定定位浮层脱离输入框
+    this._msCloseOnMove = e => {
+      if (this._msPanel && e.type === 'scroll' && e.target === this._msPanel) return;
+      this.msClose();
+    };
+    window.addEventListener('scroll', this._msCloseOnMove, true);
+    window.addEventListener('resize', this._msCloseOnMove);
+    this.msInput(input);
+  },
+
+  msInput(input) {
+    const st = this._ms;
+    if (!st || !input || st.input !== input) return;
+    // 中文输入法组词过程中不触发匹配
+    if (input.isComposing || st.composing) return;
+    clearTimeout(st.timer);
+    st.active = -1;
+    const kw = String(input.value || '').trim();
+    if (!kw) { this.msRender({ hint: true }); return; }
+    this.msRender({ loading: true });
+    st.timer = setTimeout(() => this.msRender(), this.msDebounceMs());
+  },
+
+  msCompositionStart() {
+    if (this._ms) this._ms.composing = true;
+  },
+
+  msCompositionEnd(input) {
+    if (this._ms) this._ms.composing = false;
+    this.msInput(input);
+  },
+
+  // 唯一过滤入口：materials=物料缓存；lines=采购入库来源采购行
+  msCandidates(kw, opts) {
+    opts = opts || {};
+    const limit = this.msLimit();
+    let rows;
+    if (opts.mode === 'lines') {
+      const src = opts.rows ? opts.rows() : [];
+      rows = this.filterByKeywords(src, kw, ['code', 'material_name', 'material_spec', 'material_brand', 'po_no']);
+    } else {
+      let mats = opts.rows ? opts.rows() : (this._materialsCache || []);
+      const cat = opts.category ? opts.category() : '';
+      if (cat) mats = mats.filter(m => m.category === cat);
+      rows = this.filterByKeywords(mats, kw, ['code', 'name', 'spec', 'brand']);
+    }
+    return { rows: rows.slice(0, limit), truncated: rows.length > limit };
+  },
+
+  msStockOf(row, opts) {
+    let v;
+    if (opts && opts.stockOf) v = opts.stockOf(row.code);
+    if (v === undefined || v === null) v = row.on_hand;
+    return v === undefined || v === null || v === '' ? null : Number(v);
+  },
+
+  msEnsurePanel() {
+    if (this._msPanel && document.body.contains(this._msPanel)) return;
+    const el = document.createElement('div');
+    el.className = 'pu-msearch';
+    el.id = 'pu-msearch-panel';
+    el.hidden = true;
+    document.body.appendChild(el);
+    this._msPanel = el;
+  },
+
+  msRender(o) {
+    o = o || {};
+    const st = this._ms;
+    if (!st) return;
+    this.msEnsurePanel();
+    const panel = this._msPanel;
+    if (!panel) return;
+    const esc = v => this.docEsc(v);
+    const t = k => this.t(k);
+    panel.hidden = false;
+
+    if (o.hint) {
+      panel.innerHTML = `<div class="pu-msearch-state">${t('pu_mat_filter_ph')}</div>`;
+      this.msPosition();
+      return;
+    }
+    if (o.loading) {
+      panel.innerHTML = `<div class="pu-msearch-state">${t('ms_loading')}</div>`;
+      this.msPosition();
+      return;
+    }
+    if (st.opts.sourceReady && !st.opts.sourceReady()) {
+      st.rows = [];
+      panel.innerHTML = `<div class="pu-msearch-state">${t('ms_source_first')}</div>`;
+      this.msPosition();
+      return;
+    }
+
+    const kw = String((st.input && st.input.value) || '').trim();
+    const res = this.msCandidates(kw, st.opts);
+    st.rows = res.rows;
+    st.truncated = res.truncated;
+    if (!st.rows.length) {
+      panel.innerHTML = `<div class="pu-msearch-state">${t('ms_none')}</div>`;
+      this.msPosition();
+      return;
+    }
+
+    const isLines = st.opts.mode === 'lines';
+    const items = st.rows.map((r, i) => {
+      const name = isLines ? (r.material_name || r.name || '') : (r.name || '');
+      const spec = isLines ? (r.material_spec || r.spec || '') : (r.spec || '');
+      const brand = isLines ? (r.material_brand || '') : (r.brand || '');
+      const unit = isLines ? (r.material_unit || r.unit || '') : (r.unit || '');
+      // 规格与品牌拼接展示；品牌为空时不产生多余分隔符
+      const specBrand = [spec, brand].filter(Boolean).join(' · ');
+      const stock = this.msStockOf(r, st.opts);
+      const stockColor = stock === null ? 'var(--text-muted)'
+        : (stock < 0 ? 'var(--num-neg)' : (stock === 0 ? 'var(--num-zero)' : 'var(--num-pos)'));
+      const added = !!(st.opts.isAdded && st.opts.isAdded(r));
+      const unrec = isLines && r.unreceived_qty !== undefined && r.unreceived_qty !== null
+        ? `<span class="pu-msearch-unrec">${t('ibd_unreceived')} ${this.fmtQty(r.unreceived_qty)}</span>` : '';
+      return `<div class="pu-msearch-item${i === st.active ? ' active' : ''}${added ? ' is-added' : ''}" data-idx="${i}"
+        onmousedown="event.preventDefault();App.msPickIdx(${i})">
+        <span class="pu-msearch-code">${esc(r.code)}</span>
+        <span class="pu-msearch-name">${esc(name)}</span>
+        <span class="pu-msearch-spec">${esc(specBrand)}</span>
+        <span class="pu-msearch-unit">${esc(unit)}</span>
+        <span class="pu-msearch-stock" style="color:${stockColor}">${stock === null ? '-' : this.fmtQty(stock)}${unit ? ' ' + esc(unit) : ''}</span>
+        ${unrec}
+        ${added ? `<span class="pu-msearch-added">${t('ms_added')}</span>` : ''}
+      </div>`;
+    }).join('');
+    const trunc = st.truncated
+      ? `<div class="pu-msearch-trunc">${t('ms_truncated', { n: this.msLimit() })}</div>` : '';
+    panel.innerHTML = items + trunc;
+    this.msPosition();
+  },
+
+  // 固定定位：不随 .page-body 的 overflow 被裁切；下方空间不足时向上翻
+  msPosition() {
+    const st = this._ms, panel = this._msPanel;
+    if (!st || !panel || panel.hidden) return;
+    const r = st.input.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const width = Math.min(Math.max(r.width, 380), vw - 16);
+    const left = Math.min(Math.max(8, r.left), vw - width - 8);
+    panel.style.width = width + 'px';
+    panel.style.left = left + 'px';
+    panel.style.maxHeight = '320px';
+    const h = panel.offsetHeight || 0;
+    const below = vh - r.bottom - 8;
+    let top = r.bottom + 4;
+    if (h > below && r.top - 8 > below) top = Math.max(8, r.top - 4 - h);
+    panel.style.top = top + 'px';
+    panel.style.maxHeight = Math.min(320, Math.max(120, vh - top - 8)) + 'px';
+  },
+
+  msHighlight() {
+    const st = this._ms, panel = this._msPanel;
+    if (!st || !panel) return;
+    panel.querySelectorAll('.pu-msearch-item').forEach((el, i) => {
+      el.classList.toggle('active', i === st.active);
+    });
+    const cur = panel.querySelector('.pu-msearch-item.active');
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+  },
+
+  msKey(e) {
+    const st = this._ms;
+    if (!st || st.input !== e.target) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation(); // 避免冒泡触发页面/弹层的全局 Esc 关闭
+      this.msClose();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!st.rows.length) return;
+      e.preventDefault();
+      const n = st.rows.length;
+      st.active = e.key === 'ArrowDown' ? (st.active + 1) % n : (st.active - 1 + n) % n;
+      this.msHighlight();
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (e.isComposing || st.composing) return;
+      if (st.active < 0 || !st.rows[st.active]) return;
+      e.preventDefault();
+      this.msPick(st.rows[st.active]);
+    }
+  },
+
+  msPickIdx(idx) {
+    const st = this._ms;
+    if (!st) return;
+    const row = st.rows[idx];
+    if (row) this.msPick(row);
+  },
+
+  msPick(row) {
+    const st = this._ms;
+    if (!st || !row) return;
+    const opts = st.opts;
+    // 先收起并清空，再让调用方重渲染，避免新输入框回填旧关键字
+    this.msClose();
+    if (st.input) st.input.value = '';
+    this._msSuppressFocus = true;
+    setTimeout(() => { this._msSuppressFocus = false; }, 300);
+    if (opts.onPick) opts.onPick(row);
+  },
+
+  msBlur() {
+    const st = this._ms;
+    if (!st) return;
+    clearTimeout(st.blurTimer);
+    st.blurTimer = setTimeout(() => { if (this._ms === st) this.msClose(); }, 150);
+  },
+
+  msClose() {
+    const st = this._ms;
+    if (st) {
+      clearTimeout(st.timer);
+      clearTimeout(st.blurTimer);
+      if (st.input && st.onCompStart) {
+        st.input.removeEventListener('compositionstart', st.onCompStart);
+        st.input.removeEventListener('compositionend', st.onCompEnd);
+      }
+    }
+    if (this._msCloseOnMove) {
+      window.removeEventListener('scroll', this._msCloseOnMove, true);
+      window.removeEventListener('resize', this._msCloseOnMove);
+      this._msCloseOnMove = null;
+    }
+    if (this._msPanel) {
+      this._msPanel.remove();
+      this._msPanel = null;
+    }
+    this._ms = null;
+  },
+
   // ========== 日期段筛选 ==========
   // 对数据按日期字段做范围筛选（from/to 均为可选，格式 YYYY-MM-DD）
   filterByDateRange(data, dateField, from, to) {
@@ -366,8 +629,13 @@ Object.assign(App, {
     if (withSeconds) out += ':' + p(d.getSeconds());
     return out;
   },
-  chartTextColor() { return this.theme === 'dark' ? '#94a3b8' : '#6b7280'; },
-  chartGridColor() { return this.theme === 'dark' ? 'rgba(51,65,85,0.3)' : 'rgba(229,231,235,0.5)'; },
+  // 读取 CSS 变量：图表等 Canvas 场景无法直接用 var()
+  cssVar(name, fallback = '') {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  },
+  chartTextColor() { return this.cssVar('--chart-text') || (this.theme === 'dark' ? '#94a3b8' : '#6b7280'); },
+  chartGridColor() { return this.cssVar('--chart-grid') || (this.theme === 'dark' ? 'rgba(51,65,85,0.3)' : 'rgba(229,231,235,0.5)'); },
 
   // ========== 单据打印 / 导出（通用） ==========
   // 各业务模块只需把单据数据组装成 doc，无需关心打印/导出细节：

@@ -12,6 +12,7 @@ const {
 const time = require('../services/time');
 const audit = require('../services/audit');
 const { packDetail } = require('../services/logdetail');
+const { isBusy, busyBody, businessError, withEn } = require('../services/errors');
 
 const router = express.Router();
 
@@ -74,9 +75,12 @@ function listCandidates(opts = {}) {
     params.push(...codes);
   }
   if (keyword) {
-    where.push('(m.code LIKE ? OR m.name LIKE ? OR m.spec LIKE ?)');
-    const k = '%' + keyword + '%';
-    params.push(k, k, k);
+    // 与查询中心单据搜索同口径：空格分词、词间 AND、字段间 OR
+    keyword.split(/\s+/).filter(Boolean).forEach(tk => {
+      const k = '%' + tk.replace(/[\\%_]/g, c => '\\' + c) + '%';
+      where.push("(m.code LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\' OR m.spec LIKE ? ESCAPE '\\' OR m.brand LIKE ? ESCAPE '\\')");
+      params.push(k, k, k, k);
+    });
   }
 
   // 子查询包裹后再过滤 has_record（SQLite 的 WHERE 不能直接引用同层列别名）
@@ -478,14 +482,25 @@ router.post('/api/stocktakes/:no/confirm', requirePerm('stocktake', 'confirm'), 
   const confirmedAt = time.nowUtc();
   const createdBy = req.user?.username || '';
 
+  let adjustedCount = 0;
+  let matchedCount = counted.length;
+  let pendingCount = lines.length - counted.length;
   try {
     // 行记录按确认时口径刷新 book_qty/diff_qty，保证 diff = count - book 自洽
     const updLine = db.prepare('UPDATE stocktake_lines SET book_qty=?, diff_qty=?, status=? WHERE id=?');
-    const updHead = db.prepare("UPDATE stocktakes SET status='confirmed', confirmed_at=? WHERE stocktake_no=?");
+    const updHead = db.prepare("UPDATE stocktakes SET status='confirmed', confirmed_at=? WHERE stocktake_no=? AND status='draft'");
 
-    let adjustedCount = 0;
     const tx = db.transaction(() => {
-      counted.forEach(l => {
+      // 状态守卫 + 事务内重读实盘行：跨实例并发确认只有第一个请求能改到状态
+      const head = updHead.run(confirmedAt, st.stocktake_no);
+      if (head.changes === 0) {
+        throw businessError('STOCKTAKE_STATE_CHANGED', '该盘点单已被其他请求确认，请刷新后重试', undefined, 409);
+      }
+      const txLines = db.prepare('SELECT * FROM stocktake_lines WHERE stocktake_no=? ORDER BY id').all(st.stocktake_no);
+      const txCounted = txLines.filter(l => l.count_qty !== null && l.count_qty !== undefined);
+      if (txCounted.length === 0) throw businessError('NO_COUNT', '尚未录入任何实盘数据，无法确认');
+      adjustedCount = 0;
+      txCounted.forEach(l => {
         const snapshotBook = l.book_qty;                 // 载入时刻的账面快照
         const confirmBook = getAvailableStock(l.code);   // 确认时刻的最新账面（重新校验）
         const diff = Math.round((l.count_qty - confirmBook) * 1000000) / 1000000;
@@ -508,9 +523,10 @@ router.post('/api/stocktakes/:no/confirm', requirePerm('stocktake', 'confirm'), 
           adjustedCount++;
         }
       });
-      updHead.run(confirmedAt, st.stocktake_no);
+      matchedCount = txCounted.length - adjustedCount;
+      pendingCount = txLines.length - txCounted.length;
     });
-    tx();
+    tx.immediate();
 
     logStocktake(st.stocktake_no, 'confirm', operatorOf(req),
       { key: 'audit_detail_st_confirm', params: { n: adjustedCount } });
@@ -527,14 +543,15 @@ router.post('/api/stocktakes/:no/confirm', requirePerm('stocktake', 'confirm'), 
     res.json({
       success: true, stocktake_no: st.stocktake_no,
       adjusted_count: adjustedCount,
-      matched_count: counted.length - adjustedCount,
-      pending_count: lines.length - counted.length
+      matched_count: matchedCount,
+      pending_count: pendingCount
     });
   } catch (e) {
     if (e.code === 'NO_COST_BASIS') {
-      return res.status(400).json({ error: e.message, code: 'NO_COST_BASIS', details: e.details });
+      return res.status(400).json(withEn({ error: e.message, code: 'NO_COST_BASIS', details: e.details }));
     }
-    res.status(400).json({ error: e.message });
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(withEn({ error: e.message, code: e.code || 'STOCKTAKE_CONFIRM_FAILED' }));
   }
 });
 

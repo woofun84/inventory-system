@@ -43,26 +43,21 @@ Object.assign(App, {
   // 到货状态徽章（带图形符号，参考模板）
   puDeliveryBadge(s) {
     const m = {
-      '未到货': ['○', 'warning', 'st_not_arrived'],
-      '部分到货': ['◐', 'info', 'st_partial'],
-      '已到货': ['●', 'success', 'st_arrived'],
-      '无明细': ['–', 'muted', 'st_no_detail'],
-      '已关闭': ['■', 'muted', 'po_status_closed'],
-      '已取消': ['✕', 'danger', 'po_status_cancelled'],
+      '未到货': ['○', 'not_arrived', 'st_not_arrived'],
+      '部分到货': ['◐', 'partial', 'st_partial'],
+      '已到货': ['●', 'posted', 'st_arrived'],
+      '无明细': ['–', 'closed', 'st_no_detail'],
+      '已关闭': ['■', 'closed', 'po_status_closed'],
+      '已取消': ['✕', 'cancelled', 'po_status_cancelled'],
     };
     const it = m[s] || m['未到货'];
-    return `<span class="badge badge-${it[1]}"><span aria-hidden="true">${it[0]}</span>&nbsp;${this.t(it[2])}</span>`;
+    return `<span class="badge ${this.docStatusMeta(it[1]).cls}"><span aria-hidden="true">${it[0]}</span>&nbsp;${this.t(it[2])}</span>`;
   },
 
   // 采购单状态徽章（草稿 / 已确认）
   puOrderStatusBadge(s) {
-    const m = {
-      draft: ['warning', 'pu_status_draft'],
-      posted: ['success', 'pu_status_posted'],
-      cancelled: ['muted', 'pu_status_cancelled'],
-    };
-    const it = m[s] || m.posted;
-    return `<span class="badge badge-${it[0]}">${this.t(it[1])}</span>`;
+    const m = { draft: 'pu_status_draft', posted: 'pu_status_posted', cancelled: 'pu_status_cancelled' };
+    return `<span class="badge ${this.docStatusMeta(s).cls}">${this.t(m[s] || 'pu_status_posted')}</span>`;
   },
 
   // 到货进度条（已到 / 订购）
@@ -984,12 +979,14 @@ Object.assign(App, {
   },
 
   async puConfirmDelete(title, msg, doDelete, doneMsg) {
-    this.showModal(`<h3>${this.puEsc(title)}</h3>`, `<p style="margin:0">${msg}</p><p class="pu-mu" style="margin:8px 0 0;font-size:12px">${this.t('pu_delete_hint')}</p>`, this.t('delete'), async () => {
-      let undo;
-      try { undo = await doDelete(); } catch (e) { this.toast(e.message, 'error'); return; }
-      this.closeModal();
-      this.puToastUndo(doneMsg || title, undo);
-    });
+    // 删除属破坏性操作：走统一确认弹窗，确认键为红色
+    this.confirmDialog(this.puEsc(title),
+      `<p style="margin:0">${msg}</p><p class="pu-mu" style="margin:8px 0 0;font-size:12px">${this.t('pu_delete_hint')}</p>`,
+      async () => {
+        let undo;
+        try { undo = await doDelete(); } catch (e) { this.toast(e.message, 'error'); return; }
+        this.puToastUndo(doneMsg || title, undo);
+      });
   },
 
   // ========== 采购单增删改（独立编辑页：新建 → 保存草稿 → 确认） ==========
@@ -1042,7 +1039,7 @@ Object.assign(App, {
   puRenderEditPage(isNew) {
     const po = this._puEditDraft || {};
     const status = isNew ? 'draft' : (this._puEditPo?.status || 'posted');
-    const badge = `<span class="badge badge-${status === 'draft' ? 'warning' : 'success'}">${this.t(status === 'draft' ? 'pu_status_draft' : 'pu_status_posted')}</span>`;
+    const badge = this.puOrderStatusBadge(status);
     const actions = isNew
       ? `<div class="pu-edit-actions">
            <button class="btn btn-outline" onclick="App.puBackToList()">${this.t('cancel')}</button>
@@ -1119,6 +1116,7 @@ Object.assign(App, {
 
   // 明细编辑表格（行内增删改；表头与明细一起保存）
   puRenderEditLines() {
+    this.msClose();
     const box = document.getElementById('pu-edit-lines');
     if (!box) return;
     const vp = this.puEditPriceVisible();
@@ -1165,7 +1163,7 @@ Object.assign(App, {
     box.innerHTML = `<datalist id="pu_e_clist">${cList}</datalist>
       <div class="pu-matfilter">
         <label>${this.t('mat_category')}<select id="pu_mat_cat">${catOpts}</select></label>
-        <input id="pu_mat_kw" type="search" value="${this.puEsc(this._puMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}">
+        <span class="pu-msearch-host"><input id="pu_mat_kw" type="search" value="${this.puEsc(this._puMatKw || '')}" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.puMatKwInput(this)" onfocus="App.puMsOpen(this)" onblur="App.msBlur()" onkeydown="App.msKey(event)" oncompositionstart="App.msCompositionStart()" oncompositionend="App.msCompositionEnd(this)"></span>
         <span class="pu-mu" id="pu_mat_cnt">${this.puMatFiltered().length} / ${mats.length}</span>
       </div>
       <div class="table-wrap"><table class="pu-edit-lines"><thead><tr>
@@ -1195,6 +1193,36 @@ Object.assign(App, {
   puMatLabel(m) {
     const base = `${this.puEsc(m.code)} · ${this.puEsc(m.name || '')} ${this.puEsc(m.spec || '')}`.trim();
     return m.brand ? `${base} · ${this.puEsc(m.brand)}` : base;
+  },
+
+  // 添加明细：物料即时搜索（候选与行内下拉同为全量物料，受类别筛选约束）
+  puMatKwInput(el) {
+    this._puMatKw = (el && el.value) || '';
+    this.puRefreshMatOptions();
+    if (!this._ms || this._ms.input !== el) this.puMsOpen(el);
+    else this.msInput(el);
+  },
+
+  puMsOpen(el) {
+    if (this._msSuppressFocus) return;
+    this.msOpen(el, {
+      mode: 'materials',
+      rows: () => (this._puEditLookups || {}).materials || [],
+      category: () => this._puMatCat || '',
+      isAdded: m => (this._puEditLines || []).some(l => l.code === m.code),
+      onPick: m => this.puAddFromSearch(m),
+    });
+  },
+
+  puAddFromSearch(m) {
+    if (!this._puEditLines) this._puEditLines = [];
+    this._puMatKw = '';
+    const def = document.getElementById('pu_e_contract');
+    this._puEditLines.push({
+      code: m.code, order_qty: '', order_price: '',
+      contract_no: def ? (def.value || '').trim() : '', remarks: '',
+    });
+    this.puRenderEditLines();
   },
 
   // 物料筛选：类别（精确）+ 编码/名称/规格/品牌（多关键字模糊）
@@ -1318,7 +1346,7 @@ Object.assign(App, {
           delete this._puDetail['orders:' + head.po_no];
           await this.puBackToList(head.po_no);
         } catch (e) { this.toast(e.message, 'error'); }
-      });
+      }, null, 'primary');
   },
 
   async puBackToList(openPo) {
