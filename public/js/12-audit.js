@@ -93,8 +93,20 @@
       const key = 'audit_fld_' + k, v = this.t(key);
       return v === key ? k : v;
     },
+    // 部分枚举以中文原值入库（单据类型、存货状态等），英文界面需翻译；
+    // 只在精确匹配时替换，用户自由文本（备注、供应商名）不受影响。
+    auditEnumAlias: {
+      '采购入库': 'purchase_in', '零星入库': 'misc_in', '采购退货': 'purchase_return',
+      '正常出库': 'normal_out', '领料退库': 'return_in', '盘点单': 'stocktake',
+      '盘盈': 'gain', '盘亏': 'loss', '其它': 'other', '期初结存': 'opening',
+      '正常': 'normal', '补货': 'restock', '缺货': 'out_of_stock', '停用': 'disabled',
+      '已到货': 'arrived', '未到货': 'not_arrived', '部分到货': 'partial',
+      '无明细': 'no_detail', '已关闭': 'closed', '已取消': 'cancelled',
+    },
     auditEnumLabel(v) {
-      const k = 'audit_val_' + String(v).replace(/-/g, '_'), label = this.t(k);
+      const raw = String(v);
+      const code = this.auditEnumAlias[raw] || raw.replace(/-/g, '_');
+      const k = 'audit_val_' + code, label = this.t(k);
       return label === k ? null : label;
     },
 
@@ -305,7 +317,34 @@
         <span style="color:var(--text-muted);font-size:12px">~</span>
         <input id="audit_filter_to" type="date" value="${f.to}" style="${sel}" onchange="App.onAuditFilter()">
         <button class="btn btn-outline btn-sm" onclick="App.resetAuditFilter()">${this.t('audit_reset')}</button>
+        ${this.user && this.user.role === 'admin'
+          ? `<button class="btn btn-danger-outline btn-sm" onclick="App.confirmClearAuditLogs()">${this.t('audit_clear_btn')}</button>`
+          : ''}
       </div>`;
+    },
+
+    // 清空全部日志：破坏性二次确认（危险 intent），后端同样只允许管理员
+    confirmClearAuditLogs() {
+      this.confirmDialog(
+        this.t('audit_clear_confirm_title'),
+        this.t('audit_clear_confirm_msg'),
+        () => this.doClearAuditLogs(),
+        null,
+        'danger',
+      );
+    },
+
+    async doClearAuditLogs() {
+      try {
+        const data = await this.api('/api/audit-logs', 'DELETE');
+        // 日志已清空：重置筛选并回到第一页，避免停在已无数据的页码/筛选条件上
+        this._auditFilter = { module: '', action: '', keyword: '', from: '', to: '' };
+        this.getTableState('audit').page = 1;
+        this.toast(this.t('audit_clear_done', { n: data.deleted || 0 }));
+        await this.renderAuditLogs();
+      } catch (e) {
+        this.toast(e.message, 'error');
+      }
     },
 
     onAuditFilter() {
@@ -351,7 +390,7 @@
       const rows = data.rows || [];
       const headers = ['audit_col_time', 'audit_col_user', 'audit_col_module', 'audit_col_action',
         'audit_col_target', 'audit_col_detail', 'audit_col_result', 'audit_col_ip'];
-      const thHtml = headers.map(k => `<th>${this.t(k)}</th>`).join('');
+      const thHtml = headers.map(k => `<th${k === 'audit_col_result' ? ' class="text-center"' : ''}>${this.t(k)}</th>`).join('');
       let tbody;
       if (!rows.length) {
         tbody = this.emptyRow(headers.length);
@@ -365,7 +404,7 @@
           const resultCell = ok
             ? `<span class="badge badge-success">${this.t('audit_ok')}</span>`
             : `<span class="badge badge-danger">${this.t('audit_fail')} ${escHtml(r.status)}</span>`;
-          const roleCell = r.role ? this.t('role_' + r.role) : '';
+          const roleCell = r.role ? this.roleLabel(r.role) : '';
           return `<tr>
             <td style="white-space:nowrap">${this.fmtDateTime(r.created_at, true)}</td>
             <td><strong>${escHtml(r.username || '-')}</strong>${r.name ? `<div style="color:var(--text-muted);font-size:12px">${escHtml(r.name)} · ${escHtml(roleCell)}</div>` : ''}</td>
@@ -373,7 +412,7 @@
             <td>${escHtml(this.auditActionLabel(r.action))}</td>
             <td>${escHtml(r.target || '')}</td>
             <td>${detailCell}</td>
-            <td>${resultCell}</td>
+            <td class="text-center">${resultCell}</td>
             <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${escHtml(r.ip || '')}</td>
           </tr>`;
         }).join('');

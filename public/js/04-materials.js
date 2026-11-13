@@ -35,10 +35,10 @@ Object.assign(App, {
       ['brand', this.t('mat_brand')]
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
-    thHtml += `<th>${this.t('mat_status')}</th><th></th>`;
+    thHtml += `<th class="text-center">${this.t('mat_status')}</th><th class="text-center"></th>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(vp ? 11 : 10); }
-    else { tbody = pageData.map(m => `<tr><td class="cell-code">${m.code}</td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.opening_price)}</td>` : ''}<td class="text-right">${m.min_stock}</td><td>${m.brand || ''}</td><td>${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td>${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
+    else { tbody = pageData.map(m => `<tr><td class="cell-code">${m.code}</td><td>${m.name}</td><td>${m.spec || ''}</td><td>${m.category}</td><td>${m.unit}</td><td class="text-right">${m.opening_qty}</td>${vp ? `<td class="text-right">${this.fmtMoney(m.opening_price)}</td>` : ''}<td class="text-right">${m.min_stock}</td><td>${m.brand || ''}</td><td class="text-center">${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td class="text-center">${this.rowActions('materials', `App.editMaterial('${m.code}')`, `App.deleteMaterial('${m.code}')`)}</td></tr>`).join(''); }
     document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('materials-pager').innerHTML = this.renderPager(tid, sorted.length);
   },

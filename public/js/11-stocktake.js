@@ -48,8 +48,15 @@ Object.assign(App, {
     const root = document.getElementById('st-root');
     if (root) root.classList.toggle('st-dense', !!s.dense);
     await this.loadStocktakeList();
+    // 跨模块跳转（查询中心「在原模块打开」等）：先按单据真实状态把行定位到列表
+    const reveal = this._stRevealDoc;
+    if (reveal) {
+      this._stRevealDoc = null;
+      this.stRevealDoc(reveal);
+    }
     // 进入页面时若有选中的盘点单，强制重取详情，避免复用上次的快照
     if (s.sel) await this.stOpen(s.sel); else this.stRenderInspector();
+    if (reveal) this.docRowFlash('st-scroll', 'tr[data-ra="stocktake"][data-id="' + CSS.escape(String(reveal)) + '"]');
   },
 
   stSkeleton() {
@@ -199,8 +206,8 @@ Object.assign(App, {
     const cols = [
       ['stocktake_no', this.t('st_no'), r =>
         `<button type="button" class="pu-lk" data-st="open" data-id="${this.stEsc(r.stocktake_no)}">${this.stEsc(r.stocktake_no)}</button>`],
-      ['date', this.t('adj_date'), r => this.fmtDate(r.date)],
-      ['status', this.t('st_status'), r => this.stStatusBadge(r.status)],
+      ['date', this.t('adj_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
+      ['status', this.t('st_status'), r => this.stStatusBadge(r.status), 'center'],
       ['load_scope', this.t('st_scope'), r => this.stEsc(this.stScopeLabel(r))],
       ['handler', this.t('st_handler'), r => this.stEsc(r.handler || '')],
       ['line_count', this.t('st_lines'), r => r.line_count || 0, true],
@@ -215,7 +222,7 @@ Object.assign(App, {
     const body = pageData.map(r => {
       const on = sel === r.stocktake_no;
       return `<tr class="pu-row${on ? ' sel' : ''}" data-ra="stocktake" data-id="${this.stEsc(r.stocktake_no)}">` +
-        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+        shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>';
     }).join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
   },
@@ -336,7 +343,7 @@ Object.assign(App, {
     const meta = [
       [this.t('st_handler'), d.handler || '–'],
       [this.t('st_scope'), this.stScopeLabel(d)],
-      [this.t('adj_date'), this.fmtDate(d.date) || '–'],
+      [this.t('adj_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '–'],
       [this.t('ibd_created_by'), d.created_by || '–'],
       [this.t('ibd_created_at'), this.fmtDateTime(d.created_at) || '–'],
     ];
@@ -356,11 +363,11 @@ Object.assign(App, {
     let foot = '';
     if (isDraft && this.can('stocktake', 'create')) {
       foot += lines.length
-        ? `<button type="button" class="btn btn-outline" data-st="e-doc">✎ ${this.t('st_edit_counts')}</button>`
+        ? `<button type="button" class="btn btn-outline" data-st="e-doc">${this.t('st_edit_counts')}</button>`
         : `<button type="button" class="btn btn-primary" data-st="load">${this.t('st_load')}</button>`;
     }
     if (isDraft && lines.length && this.can('stocktake', 'confirm')) {
-      foot += `<button type="button" class="btn btn-primary" data-st="confirm">✅ ${this.t('st_confirm')}</button>`;
+      foot += `<button type="button" class="btn btn-primary" data-st="confirm">${this.t('st_confirm')}</button>`;
     }
     if (isDraft && this.can('stocktake', 'create')) {
       foot += `<button type="button" class="btn btn-danger" data-st="del">${this.t('st_delete')}</button>`;
@@ -473,13 +480,13 @@ Object.assign(App, {
         const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
         return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
       }, true],
-      ['status', this.t('st_status_label'), r => this.stLineStatusBadge(r.status)],
+      ['status', this.t('st_status_label'), r => this.stLineStatusBadge(r.status), 'center'],
       ['remarks', this.t('st_remark'), r => this.stEsc(r.remarks || '')],
     ];
     const st = this.getTableState(tid);
     const sorted = this.sortData(lines, st.sortKey, st.sortDir);
     const th = cols.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
-    const body = sorted.map(r => '<tr>' + cols.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>').join('');
+    const body = sorted.map(r => '<tr>' + cols.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>').join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('noData')}</td></tr>`}</tbody></table></div>`;
   },
 
@@ -500,7 +507,7 @@ Object.assign(App, {
           <span><strong>${this.stEsc(a.code)}</strong> ${this.stEsc(a.material_name || '')} <span class="pu-mu">${this.stEsc(a.material_spec || '')}</span></span>
           <span class="pu-line-q ${gain ? 'num-pos' : 'num-neg'}" style="font-weight:600">${gain ? '+' : ''}${this.fmtQty(qty)}${this.stEsc(a.material_unit || '')}</span>
         </div>
-        <div class="pu-mu" style="font-size:12px">${this.stEsc(a.adj_type || '')} · ${this.fmtDate(a.date)} · ${this.stEsc(a.handler || '')}${a.reason ? ' · ' + this.stEsc(a.reason) : ''}${a.cost_basis ? ` · ${this.t('cost_basis_label')} ${this.costBasisBadge(a.cost_basis)}` : ''}</div>
+        <div class="pu-mu" style="font-size:12px">${this.stEsc(this.stAdjTypeLabel(a.adj_type))} · ${this.fmtDocDate(a.date, a.created_at, a.confirmed_at)} · ${this.stEsc(a.handler || '')}${a.reason ? ' · ' + this.stEsc(a.reason) : ''}${a.cost_basis ? ` · ${this.t('cost_basis_label')} ${this.costBasisBadge(a.cost_basis)}` : ''}</div>
         ${a.remarks ? `<div class="pu-mu" style="font-size:12px">${this.stEsc(a.remarks)}</div>` : ''}
       </div>`;
     }).join('') + `</div>`;
@@ -517,6 +524,12 @@ Object.assign(App, {
       confirm: this.t('audit_act_confirm'),
     };
     return m[action] || action;
+  },
+
+  // 调整流水类型：后端以中文原值存储（盘盈/盘亏/其它），这里按当前语言展示
+  stAdjTypeLabel(v) {
+    const m = { '盘盈': this.t('st_adj_gain'), '盘亏': this.t('st_adj_loss'), '其它': this.t('st_adj_other') };
+    return m[v] || v || '';
   },
 
   stLogsPanel(logs) {
@@ -742,7 +755,7 @@ Object.assign(App, {
       btnBox.innerHTML = isDraft
         ? `<button class="btn btn-outline" onclick="App.openStocktakeAddLinesModal()">+ ${this.t('st_add_line')}</button>
            <button class="btn btn-outline" onclick="App.saveStocktakeCounts()">${this.t('st_save_count')}</button>
-           <button class="btn btn-primary" onclick="App.stConfirmFromEdit()">✅ ${this.t('st_confirm')}</button>`
+           <button class="btn btn-primary" onclick="App.stConfirmFromEdit()">${this.t('st_confirm')}</button>`
         : `<div class="pu-empty" style="margin:0">${this.t('st_confirmed_at')}：${this.fmtDateTime(d.confirmed_at) || '–'}</div>`;
     }
 
@@ -762,11 +775,11 @@ Object.assign(App, {
       <th>${this.t('mat_spec')}</th>
       <th>${this.t('mat_unit')}</th>
       <th class="text-right">${this.t('st_book_qty')}</th>
-      <th>${this.t('st_count_qty')}</th>
+      <th class="text-right">${this.t('st_count_qty')}</th>
       <th class="text-right">${this.t('st_diff_qty')}</th>
-      <th>${this.t('st_status_label')}</th>
+      <th class="text-center">${this.t('st_status_label')}</th>
       <th>${this.t('st_remark')}</th>
-      <th></th>
+      <th class="text-center"></th>
     </tr>`;
 
     const body = lines.map(l => {
@@ -781,11 +794,11 @@ Object.assign(App, {
         <td>${this.stEsc(l.material_spec || '')}</td>
         <td>${this.stEsc(l.material_unit || '')}</td>
         <td class="pu-edit-amt">${this.qtyCell(l.book_qty)}</td>
-        <td>${cntCell}</td>
+        <td class="text-right">${cntCell}</td>
         <td class="pu-edit-amt" id="st-diff-${l.id}">${this.stDiffCell(diff)}</td>
-        <td>${this.stLineStatusBadge(l.status)}</td>
+        <td class="text-center">${this.stLineStatusBadge(l.status)}</td>
         <td>${this.stEsc(l.remarks || '')}</td>
-        <td>${isDraft ? `<button type="button" class="pu-edit-del" onclick="App.removeStocktakeLine(${l.id}, '${this.stEsc(l.code).replace(/'/g, "\\'")}')">${this.t('st_remove_line')}</button>` : ''}</td>
+        <td class="text-center">${isDraft ? `<button type="button" class="pu-edit-del" onclick="App.removeStocktakeLine(${l.id}, '${this.stEsc(l.code).replace(/'/g, "\\'")}')">${this.t('st_remove_line')}</button>` : ''}</td>
       </tr>`;
     }).join('');
 
@@ -811,7 +824,31 @@ Object.assign(App, {
   // 返回列表页并打开该单详情（从编辑页 / 弹窗返回）
   async openStocktake(no) {
     this.stState().sel = no || null;
+    // 跨模块跳转时由 renderStocktake 负责切页签、清筛选并定位该行
+    this._stRevealDoc = no || null;
     await this.gotoPage('stocktake');
+  },
+
+  // 按单据真实状态把行定位到列表：切对应页签 → 必要时清掉挡住该行的筛选 → 翻到该行所在页
+  stRevealDoc(no) {
+    const row = (this._stList || []).find(r => r.stocktake_no === no);
+    if (!row) return false;
+    const s = this.stState();
+    const want = row.status || '';
+    s.tab = this.stTabDefs().some(d => d[0] === want) ? want : '';
+    if (!this.stVisibleRows().some(r => r.stocktake_no === no)) {
+      s.f = { kw: '', from: '', to: '' };
+      s.kpi = '';
+      this.stRenderFilters();
+    }
+    const st = this.getTableState('stocktake');
+    st.page = 1;
+    const rows = this.sortData(this.stVisibleRows(), st.sortKey, st.sortDir);
+    const idx = rows.findIndex(r => r.stocktake_no === no);
+    if (idx >= 0) st.page = Math.floor(idx / st.pageSize) + 1;
+    this.stRenderTabs();
+    this.stRenderList();
+    return true;
   },
 
   // ========== 保存实盘 ==========

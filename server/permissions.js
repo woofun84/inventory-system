@@ -13,16 +13,19 @@
 // 规则：
 //   admin — 全部权限
 //   manager — 业务全权（入出库/物料/采购管理/供应商/参数设置/盘点），不含用户管理
-//   operator — 只能新增入库和出库，不能编辑/删除已录入记录，不能新增物料/订单/供应商；
+//   operator — 入库/出库/退货退库可新建、保存草稿、过账确认、查看（日常操作）；
+//              不能作废/更正重开（correct）、不能删除、不能新增物料/订单/供应商；
 //              盘点可建单、填实盘，但不能确认（确认由主管/管理员执行）
 //   viewer — 纯只读
+// 说明：correct 是「更正重开/作废」的独立动作，与日常 edit 拆开，
+//       避免把 edit 开放给操作员时连带放开破坏性操作。
 const ROLE_PERMISSIONS = {
   admin: ['*'],
   manager: {
     dashboard: ['view'],
-    inbound: ['view', 'create', 'edit', 'delete'],
-    outbound: ['view', 'create', 'edit', 'delete'],
-    returns: ['view', 'create', 'edit', 'delete'],
+    inbound: ['view', 'create', 'edit', 'delete', 'correct'],
+    outbound: ['view', 'create', 'edit', 'delete', 'correct'],
+    returns: ['view', 'create'],
     materials: ['view', 'create', 'edit', 'delete'],
     suppliers: ['view', 'create', 'edit', 'delete'],
     purchase: ['view', 'create', 'edit', 'delete'],
@@ -33,8 +36,8 @@ const ROLE_PERMISSIONS = {
   },
   operator: {
     dashboard: ['view'],
-    inbound: ['view', 'create'],
-    outbound: ['view', 'create'],
+    inbound: ['view', 'create', 'edit'],
+    outbound: ['view', 'create', 'edit'],
     returns: ['view', 'create'],
     materials: ['view'],
     suppliers: ['view'],
@@ -50,32 +53,46 @@ const ROLE_PERMISSIONS = {
   },
 };
 
-// 各模块的动作全集（admin 走 grantsOf 的通配分支时按此展开）
+// 全部模块（顺序即用户管理页权限矩阵的展示顺序）
+const MODULES = ['dashboard', 'inbound', 'outbound', 'returns', 'materials', 'suppliers',
+  'purchase', 'query', 'stocktake', 'settings', 'users', 'audit'];
+
+// 各模块的动作全集（与后端 requirePerm 实际用到的动作保持一致，也是用户管理页勾选项）
 const MODULE_ACTIONS = {
+  dashboard: ['view'],
+  inbound: ['view', 'create', 'edit', 'delete', 'correct'],
+  outbound: ['view', 'create', 'edit', 'delete', 'correct'],
+  returns: ['view', 'create'],
+  materials: ['view', 'create', 'edit', 'delete'],
+  suppliers: ['view', 'create', 'edit', 'delete'],
+  purchase: ['view', 'create', 'edit', 'delete'],
+  query: ['view'],
   stocktake: ['view', 'create', 'confirm'],
+  settings: ['view', 'create', 'edit', 'delete'],
+  users: ['view', 'create', 'edit', 'delete'],
   audit: ['view'],
 };
 const DEFAULT_MODULE_ACTIONS = ['view', 'create', 'edit', 'delete'];
 
-// 计算某角色的授权表（前端据此控制菜单与按钮显隐）
+function actionsOf(module) {
+  return (MODULE_ACTIONS[module] || DEFAULT_MODULE_ACTIONS).slice();
+}
+
+// 计算某角色的默认授权表（用户首次初始化时写入 user_permissions）
 function grantsOf(role) {
   const p = ROLE_PERMISSIONS[role];
   if (!p) return {};
   if (Array.isArray(p)) {
     const g = {};
-    ['dashboard', 'inbound', 'outbound', 'returns', 'materials', 'suppliers', 'purchase',
-     'query', 'stocktake', 'settings', 'users', 'audit']
-      .forEach(m => g[m] = (MODULE_ACTIONS[m] || DEFAULT_MODULE_ACTIONS).slice());
+    MODULES.forEach(m => g[m] = actionsOf(m));
     return g;
   }
   return p;
 }
 
-function canDo(role, module, action) {
-  const p = ROLE_PERMISSIONS[role];
-  if (!p) return false;
-  if (Array.isArray(p)) return p.includes('*');
-  const m = p[module];
+// 判断一份授权表是否包含某操作
+function hasGrant(grants, module, action) {
+  const m = grants && grants[module];
   return Array.isArray(m) && m.includes(action);
 }
 
@@ -90,10 +107,12 @@ function canViewPrice(user) {
 
 module.exports = {
   ROLE_PERMISSIONS,
+  MODULES,
   MODULE_ACTIONS,
   DEFAULT_MODULE_ACTIONS,
+  actionsOf,
   grantsOf,
-  canDo,
+  hasGrant,
   PRICE_ROLES,
   canViewPrice,
 };

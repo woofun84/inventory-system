@@ -307,6 +307,71 @@ tbody tr:last-child td { border-bottom: none; }
   to   { transform: translateX(0); opacity: 1; }
 }
 
+/* ========== 连接状态横幅（服务器不可达时常驻顶部，恢复后自动消失） ========== */
+.conn-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-bottom: 1px solid var(--danger-border);
+  box-shadow: var(--shadow);
+}
+.conn-banner .conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: none;
+  animation: connPulse 1.2s ease-in-out infinite;
+}
+.conn-banner .conn-title { font-weight: 600; }
+.conn-banner .conn-desc {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes connPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+/* 横幅不遮挡内容：整体下移，布局高度同步收缩（#app 已是 100% 高） */
+body.conn-offline #app {
+  box-sizing: border-box;
+  padding-top: 36px;
+}
+
+/* ========== 被挤下线提示 ========== */
+.kicked-overlay { z-index: 2100; }
+.kicked-modal { max-width: 520px; }
+.kicked-modal .modal-header { font-weight: 600; }
+.kicked-desc { color: var(--text); line-height: 1.7; }
+.kicked-note {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.kicked-draft {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+
 /* ========== 操作链接 ========== */
 .action-link {
   color: var(--primary);

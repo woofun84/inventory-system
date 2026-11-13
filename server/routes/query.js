@@ -46,20 +46,23 @@ const DOCS_UNION = `
          COALESCE(od.supplier,'') AS party, od.status AS status, COALESCE(od.handler,'') AS handler,
          COALESCE(od.origin_doc_no,'') AS origin_doc_no,
          (SELECT COUNT(*) FROM inbound l WHERE l.doc_no = od.doc_no) AS line_count,
-         (SELECT COALESCE(SUM(l.amount),0) FROM inbound l WHERE l.doc_no = od.doc_no) AS amount
+         (SELECT COALESCE(SUM(l.amount),0) FROM inbound l WHERE l.doc_no = od.doc_no) AS amount,
+         od.created_at AS created_at, od.confirmed_at AS confirmed_at
   FROM inbound_docs od
   UNION ALL
   SELECT od.doc_no, od.date, od.txn_type, 'outbound',
          ${outParty('od')}, od.status, COALESCE(od.handler,''),
          COALESCE(od.origin_doc_no,''),
          (SELECT COUNT(*) FROM outbound l WHERE l.doc_no = od.doc_no),
-         (SELECT COALESCE(SUM(l.cost_amount),0) FROM outbound l WHERE l.doc_no = od.doc_no)
+         (SELECT COALESCE(SUM(l.cost_amount),0) FROM outbound l WHERE l.doc_no = od.doc_no),
+         od.created_at, od.confirmed_at
   FROM outbound_docs od
   UNION ALL
   SELECT s.stocktake_no, s.date, '盘点单', 'stocktake', '', CASE s.status WHEN 'confirmed' THEN 'posted' ELSE s.status END,
          COALESCE(s.handler,''), '',
          (SELECT COUNT(*) FROM stocktake_lines l WHERE l.stocktake_no = s.stocktake_no),
-         NULL
+         NULL,
+         s.created_at, s.confirmed_at
   FROM stocktakes s`;
 
 const DOCS_SORT = {
@@ -136,6 +139,9 @@ router.get('/api/query/docs', requirePerm('query', 'view'), (req, res) => {
         source: r.source,
         origin_doc_no: r.origin_doc_no || '',
         line_count: Number(r.line_count || 0),
+        // 业务日期只有日历日粒度，前端展示到分钟时用真实操作/过账时刻补时间部分
+        created_at: r.created_at || '',
+        confirmed_at: r.confirmed_at || '',
       };
       if (vp) row.amount = r.amount == null ? null : r.amount;
       return row;

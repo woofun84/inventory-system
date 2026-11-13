@@ -891,7 +891,7 @@ router.get('/api/inbound-docs/:docNo/correction-info', requirePerm('inbound', 'v
 });
 
 // 创建更正草稿（同一原单只允许一张未确认草稿）
-router.post('/api/inbound-docs/:docNo/correction', requirePerm('inbound', 'edit'), (req, res) => {
+router.post('/api/inbound-docs/:docNo/correction', requirePerm('inbound', 'correct'), (req, res) => {
   const orig = db.prepare("SELECT * FROM inbound_docs WHERE doc_no=?").get(req.params.docNo);
   if (!orig) return res.status(404).json({ error: '入库单据不存在' });
 
@@ -965,7 +965,7 @@ router.post('/api/inbound-docs/:docNo/correction', requirePerm('inbound', 'edit'
 // 确认更正：单事务完成「原单作废 + 下游退货改指向 + 新单过账」
 // 明细可全部删光：没有明细时只作废原单、不生成新单（整单不要了）。
 // 任何冲突（已退量超过新数量 / 作废使库存转负）一律拒绝，不支持强制放行。
-router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound', 'edit'), (req, res) => {
+router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound', 'correct'), (req, res) => {
   const docNo = req.params.docNo;
   const doc = db.prepare("SELECT * FROM inbound_docs WHERE doc_no=?").get(docNo);
   if (!doc) return res.status(404).json({ error: '入库单据不存在' });

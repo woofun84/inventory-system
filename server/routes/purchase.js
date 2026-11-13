@@ -550,7 +550,8 @@ router.get('/api/purchase/lines/:id/inbound', requirePerm('purchase', 'view'), (
   const e = enrichLine(line);
   const rows = db.prepare(`
     SELECT i.id, i.date, i.qty, i.price, i.amount, i.grn_no, i.doc_no, i.txn_type,
-           i.supplier, i.handler, i.remarks, i.order_line_id, d.status AS doc_status
+           i.supplier, i.handler, i.remarks, i.order_line_id, d.status AS doc_status,
+           d.created_at AS doc_created_at, d.confirmed_at AS doc_confirmed_at
     FROM inbound i
     LEFT JOIN inbound_docs d ON i.doc_no = d.doc_no
     WHERE i.status = 'posted' AND (

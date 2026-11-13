@@ -89,7 +89,10 @@ Object.assign(App, {
     if (this._retPendingDoc) {
       const no = this._retPendingDoc;
       this._retPendingDoc = null;
+      // 跨模块跳转：按单据真实状态切页签、清掉挡住该行的筛选并翻到该行
+      this.retRevealDoc(no);
       await this.retSelectDoc(no);
+      this.docRowFlash('ret-scroll', 'tr[data-ra="returns"][data-id="' + CSS.escape(String(no)) + '"]');
     } else if (s.sel) {
       await this.retSelectDoc(s.sel, true);
     } else {
@@ -156,7 +159,7 @@ Object.assign(App, {
         <th>${partyLabel}</th><th class="text-right">${this.t('ret_col_origin_total')}</th></tr></thead><tbody>
         ${rows.map((r, i) => `<tr style="cursor:pointer" onclick="document.getElementById('ret_pick_${i}').checked=true">
           <td><input type="radio" name="ret_pick" id="ret_pick_${i}" value="${this.retEsc(r.doc_no)}"></td>
-          <td><b>${this.retEsc(r.doc_no)}</b></td><td>${this.retEsc(r.date || '')}</td>
+          <td><b>${this.retEsc(r.doc_no)}</b></td><td>${this.retEsc(this.fmtDocDate(r.date, r.created_at, r.confirmed_at) || '')}</td>
           <td>${this.retEsc(r.party || '-')}</td><td class="text-right"><b>${this.fmtQty(r.total)}</b></td></tr>`).join('')}
         </tbody></table></div><div style="font-size:12px;color:var(--text-muted);margin-top:10px">${this.t('ret_pick_origin_hint')}</div>`;
     this.showModal(title, table, this.t('ret_pick_enter'), () => {
@@ -192,6 +195,29 @@ Object.assign(App, {
       if (total > 0) out.push({ doc_no: d.doc_no, date: d.date || '', party: d.destination || '', total });
     }
     return out;
+  },
+
+  // 跨模块跳转定位：按单据真实状态（作废 / 采购退货 / 领料退库）切页签，
+  // 当前筛选若把该单挡在外面则清掉，并翻到该行所在页
+  retRevealDoc(docNo) {
+    const row = (this._retList || []).find(r => r.doc_no === docNo);
+    if (!row) return false;
+    const s = this.retState();
+    const want = row.status === 'voided' ? 'voided' : (row.sub_type || '');
+    s.tab = this.retTabDefs().some(d => d[0] === want) ? want : '';
+    if (!this.retVisibleRows().some(r => r.doc_no === docNo)) {
+      s.kw = ''; s.from = ''; s.to = ''; s.kpi = ''; s.noOrigin = false;
+      this.retRenderFilters();
+    }
+    const st = this.getTableState('returns');
+    st.page = 1;
+    const rows = this.sortData(this.retVisibleRows(), st.sortKey, st.sortDir);
+    const idx = rows.findIndex(r => r.doc_no === docNo);
+    if (idx >= 0) st.page = Math.floor(idx / st.pageSize) + 1;
+    this.retRenderTabs();
+    this.retRenderHeadActions();
+    this.retRenderList();
+    return true;
   },
 
   retSwitchTab(tab) {
@@ -354,22 +380,22 @@ Object.assign(App, {
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" onclick="event.stopPropagation();App.retSelectDoc('${this.retEsc(r.doc_no)}')">${this.retEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
       }],
-      ['date', this.t('ret_date'), r => this.fmtDate(r.date)],
+      ['date', this.t('ret_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
       ['sub_type', this.t('ret_subtype'), r => this.retSubTypeBadge(r.sub_type)
-        + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : '')],
+        + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],
       ['party', this.t('ret_party'), r => this.retEsc(r.party || '-')],
       ['line_count', this.t('ret_lines'), r => r.line_count || 0, true],
       ['total_qty', this.t('ret_qty'), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
       ['total_amount', this.t('ret_amount'), r => this.fmtMoney(r.total_amount), true, vp],
-      ['status', this.t('ret_status'), r => this.retStatusBadge(r.status)],
+      ['status', this.t('ret_status'), r => this.retStatusBadge(r.status), 'center'],
       ['remarks', this.t('ibd_remarks'), r => this.retEsc(r.remarks || '')],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
     const body = pageData.map(r => {
       const on = s.sel === r.doc_no;
-      return `<tr class="pu-row${on ? ' sel' : ''}${r.status === 'voided' ? ' ret-voided-row' : ''}" onclick="App.retSelectDoc('${this.retEsc(r.doc_no)}')">` +
-        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+      return `<tr class="pu-row${on ? ' sel' : ''}${r.status === 'voided' ? ' ret-voided-row' : ''}" data-ra="returns" data-id="${this.retEsc(r.doc_no)}" onclick="App.retSelectDoc('${this.retEsc(r.doc_no)}')">` +
+        shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>';
     }).join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
   },
@@ -493,7 +519,7 @@ Object.assign(App, {
     const vp = this.hasField(sum, 'total_amount');
     const meta = [
       [this.t('ret_subtype'), typeLabel],
-      [this.t('ret_date'), this.fmtDate(d.date) || '–'],
+      [this.t('ret_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '–'],
       [this.t('ret_party'), d.party || '–'],
       [this.t('ret_handler'), d.handler || '–'],
       [this.t('ret_ref'), d.ref_no || '–'],
@@ -516,7 +542,8 @@ Object.assign(App, {
 
     // 底部操作条：业务操作 → 打印/导出 → 修改 → 删除（高危固定最右）
     const isDraft = d.status === 'draft';
-    const canEdit = this.can(d.ledger, 'edit');
+    const isCorrDraft = isDraft && !!String(d.corrects_doc_no || '');
+    const canEdit = this.can(d.ledger, isCorrDraft ? 'correct' : 'edit');
     const canDelete = this.can(d.ledger, 'delete');
     let foot = '';
     if (isDraft && canEdit) {
@@ -525,8 +552,8 @@ Object.assign(App, {
     }
     foot += `<button type="button" class="btn btn-outline" onclick="App.retPrintDoc()">${this.t('doc_print')}</button>`;
     foot += `<button type="button" class="btn btn-outline" onclick="App.retExportDoc()">${this.t('doc_export')}</button>`;
-    // 更正入口：已过账、未被更正过（作废单不可再更正）
-    if (d.can_correct) {
+    // 更正入口：已过账、未被更正过（作废单不可再更正），且需该账本 correct 权限
+    if (d.can_correct && this.can(d.ledger, 'correct')) {
       foot += `<button type="button" class="btn btn-outline" onclick="App.retStartCorrection('${this.retEsc(d.doc_no)}','${d.ledger}')">${this.t('ibd_corr')}</button>`;
     }
     if (isDraft && canDelete) {
@@ -719,7 +746,7 @@ Object.assign(App, {
 
     const meta = [
       [this.t('ret_subtype'), this.retTypeLabel(d)],
-      [this.t('ret_date'), this.fmtDate(d.date)],
+      [this.t('ret_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at)],
       [this.t('ret_party'), d.party || ''],
       [this.t('ret_handler'), d.handler || ''],
       [this.t('ret_ref'), d.ref_no || ''],

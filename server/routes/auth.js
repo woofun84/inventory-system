@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { JWT_SECRET, JWT_EXPIRES } = require('../config');
 const { publicUser } = require('../middleware/auth');
+const { issueSession, getSession, touchSession, revokeSession } = require('../services/session');
 
 const router = express.Router();
 
@@ -21,7 +22,9 @@ router.post('/api/auth/login', (req, res) => {
     }
     if (u.status !== 'active') return res.status(403).json({ error: '账号已被停用，请联系管理员' });
     db.prepare("UPDATE users SET last_login=datetime('now') WHERE id=?").run(u.id);
-    const token = jwt.sign({ id: u.id, username: u.username, role: u.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    // 单终端登录：新会话的 sid 覆盖旧会话，先前那台终端的 token 立刻失效
+    const sid = issueSession(u, req);
+    const token = jwt.sign({ id: u.id, username: u.username, role: u.role, sid }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     res.json({ token, user: publicUser(u) });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -30,7 +33,24 @@ router.post('/api/auth/login', (req, res) => {
 
 
 router.get('/api/auth/me', (req, res) => {
-  res.json(publicUser(req.user));
+  res.json(publicUser(req.user, req.grants));
+});
+
+// 会话心跳：前端定时调用，用于「被挤下线」的及时提示；顺带刷新 last_seen
+router.get('/api/auth/session', (req, res) => {
+  touchSession(req.user.id);
+  const s = getSession(req.user.id);
+  res.json({
+    ok: true,
+    user: publicUser(req.user, req.grants),
+    session: s ? { login_at: s.login_at, last_seen: s.last_seen, ip: s.ip, terminal: s.terminal } : null,
+  });
+});
+
+// 主动退出：只撤销当前 sid 的会话，旧标签页不会误删新会话
+router.post('/api/auth/logout', (req, res) => {
+  revokeSession(req.user.id, req.sessionSid);
+  res.json({ ok: true });
 });
 
 // 修改自己的密码

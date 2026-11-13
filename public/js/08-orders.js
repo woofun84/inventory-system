@@ -33,13 +33,13 @@ Object.assign(App, {
     ];
     let thHtml = `<th>${this.t('sup_seq')}</th>`;
     thHtml += headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
-    thHtml += `<th></th>`;
+    thHtml += `<th class="text-center"></th>`;
     const colCount = headers.length + 2;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
       const startIdx = (st.page - 1) * st.pageSize;
-      tbody = pageData.map((s, i) => `<tr><td class="text-center">${startIdx + i + 1}</td><td><strong>${s.name}</strong></td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td>${this.rowActions('suppliers', `App.editSupplier(${s.id})`, `App.deleteSupplier(${s.id})`)}</td></tr>`).join('');
+      tbody = pageData.map((s, i) => `<tr><td class="text-center">${startIdx + i + 1}</td><td><strong>${s.name}</strong></td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td class="text-center">${this.rowActions('suppliers', `App.editSupplier(${s.id})`, `App.deleteSupplier(${s.id})`)}</td></tr>`).join('');
     }
     document.getElementById('suppliers-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('suppliers-pager').innerHTML = this.renderPager(tid, sorted.length);
@@ -71,6 +71,11 @@ Object.assign(App, {
     this.setMain(this.pageWrap('⚙ ' + this.t('set_title'), this.t('set_desc'), '', `<div id="settings-content" class="set-page"><p class="set-loading">${this.t('loading')}</p></div>`));
     try {
       const data = await this.api('/api/params');
+      // 自动备份状态单独取：读失败时只让该卡片降级，不影响整页
+      let autoState = null;
+      if (this.user && this.user.role === 'admin') {
+        try { autoState = await this.api('/api/settings/backup/auto'); } catch (e) { autoState = null; }
+      }
       const sections = [
         { key: 'categories', title: this.t('set_categories'), fields: ['name', 'prefix'], headers: [this.t('set_cat_name'), this.t('set_cat_prefix')] },
         { key: 'units', title: this.t('set_units'), fields: ['name'], headers: [this.t('set_unit_name')] },
@@ -83,6 +88,7 @@ Object.assign(App, {
       if (data.docNoRules) html += this.renderDocNoRules(data.docNoRules);
       if (this.user && this.user.role === 'admin') {
         html += this.renderBackupPanel();
+        html += this.renderAutoBackupPanel(autoState);
         html += this.renderCostVariancePanel();
         html += this.renderDangerPanel();
       } else {
@@ -97,11 +103,11 @@ Object.assign(App, {
   // 单个基础参数字典卡片
   renderParamCard(n, s, items) {
     const canCreate = this.can('settings', 'create'), canDelete = this.can('settings', 'delete');
-    const thHtml = s.headers.map(h => '<th>' + h + '</th>').join('') + '<th></th>';
+    const thHtml = s.headers.map(h => '<th>' + h + '</th>').join('') + '<th class="text-center"></th>';
     const rowsHtml = items.length
       ? items.map(item => {
         const cells = s.fields.map(f => '<td>' + this.docEsc(item[f] || '') + '</td>').join('');
-        const del = canDelete ? '<td><span class="action-link danger" onclick="App.deleteParam(\'' + s.key + '\',' + item.id + ')">' + this.t('delete') + '</span></td>' : '<td></td>';
+        const del = canDelete ? '<td class="text-center"><span class="action-link danger" onclick="App.deleteParam(\'' + s.key + '\',' + item.id + ')">' + this.t('delete') + '</span></td>' : '<td></td>';
         return '<tr>' + cells + del + '</tr>';
       }).join('')
       : `<tr><td colspan="${s.headers.length + 1}" class="set-empty">${this.t('noData')}</td></tr>`;
@@ -136,10 +142,127 @@ Object.assign(App, {
     </div>`;
   },
 
+  // 自动覆盖式备份（仅管理员）：按日/周/小时定时执行，每次覆盖同一份文件
+  autoTimeText(ms) {
+    const n = Number(ms);
+    if (!n) return '-';
+    const d = new Date(n);
+    const p = x => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  },
+
+  autoSizeText(bytes) {
+    const n = Number(bytes) || 0;
+    if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  },
+
+  renderAutoBackupPanel(st) {
+    // 读取失败时降级为「未启用 + 默认值」，仍可保存设置
+    const s = st || { enabled: false, mode: 'daily', hour: 2, minute: 0, weekday: 1 };
+    const pad2 = n => String(n).padStart(2, '0');
+    const modeOpts = [['hourly', 'set_auto_hourly'], ['daily', 'set_auto_daily'], ['weekly', 'set_auto_weekly']]
+      .map(([v, k]) => `<option value="${v}"${s.mode === v ? ' selected' : ''}>${this.t(k)}</option>`).join('');
+    const wdOpts = [0, 1, 2, 3, 4, 5, 6]
+      .map(i => `<option value="${i}"${Number(s.weekday) === i ? ' selected' : ''}>${this.t('set_auto_wd_' + i)}</option>`).join('');
+    const timeStyle = s.mode === 'hourly' ? 'display:none' : '';
+    const wdStyle = s.mode === 'weekly' ? '' : 'display:none';
+
+    const lines = [];
+    lines.push(`${this.t('set_auto_status')}${this.t(s.enabled ? 'set_auto_status_on' : 'set_auto_status_off')}`);
+    lines.push(s.lastRunAt ? this.t('set_auto_last', { time: this.autoTimeText(s.lastRunAt) }) : this.t('set_auto_never'));
+    if (s.enabled && s.nextRunAt) lines.push(this.t('set_auto_next', { time: this.autoTimeText(s.nextRunAt) }));
+    lines.push(s.exists ? this.t('set_auto_file', { file: s.file, size: this.autoSizeText(s.size) }) : this.t('set_auto_missing'));
+    if (s.lastError) lines.push(this.t('set_auto_error', { msg: s.lastError }));
+
+    return `<div class="pu-card" data-auto-enabled="${s.enabled ? 1 : 0}">
+      <div class="pu-card-title"><span>06</span><div>${this.t('set_auto_title')}<small>${this.t('set_auto_desc')}</small></div></div>
+      <div class="set-op">
+        <div class="set-op-main"><b>${this.t('set_auto_freq')}</b><p>${this.t('set_auto_note')}</p></div>
+        <div class="set-op-actions">
+          <div class="form-group" style="min-width:130px"><label>${this.t('set_auto_freq')}</label>
+            <select id="set_auto_mode" onchange="App.onAutoBackupModeChange()">${modeOpts}</select></div>
+          <div class="form-group" id="set_auto_time_wrap" style="min-width:120px;${timeStyle}"><label>${this.t('set_auto_time')}</label>
+            <input id="set_auto_time" type="time" value="${pad2(s.hour)}:${pad2(s.minute)}"></div>
+          <div class="form-group" id="set_auto_wd_wrap" style="min-width:120px;${wdStyle}"><label>${this.t('set_auto_weekday')}</label>
+            <select id="set_auto_wd">${wdOpts}</select></div>
+        </div>
+      </div>
+      <div class="set-sep"></div>
+      <div class="set-op">
+        <div class="set-op-main"><b>${this.t('set_auto_latest')}</b><p>${lines.join('<br>')}</p></div>
+        <div class="set-op-actions">
+          <button class="btn btn-outline btn-sm" onclick="App.toggleAutoBackup()">${this.t(s.enabled ? 'set_auto_disable' : 'set_auto_enable')}</button>
+          <button class="btn btn-primary btn-sm" onclick="App.saveAutoBackup()">${this.t('set_auto_save')}</button>
+          <button class="btn btn-outline btn-sm" onclick="App.runAutoBackupNow(this)">${this.t('set_auto_run_now')}</button>
+        </div>
+      </div>
+    </div>`;
+  },
+
+  onAutoBackupModeChange() {
+    const mode = (document.getElementById('set_auto_mode') || {}).value;
+    const tWrap = document.getElementById('set_auto_time_wrap');
+    const wWrap = document.getElementById('set_auto_wd_wrap');
+    if (tWrap) tWrap.style.display = mode === 'hourly' ? 'none' : '';
+    if (wWrap) wWrap.style.display = mode === 'weekly' ? '' : 'none';
+  },
+
+  // 读取卡片上的表单值（时刻输入为 HH:MM）
+  autoBackupForm() {
+    const mode = (document.getElementById('set_auto_mode') || {}).value || 'daily';
+    const time = (document.getElementById('set_auto_time') || {}).value || '02:00';
+    const [h, m] = time.split(':').map(n => parseInt(n, 10));
+    const wd = parseInt((document.getElementById('set_auto_wd') || {}).value, 10);
+    return {
+      mode,
+      hour: Number.isInteger(h) ? h : 2,
+      minute: Number.isInteger(m) ? m : 0,
+      weekday: Number.isInteger(wd) ? wd : 1,
+    };
+  },
+
+  async saveAutoBackup() {
+    try {
+      const body = this.autoBackupForm();
+      const card = document.querySelector('[data-auto-enabled]');
+      if (card) body.enabled = card.dataset.autoEnabled === '1';
+      await this.api('/api/settings/backup/auto', 'PUT', body);
+      this.toast(this.t('set_auto_saved'));
+      this.renderSettings();
+    } catch (e) { this.toast(e.message, 'error'); }
+  },
+
+  async toggleAutoBackup() {
+    const card = document.querySelector('[data-auto-enabled]');
+    const enabled = !(card && card.dataset.autoEnabled === '1');
+    try {
+      const body = { ...this.autoBackupForm(), enabled };
+      await this.api('/api/settings/backup/auto', 'PUT', body);
+      this.toast(this.t(enabled ? 'set_auto_enabled_toast' : 'set_auto_disabled_toast'));
+      this.renderSettings();
+    } catch (e) { this.toast(e.message, 'error'); }
+  },
+
+  async runAutoBackupNow(btn) {
+    const oldText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = this.t('set_auto_running'); }
+    try {
+      const r = await this.api('/api/settings/backup/auto/run', 'POST', {});
+      this.toast(this.t('set_auto_done', { file: r.file || '' }));
+      this.renderSettings();
+    } catch (e) {
+      this.toast(e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = oldText; }
+    }
+  },
+
   // 成本差异结转（仅管理员；只改差异状态，不动库存）
   renderCostVariancePanel() {
     return `<div class="pu-card">
-      <div class="pu-card-title"><span>06</span><div>${this.t('set_cv_title')}<small>${this.t('set_cv_desc')}</small></div></div>
+      <div class="pu-card-title"><span>07</span><div>${this.t('set_cv_title')}<small>${this.t('set_cv_desc')}</small></div></div>
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_cv_op')}</b><p>${this.t('set_cv_op_desc')}</p></div>
         <button class="btn btn-primary" onclick="App.confirmSettleVariance()">${this.t('set_cv_btn')}</button>
@@ -150,7 +273,7 @@ Object.assign(App, {
   // 数据清理（危险区）
   renderDangerPanel() {
     return `<div class="pu-card set-danger-card">
-      <div class="pu-card-title"><span>07</span><div>${this.t('set_clear_title')}<small>${this.t('set_clear_desc')}</small></div></div>
+      <div class="pu-card-title"><span>08</span><div>${this.t('set_clear_title')}<small>${this.t('set_clear_desc')}</small></div></div>
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_clear_business')}</b><p>${this.t('set_clear_business_desc')}</p></div>
         <button class="btn btn-danger-outline" onclick="App.confirmClear('business')">${this.t('set_clear_business_btn')}</button>
@@ -236,10 +359,10 @@ Object.assign(App, {
     if (btn) { btn.disabled = true; btn.textContent = this.t('loading'); }
     try {
       const res = await fetch('/api/settings/backup/download', { headers: { Authorization: 'Bearer ' + this.token } });
-      if (res.status === 401) { this.logout(); return; }
+      if (res.status === 401) { await this.handleUnauthorized(res); return; }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || this.t('requestFailed'));
+        throw new Error((this.lang === 'en' && err.error_en) ? err.error_en : (err.error || this.t('requestFailed')));
       }
       const blob = await res.blob();
       const cd = res.headers.get('Content-Disposition') || '';
@@ -294,9 +417,9 @@ Object.assign(App, {
         headers: { Authorization: 'Bearer ' + this.token, 'Content-Type': 'application/octet-stream' },
         body: file,
       });
-      if (res.status === 401) { this.logout(); return; }
+      if (res.status === 401) { await this.handleUnauthorized(res); return; }
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || this.t('requestFailed'));
+      if (!res.ok) throw new Error((this.lang === 'en' && data.error_en) ? data.error_en : (data.error || this.t('requestFailed')));
       this.showModal(`<h3>${this.t('set_restore_ok_title')}</h3>`,
         `<p class="set-note" style="margin:0">${this.t('set_restore_ok', { name: data.backupFile || '' })}</p>`,
         this.t('close'), () => { this.closeModal(); location.reload(); });

@@ -78,6 +78,10 @@ function auditMiddleware(req, res, next) {
   if (!WRITE_METHODS.has(req.method) || !req.path.startsWith('/api/')) return next();
   // 设置页运维接口由路由自行写审计（含自动备份文件名），这里跳过避免重复/被清库覆盖
   if (req.path.startsWith('/api/settings/')) return next();
+  // 清空日志由路由在清空后自行补写一条，这里跳过避免重复
+  if (req.path === '/api/audit-logs') return next();
+  // 退出登录只是撤销会话，不属于业务写操作
+  if (req.path === '/api/auth/logout') return next();
   res.on('finish', () => {
     try {
       const segs = req.path.split('/').filter(Boolean); // ['api','materials','CB-0001']

@@ -93,8 +93,8 @@ Object.assign(App, {
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('stock_status')}</label><select id="q_status" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:96px"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div>
         </div>
         <div class="pu-head-actions">
-          <button class="btn btn-outline btn-sm" onclick="App.qStockExport()">${this.t('doc_export')}</button>
-          <button class="btn btn-outline btn-sm" onclick="App.qStockPrint()">${this.t('doc_print')}</button>
+          <button class="btn btn-outline" onclick="App.qStockExport()">${this.t('doc_export')}</button>
+          <button class="btn btn-outline" onclick="App.qStockPrint()">${this.t('doc_print')}</button>
         </div>
       </div>
       <div class="pu-kpis" id="q_stock_kpis"></div>
@@ -229,7 +229,7 @@ Object.assign(App, {
       ['code', this.t('mat_code')], ['name', this.t('mat_name')], ['spec', this.t('mat_spec')],
       ['category', this.t('mat_category')], ['brand', this.t('mat_brand')], ['unit', this.t('mat_unit')],
       ['on_hand', this.t('stock_on_hand'), true], ['min_stock', this.t('stock_min'), true],
-      ['stock_status', this.t('mat_status')]
+      ['stock_status', this.t('mat_status'), 'center']
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid, h[2])).join('');
     const colCount = headers.length;
@@ -237,11 +237,15 @@ Object.assign(App, {
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
       const esc = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
-      tbody = pageData.map(m => `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen('${m.code}')"><td class="cell-code">${m.code}</td><td class="q-ell" title="${esc(m.name)}">${m.name}</td><td class="q-ell" title="${esc(m.spec)}">${m.spec || ''}</td><td>${m.category}</td><td class="q-ell" title="${esc(m.brand)}">${m.brand || ''}</td><td>${m.unit}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td>${this.statusBadge(m.stock_status)}</td></tr>`).join('');
+      tbody = pageData.map(m => `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen('${m.code}')"><td class="cell-code">${m.code}</td><td class="q-ell" title="${esc(m.name)}">${m.name}</td><td class="q-ell" title="${esc(m.spec)}">${m.spec || ''}</td><td>${m.category}</td><td class="q-ell" title="${esc(m.brand)}">${m.brand || ''}</td><td>${m.unit}</td><td class="text-right"><strong>${m.on_hand}</strong></td><td class="text-right">${m.min_stock}</td><td class="text-center">${this.statusBadge(m.stock_status)}</td></tr>`).join('');
     }
     const kpis = [[this.t('stock_types'), sorted.length], ...(vp ? [[this.t('stock_total_value'), this.fmtMoney(totalValue)]] : []), [this.t('stock_alerts'), alerts]];
     document.getElementById('q_stock_kpis').innerHTML = kpis.map(k => `<div class="pu-kpi"><small>${k[0]}</small><strong>${k[1]}</strong></div>`).join('');
-    document.getElementById('q_stock_scroll').innerHTML = `<div class="table-wrap"><table style="table-layout:fixed"><colgroup><col style="width:9%"><col style="width:21%"><col style="width:16%"><col style="width:9%"><col style="width:10%"><col style="width:7%"><col style="width:9%"><col style="width:9%"><col style="width:10%"></colgroup><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+    // 列宽用像素固定并给表格一个最小宽度：窄屏由 #q_stock_scroll 横向滚动，
+    // 不再用百分比列把「编码/名称/规格」压扁串列
+    const colW = [96, 220, 160, 96, 104, 56, 80, 80, 84];
+    const minW = colW.reduce((s, w) => s + w, 0);
+    document.getElementById('q_stock_scroll').innerHTML = `<div class="table-wrap"><table style="table-layout:fixed;min-width:${minW}px"><colgroup>${colW.map(w => `<col style="width:${w}px">`).join('')}</colgroup><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('q_stock_pager').innerHTML = this.puPagerHtml(tid, sorted.length);
     this.qInsRemark('stock');
     // 从库存分析预警清单 / 深链进入：列表渲染完再打开详情卡，保证行能高亮
@@ -746,12 +750,12 @@ Object.assign(App, {
         ? rows.map(r => `<tr>
             <td>${this.ledgerDateCell(r)}</td>
             <td>${r.doc_no ? `<button type="button" class="pu-lk" onclick="App.qCardDocOpen('${this.docEsc(r.doc_no)}',{source:'${this.qCardDocSrc(r.doc_no, r)}'})"><span class="q-h-clip q-h-w-doc">${this.docEsc(r.doc_no)}</span></button>` : '–'}</td>
-            <td>${this.ledgerTypeBadge(r)}</td>
+            <td class="text-center">${this.ledgerTypeBadge(r)}</td>
             <td class="text-right">${this.qFlowQtyText(r)}</td>
             <td class="text-right">${r.balance == null ? '' : r.balance}</td>
           </tr>`).join('')
         : `<tr><td colspan="5" class="text-center">${this.t('q_no_data')}</td></tr>`;
-      return `<div class="table-wrap"><table class="q-flow" style="width:100%;font-size:12px"><thead><tr><th>${this.t('q_col_time')}</th><th>${this.t('ledger_doc')}</th><th>${this.t('q_col_biz')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('q_col_balance')}</th></tr></thead><tbody>${body}</tbody></table></div>
+      return `<div class="table-wrap"><table class="q-flow" style="width:100%;font-size:12px"><thead><tr><th>${this.t('q_col_time')}</th><th>${this.t('ledger_doc')}</th><th class="text-center">${this.t('q_col_biz')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('q_col_balance')}</th></tr></thead><tbody>${body}</tbody></table></div>
         <button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('stock','flow')">${this.t('q_view_all')}</button>`;
     }
     const biz = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘盈', 'ledger_adj_gain'], ['盘亏', 'ledger_adj_loss'], ['其它', 'ledger_adj_other'], ['期初结存', 'ledger_opening_flow']]
@@ -878,9 +882,9 @@ Object.assign(App, {
 
     // 列：方向已由业务类型徽标表达，不再单列（14 列 / 无价格权限 10 列）
     const cols = [
-      { key: 'date', label: this.t('q_col_time'), w: 84 },
+      { key: 'date', label: this.t('q_col_time'), w: 112 },
       { key: 'doc_no', label: this.t('ledger_doc'), w: 146, clip: 'q-h-w-doc' },
-      { key: 'business_type', label: this.t('q_col_biz'), w: 84 },
+      { key: 'business_type', label: this.t('q_col_biz'), align: 'center', w: 84 },
       { key: 'qty', label: this.t('q_qty'), align: 'right', w: 48 },
     ];
     if (vp) cols.push(
@@ -893,8 +897,8 @@ Object.assign(App, {
       { key: 'balance_avg', label: this.t('q_col_bal_avg'), align: 'right', w: 60 }
     );
     cols.push(
-      { key: 'cost_basis', label: this.t('q_col_basis'), w: 92 },
-      { key: 'status', label: this.t('ledger_status'), w: 56 },
+      { key: 'cost_basis', label: this.t('q_col_basis'), align: 'center', w: 92 },
+      { key: 'status', label: this.t('ledger_status'), align: 'center', w: 56 },
       { key: 'party', label: this.t('ledger_party'), w: 124, clip: 'q-h-w-party' },
       { key: 'handler', label: this.t('in_handler'), w: 80, clip: 'q-h-w-handler' },
       { key: 'remarks', label: this.t('in_remarks'), clip: 'q-h-w-remarks', w: 124 }
@@ -909,8 +913,8 @@ Object.assign(App, {
     const noSort = { qty: 1, status: 1, party: 1, handler: 1, remarks: 1 };
     const head = cols.map(c => {
       const th = noSort[c.key]
-        ? `<th class="${c.align === 'right' ? 'text-right' : ''}">${c.label}</th>`
-        : this.sortTh(c.label, c.key, tid, c.align === 'right');
+        ? `<th class="${this.colAlignClass(c.align)}">${c.label}</th>`
+        : this.sortTh(c.label, c.key, tid, c.align);
       return c.tight ? th.replace('<th ', '<th data-tight="1" ') : th;
     }).join('');
 
@@ -945,7 +949,7 @@ Object.assign(App, {
         const cells = [
           `<td>${this.ledgerDateCell(r)}</td>`,
           `<td title="${esc(r.doc_no)}">${r.doc_no ? `<button type="button" class="pu-lk" onclick="App.qCardDocOpen('${esc(r.doc_no)}',{source:'${this.qCardDocSrc(r.doc_no, r)}'})"><span class="q-h-clip q-h-w-doc">${esc(r.doc_no)} ${this.docRevisionBadge(r.doc_no)}</span></button>` : '–'}</td>`,
-          `<td>${this.ledgerTypeBadge(r)}</td>`,
+          `<td class="text-center">${this.ledgerTypeBadge(r)}</td>`,
           `<td class="text-right">${this.qFlowQtyText(r)}</td>`,
         ];
         if (vp) cells.push(
@@ -958,8 +962,8 @@ Object.assign(App, {
           `<td class="text-right">${this.fmtMoney(r.balance_avg)}</td>`
         );
         cells.push(
-          `<td>${this.costBasisBadge(r.cost_basis)}</td>`,
-          `<td>${r.voided ? `<span class="badge badge-muted">${this.t('ledger_voided')}</span>` : this.t('ledger_active')}</td>`,
+          `<td class="text-center">${this.costBasisBadge(r.cost_basis)}</td>`,
+          `<td class="text-center">${r.voided ? `<span class="badge badge-muted">${this.t('ledger_voided')}</span>` : this.t('ledger_active')}</td>`,
           `<td title="${esc(r.party)}"><span class="q-h-clip q-h-w-party">${esc(r.party)}</span></td>`,
           `<td title="${esc(r.handler)}"><span class="q-h-clip q-h-w-handler">${esc(r.handler)}</span></td>`,
           `<td title="${esc(r.remarks)}"><span class="q-h-clip q-h-w-remarks">${esc(r.remarks)}</span></td>`
@@ -999,8 +1003,8 @@ Object.assign(App, {
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_d_end" type="date" onchange="App.qDocsReload()"></div>
         </div>
         <div class="pu-head-actions">
-          <button class="btn btn-outline btn-sm" onclick="App.qDocsExport()">${this.t('doc_export')}</button>
-          <button class="btn btn-outline btn-sm" onclick="App.qDocsPrint()">${this.t('doc_print')}</button>
+          <button class="btn btn-outline" onclick="App.qDocsExport()">${this.t('doc_export')}</button>
+          <button class="btn btn-outline" onclick="App.qDocsPrint()">${this.t('doc_print')}</button>
         </div>
       </div>
       <div class="pu-split q-ins-split" id="q_docs_split">
@@ -1076,7 +1080,7 @@ Object.assign(App, {
     const cols = [
       { key: 'doc_no', label: this.t('ledger_doc') },
       { key: 'doc_type', label: this.t('q_doc_type') },
-      { key: 'date', label: this.t('ledger_date'), value: r => this.fmtDate(r.date) },
+      { key: 'date', label: this.t('ledger_date'), value: r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at) },
       { key: 'party', label: this.t('q_doc_party') }
     ];
     if (vp) cols.push({ key: 'amount', label: this.t('ledger_amount'), align: 'right', value: r => this.fmtMoney(r.amount) });
@@ -1145,17 +1149,17 @@ Object.assign(App, {
     const esc = v => this.docEsc(v == null ? '' : v);
     const cols = [
       { key: 'doc_no', label: this.t('ledger_doc'), clip: 'q-h-w-doc' },
-      { key: 'doc_type', label: this.t('q_doc_type'), tight: true },
+      { key: 'doc_type', label: this.t('q_doc_type'), align: 'center', tight: true },
       { key: 'date', label: this.t('ledger_date') },
       { key: 'party', label: this.t('q_doc_party'), clip: 'q-h-w-doc' },
     ];
     if (vp) cols.push({ key: 'amount', label: this.t('ledger_amount'), align: 'right' });
     cols.push(
-      { key: 'status', label: this.t('ledger_status'), tight: true },
+      { key: 'status', label: this.t('ledger_status'), align: 'center', tight: true },
       { key: 'handler', label: this.t('in_handler'), clip: 'q-h-w-handler' }
     );
     const head = cols.map(c => {
-      const th = this.sortTh(c.label, c.key, tid, c.align === 'right');
+      const th = this.sortTh(c.label, c.key, tid, c.align);
       return c.tight ? th.replace('<th ', '<th data-tight="1" ') : th;
     }).join('');
 
@@ -1165,13 +1169,13 @@ Object.assign(App, {
       tbody = d.rows.map(r => {
         const cells = [
           `<td title="${esc(r.doc_no)}"><button type="button" class="pu-lk${r.status === 'voided' ? ' is-voided' : ''}"><span class="q-h-clip q-h-w-doc">${esc(r.doc_no)}</span></button></td>`,
-          `<td>${this.qDocTypeBadge(r.doc_type)}</td>`,
-          `<td>${esc(r.date)}</td>`,
+          `<td class="text-center">${this.qDocTypeBadge(r.doc_type)}</td>`,
+          `<td>${this.fmtDocDate(r.date, r.created_at, r.confirmed_at)}</td>`,
           `<td title="${esc(r.party)}"><span class="q-h-clip q-h-w-doc">${esc(r.party)}</span></td>`,
         ];
         if (vp) cells.push(`<td class="text-right">${r.amount == null ? '–' : this.fmtMoney(r.amount)}</td>`);
         cells.push(
-          `<td>${this.qDocStatusBadge(r.status)}</td>`,
+          `<td class="text-center">${this.qDocStatusBadge(r.status)}</td>`,
           `<td title="${esc(r.handler)}"><span class="q-h-clip q-h-w-handler">${esc(r.handler)}</span></td>`
         );
         return `<tr class="q-row${r.status === 'voided' ? ' is-voided' : ''}" data-key="${esc(r.doc_no)}" onclick="App.qDocsCardOpen('${esc(r.doc_no)}','${r.source}')">${cells.join('')}</tr>`;
@@ -1307,7 +1311,7 @@ Object.assign(App, {
         (lines.length > 0 && ('price' in lines[0] || 'cost_price' in lines[0]));
     const amount = isRet && d.summary && d.summary.total_amount != null ? d.summary.total_amount : this.qDocAmount(d);
     const meta = [
-      [this.t('ledger_date'), esc(d.date || '')],
+      [this.t('ledger_date'), esc(this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '')],
       [this.t('q_doc_type'), this.qDocTypeBadge(type)],
       [this.t('q_doc_status'), this.qDocStatusBadge(status)],
       [this.t('q_doc_party'), esc(party || '–')],
@@ -1346,7 +1350,7 @@ Object.assign(App, {
     }
     const closeBtn = opts.closeBtn === false ? '' : `<button class="btn btn-outline btn-sm" onclick="App.qDocsClose()">${this.t('close')}</button>`;
     const foot = opts.foot === false ? '' : `<div class="pu-insp-foot" style="gap:8px">${opts.footExtra || ''}<button class="btn btn-primary" onclick="App.qOpenModuleDoc('${kind}','${esc(no)}')">${this.t('q_open_module')}</button></div>`;
-    return `<div class="pu-insp-head"><div><h2>${esc(no)} ${this.qDocStatusBadge(status)}</h2><small>${this.qDocTypeBadge(type)} · ${esc(d.date || '')}</small></div><div style="display:flex;gap:4px">${closeBtn}${opts.headExtra || ''}</div></div>
+    return `<div class="pu-insp-head"><div><h2>${esc(no)} ${this.qDocStatusBadge(status)}</h2><small>${this.qDocTypeBadge(type)} · ${esc(this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '')}</small></div><div style="display:flex;gap:4px">${closeBtn}${opts.headExtra || ''}</div></div>
       <div class="pu-dpanel">
         <dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
         <div style="font-weight:600;margin-bottom:6px">${this.t('q_doc_lines')}</div>
@@ -1371,8 +1375,8 @@ Object.assign(App, {
           <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_r_end" type="date" onchange="App.qReceiversFilter()"></div>
         </div>
         <div class="pu-head-actions">
-          <button class="btn btn-outline btn-sm" onclick="App.qReceiversExport()">${this.t('doc_export')}</button>
-          <button class="btn btn-outline btn-sm" onclick="App.qReceiversPrint()">${this.t('doc_print')}</button>
+          <button class="btn btn-outline" onclick="App.qReceiversExport()">${this.t('doc_export')}</button>
+          <button class="btn btn-outline" onclick="App.qReceiversPrint()">${this.t('doc_print')}</button>
         </div>
       </div>
       <div style="margin:0 0 10px;padding:8px 12px;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--text-muted);font-size:12px">${this.t('q_rcv_rule')}</div>
@@ -1492,7 +1496,7 @@ Object.assign(App, {
     ];
     if (vp) cols.push({ key: 'amount', label: this.t('q_rcv_amount'), align: 'right' });
     cols.push({ key: 'last_date', label: this.t('q_rcv_last') });
-    const head = cols.map(c => this.sortTh(c.label, c.key, tid, c.align === 'right')).join('');
+    const head = cols.map(c => this.sortTh(c.label, c.key, tid, c.align)).join('');
 
     let tbody = '';
     if (!pageData.length) tbody = this.emptyRow(cols.length);
@@ -1601,15 +1605,15 @@ Object.assign(App, {
     }
     const body = shown.length ? shown.map(x => `<tr${x.status === 'voided' ? ' class="is-voided"' : ''}>
         <td><button class="pu-lk${x.status === 'voided' ? ' is-voided' : ''}" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'outbound'})">${esc(x.doc_no)}</button></td>
-        <td>${esc(x.date)}</td>
+        <td>${esc(this.fmtDocDate(x.date, x.created_at, x.confirmed_at))}</td>
         <td class="text-right">${x.qty}</td>
         ${vp ? `<td class="text-right">${this.fmtMoney(x.amount || 0)}</td>` : ''}
-        <td>${this.qDocStatusBadge(x.status)}</td>
+        <td class="text-center">${this.qDocStatusBadge(x.status)}</td>
       </tr>`).join('') : `<tr><td colspan="${vp ? 5 : 4}" class="text-center">${this.t('q_no_data')}</td></tr>`;
     const more = limit && rows.length > limit
       ? `<button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('receivers','docs')">${this.t('q_view_all')}</button>` : '';
     return `<div style="font-weight:600;margin-bottom:6px">${this.t('q_rcv_docs_title')}</div>
-      <div class="table-wrap"><table class="q-flow"><thead><tr><th>${this.t('ledger_doc')}</th><th>${this.t('ledger_date')}</th><th class="text-right">${this.t('q_qty')}</th>${vp ? `<th class="text-right">${this.t('ledger_amount')}</th>` : ''}<th>${this.t('ledger_status')}</th></tr></thead><tbody>${body}</tbody></table></div>${more}${pager}`;
+      <div class="table-wrap"><table class="q-flow"><thead><tr><th>${this.t('ledger_doc')}</th><th>${this.t('ledger_date')}</th><th class="text-right">${this.t('q_qty')}</th>${vp ? `<th class="text-right">${this.t('ledger_amount')}</th>` : ''}<th class="text-center">${this.t('ledger_status')}</th></tr></thead><tbody>${body}</tbody></table></div>${more}${pager}`;
   },
 
   qRcvMatsHtml(mats, limit) {
@@ -1744,13 +1748,13 @@ Object.assign(App, {
     // 预警清单：低于安全库存（补货/缺货）
     const alertRows = lowList.slice().sort((a, b) => (a.on_hand - a.min_stock) - (b.on_hand - b.min_stock));
     document.getElementById('q_an_alert_box').innerHTML = alertRows.length
-      ? `<div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('stock_min')}</th><th class="text-right">${this.t('q_an_gap')}</th><th>${this.t('stock_status')}</th></tr></thead><tbody>${alertRows.map(m => `<tr class="q-row" onclick="App.qAlertOpen('${esc(m.code)}')">
+      ? `<div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('stock_min')}</th><th class="text-right">${this.t('q_an_gap')}</th><th class="text-center">${this.t('stock_status')}</th></tr></thead><tbody>${alertRows.map(m => `<tr class="q-row" onclick="App.qAlertOpen('${esc(m.code)}')">
         <td>${esc(m.code)}</td>
         <td title="${esc(m.name + (m.spec ? ' · ' + m.spec : ''))}"><span class="q-h-clip q-h-w-name">${esc(m.name)}${m.spec ? ' · ' + esc(m.spec) : ''}</span></td>
         <td class="text-right">${m.on_hand}</td>
         <td class="text-right">${m.min_stock}</td>
         <td class="text-right${(m.on_hand - m.min_stock) < 0 ? ' num-neg' : ''}">${(m.on_hand - m.min_stock).toFixed(2)}</td>
-        <td>${this.statusBadge(m.stock_status)}</td>
+        <td class="text-center">${this.statusBadge(m.stock_status)}</td>
       </tr>`).join('')}</tbody></table></div>`
       : `<div class="empty-state"><p>${this.t('q_an_no_alert')}</p></div>`;
   },
@@ -1875,7 +1879,7 @@ Object.assign(App, {
         ${vp ? `<td class="text-right">${this.fmtMoney(r.stock_value)}</td><td class="text-right">${this.fmtMoney(r.avg_cost)}</td>` : ''}
         <td>${r.last_out_date ? esc(r.last_out_date) : `<span class="badge badge-muted">${this.t('q_an_never_out')}</span>`}</td>
         <td class="text-right">${r.days_idle == null ? '–' : r.days_idle}</td>
-        <td><span class="badge ${b.cls}">${esc(b.label)}</span></td>
+        <td class="text-center"><span class="badge ${b.cls}">${esc(b.label)}</span></td>
       </tr>`;
     }).join('') : `<tr><td colspan="${cols}" class="text-center">${this.t('q_no_data')}</td></tr>`;
     box.innerHTML = `<div class="table-wrap"><table><thead><tr>
@@ -1885,7 +1889,7 @@ Object.assign(App, {
         ${vp ? this.sortTh(this.t('q_an_stock_amount'), 'stock_value', tid, true) + this.sortTh(this.t('q_an_avg_cost'), 'avg_cost', tid, true) : ''}
         ${this.sortTh(this.t('q_an_col_last_out'), 'last_out_date', tid)}
         ${this.sortTh(this.t('q_an_col_days'), 'sort_days', tid, true)}
-        <th>${this.t('q_an_col_bucket')}</th>
+        <th class="text-center">${this.t('q_an_col_bucket')}</th>
       </tr></thead><tbody>${body}</tbody></table></div>
       ${rows.length ? `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, rows.length)}</div>` : ''}`;
   },
@@ -1990,7 +1994,7 @@ Object.assign(App, {
         ${vp ? `<td class="text-right">${this.fmtMoney(r.out_amount)}</td>` : ''}
         ${vp ? `<td class="text-right">${(r.share * 100).toFixed(2)}%</td>` : ''}
         ${vp ? `<td class="text-right">${(r.cum_share * 100).toFixed(2)}%</td>` : ''}
-        <td>${this.qAnClassBadge(r.abc)}</td>
+        <td class="text-center">${this.qAnClassBadge(r.abc)}</td>
         <td class="text-right">${r.on_hand}</td>
         ${vp ? `<td class="text-right">${this.fmtMoney(r.stock_value)}</td>` : ''}
       </tr>`).join('') : `<tr><td colspan="${cols}" class="text-center">${this.t('q_no_data')}</td></tr>`;
@@ -2000,7 +2004,7 @@ Object.assign(App, {
         ${vp ? this.sortTh(this.t('q_an_out_amount'), 'out_amount', tid, true) : ''}
         ${vp ? this.sortTh(this.t('q_an_share'), 'share', tid, true) : ''}
         ${vp ? this.sortTh(this.t('q_an_cum_share'), 'cum_share', tid, true) : ''}
-        <th>${this.t('q_an_class')}</th>
+        <th class="text-center">${this.t('q_an_class')}</th>
         ${this.sortTh(this.t('q_an_stock_qty'), 'on_hand', tid, true)}
         ${vp ? this.sortTh(this.t('q_an_stock_amount'), 'stock_value', tid, true) : ''}
       </tr></thead><tbody>${body}</tbody></table></div>
@@ -2152,11 +2156,8 @@ Object.assign(App, {
   // 台账日期列：业务日期为主，过账时分作次行（同一天多笔可区分先后）
   ledgerDateCell(r) {
     if (!r.date) return '';
-    const full = this.fmtDateTime(r.posting_time) || '';
-    if (!full) return r.date;
-    const [pdate, ptime] = full.split(' ');
-    const hm = pdate === r.date ? ptime : `${pdate.slice(5)} ${ptime}`;
-    return `${r.date}<div style="font-size:11px;color:var(--text-muted);font-weight:400">${hm}</div>`;
+    // 业务日期只有日历日粒度 → 时间部分取真实过账时刻，统一成分秒前的一行格式
+    return this.fmtDocDate(r.date, r.posting_time);
   },
 
 });

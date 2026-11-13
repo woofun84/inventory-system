@@ -1,14 +1,17 @@
 /**
  * 设置页运维接口 —— 数据备份 / 恢复 / 清库
  *
- * 四个接口：
+ * 接口：
  *   GET  /api/settings/backup/download        生成一致性快照并下载（文件名带时间戳）
  *   POST /api/settings/backup/restore         上传 .db 备份并恢复（先校验、先自动备份）
+ *   GET  /api/settings/backup/auto            读取自动覆盖式备份的设置与最近状态
+ *   PUT  /api/settings/backup/auto            保存自动备份设置（每小时 / 每天 / 每周）
+ *   POST /api/settings/backup/auto/run        立即执行一次自动备份（覆盖同一份文件）
  *   POST /api/settings/data/clear-business    只清业务数据（保留基础档案）
  *   POST /api/settings/data/reset             全清并重建默认管理员
  *
  * 安全约定：
- *  1. 四个接口都要求管理员角色，非管理员一律 403（不仅靠前端隐藏按钮）
+ *  1. 以上接口都要求管理员角色，非管理员一律 403（不仅靠前端隐藏按钮）
  *  2. 清库与恢复必须带固定确认短语，短语不符直接拒绝
  *  3. 清库与恢复前先把当前库快照到 backups/，响应返回备份文件名
  *  4. 审计：本文件路由自行写审计（含备份文件名），middleware/audit.js 跳过 /api/settings/*
@@ -23,6 +26,8 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const audit = require('../services/audit');
 const costing = require('../services/costing');
+const autoBackupSvc = require('../services/auto-backup');
+const { seedGrants } = require('../services/user-permissions');
 const { INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('../config');
 
 const router = express.Router();
@@ -40,7 +45,13 @@ const BUSINESS_TABLES = [
   'audit_logs',
 ];
 // 全清时额外删除的业务档案
+// 用户级权限（user_permissions / user_perm_state）以 users 为父表，这里显式先删，
+// 不依赖 ON DELETE CASCADE：即使某次连接上 foreign_keys 被临时关掉，也不会留下
+// 指向已删除用户的孤儿授权行（否则重建用户后可能继承上一个用户的权限）。
 const ARCHIVE_TABLES = ['materials', 'suppliers', 'users'];
+const USER_PERM_TABLES = ['user_permissions', 'user_perm_state'];
+// 登录会话（单终端登录）是运行时状态，同样以 users 为父表，先于 users 删除
+const SESSION_TABLES = ['user_sessions'];
 
 // 判断「是不是本系统的库」的关键表（含成本重构后的流水/余额表）
 const CORE_TABLES = [
@@ -111,7 +122,11 @@ function recordOp(req, action, detail) {
 }
 
 function confirmMismatch(res) {
-  return res.status(400).json({ error: '确认短语不正确，操作未执行', code: 'CONFIRM_MISMATCH' });
+  return res.status(400).json({
+    error: '确认短语不正确，操作未执行',
+    error_en: 'The confirmation phrase is incorrect; nothing was executed',
+    code: 'CONFIRM_MISMATCH',
+  });
 }
 
 // 表名/列名统一用双引号包裹，避免关键字问题
@@ -134,26 +149,33 @@ function columnsOf(schema, table) {
 //   3. 每张表对应列的声明类型完全相同（成本重构把数值列从 REAL 改成 INTEGER，
 //      仅比列名会把旧备份误判为合法）。
 // 列的非空/默认值不参与判定——它们不影响数据语义，且历史备份可能由不同 SQLite 版本导出。
+// 返回 { zh, en } 描述差异（中英双语一起给出，前端按当前语言展示），一致时返回 null。
 function compareSchema(curTables, bakTables) {
-  const missing = curTables.filter(t => !bakTables.includes(t));
-  const extra = bakTables.filter(t => !curTables.includes(t));
+  // 会话表是运行时状态，不参与结构比对：旧备份没有它时按「空会话」恢复（恢复后需重新登录）
+  const skip = t => t === 'user_sessions';
+  const missing = curTables.filter(t => !skip(t) && !bakTables.includes(t));
+  const extra = bakTables.filter(t => !skip(t) && !curTables.includes(t));
   if (missing.length || extra.length) {
-    const parts = [];
-    if (missing.length) parts.push('缺少表：' + missing.join('、'));
-    if (extra.length) parts.push('多余表：' + extra.join('、'));
-    return parts.join('；');
+    const zh = [];
+    const en = [];
+    if (missing.length) { zh.push('缺少表：' + missing.join('、')); en.push('missing tables: ' + missing.join(', ')); }
+    if (extra.length) { zh.push('多余表：' + extra.join('、')); en.push('unexpected tables: ' + extra.join(', ')); }
+    return { zh: zh.join('；'), en: en.join('; ') };
   }
   for (const t of curTables) {
+    if (skip(t)) continue;
     const curCols = columnsOf('main', t);
     const bakCols = columnsOf('bak', t);
     const curNames = new Set(curCols.map(c => c.name));
     const bakNames = new Set(bakCols.map(c => c.name));
     if (curCols.some(c => !bakNames.has(c.name)) || bakCols.some(c => !curNames.has(c.name))) {
-      return `表「${t}」的列与当前版本不一致`;
+      return { zh: `表「${t}」的列与当前版本不一致`, en: `columns of table "${t}" differ from the current version` };
     }
     const curTypes = curCols.map(c => `${c.name}:${String(c.type || '').toUpperCase()}`).sort().join(',');
     const bakTypes = bakCols.map(c => `${c.name}:${String(c.type || '').toUpperCase()}`).sort().join(',');
-    if (curTypes !== bakTypes) return `表「${t}」的列类型与当前版本不一致`;
+    if (curTypes !== bakTypes) {
+      return { zh: `表「${t}」的列类型与当前版本不一致`, en: `column types of table "${t}" differ from the current version` };
+    }
   }
   return null;
 }
@@ -183,7 +205,11 @@ router.post('/api/settings/backup/restore', requireAdmin,
   (req, res) => {
     if (String(req.query.confirm || '') !== CONFIRM_PHRASES.restore) return confirmMismatch(res);
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      return res.status(400).json({ error: '请选择要恢复的备份文件', code: 'INVALID_BACKUP' });
+      return res.status(400).json({
+        error: '请选择要恢复的备份文件',
+        error_en: 'Please choose a backup file to restore',
+        code: 'INVALID_BACKUP',
+      });
     }
 
     const tmp = path.join(os.tmpdir(), `inventory-restore-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
@@ -198,7 +224,11 @@ router.post('/api/settings/backup/restore', requireAdmin,
         db.prepare('ATTACH DATABASE ? AS bak').run(tmp);
         attached = true;
       } catch (e) {
-        return res.status(400).json({ error: '无法打开该文件，不是有效的 SQLite 数据库', code: 'INVALID_BACKUP' });
+        return res.status(400).json({
+          error: '无法打开该文件，不是有效的 SQLite 数据库',
+          error_en: 'Cannot open this file; it is not a valid SQLite database',
+          code: 'INVALID_BACKUP',
+        });
       }
 
       const curTables = tablesOf('main');
@@ -207,13 +237,15 @@ router.post('/api/settings/backup/restore', requireAdmin,
       if (missingCore.length) {
         return res.status(400).json({
           error: '不是本系统的数据库备份（缺少表：' + missingCore.join('、') + '）',
+          error_en: 'This is not a backup of this system (missing tables: ' + missingCore.join(', ') + ')',
           code: 'INVALID_BACKUP',
         });
       }
       const diff = compareSchema(curTables, bakTables);
       if (diff) {
         return res.status(400).json({
-          error: '备份结构与当前系统不一致，已拒绝恢复（' + diff + '）',
+          error: '备份结构与当前系统不一致，已拒绝恢复（' + diff.zh + '）。旧版本的备份不支持直接恢复，请用该备份对应版本导出数据，或重建库后再导入。',
+          error_en: 'The backup structure does not match the current version, restore rejected (' + diff.en + '). Backups from older versions cannot be restored directly; export the data with the matching version, or rebuild the database first.',
           code: 'BACKUP_SCHEMA_MISMATCH',
         });
       }
@@ -227,6 +259,8 @@ router.post('/api/settings/backup/restore', requireAdmin,
         const tx = db.transaction(() => {
           copyTables.forEach(t => db.exec(`DELETE FROM main.${q(t)}`));
           copyTables.forEach(t => {
+            // 旧备份没有会话表：跳过复制，会话已在上面清空，恢复后需重新登录
+            if (!bakTables.includes(t)) return;
             // hidden 非 0 的列是生成列（如 amount / cost_amount），必须跳过
             const cols = columnsOf('bak', t).filter(c => c.hidden === 0).map(c => c.name);
             if (!cols.length) return;
@@ -250,13 +284,58 @@ router.post('/api/settings/backup/restore', requireAdmin,
       recordOp(req, 'restore', { key: 'audit_detail_restore', params: { file: backupName } });
       res.json({ success: true, backupFile: backupName, tables: copyTables.length });
     } catch (e) {
-      res.status(500).json({ error: '恢复失败，已回滚，当前数据未受影响：' + e.message, code: 'RESTORE_FAILED' });
+      // 备份结构一致但数据不合法（如物料「类别+名称+规格+品牌」重复撞唯一索引）也会走到这里，
+      // 事务已整体回滚，现库不受影响
+      const isUnique = /UNIQUE constraint failed/i.test(String(e.message || ''));
+      res.status(500).json({
+        error: '恢复失败，已回滚，当前数据未受影响：' + e.message
+          + (isUnique ? '（备份中存在违反唯一约束的记录，请先在来源库中合并重复数据）' : ''),
+        error_en: 'Restore failed and was rolled back; the current data is unchanged: ' + e.message
+          + (isUnique ? ' (the backup contains records that violate a unique constraint; merge the duplicates in the source database first)' : ''),
+        code: 'RESTORE_FAILED',
+      });
     } finally {
       if (attached) { try { db.prepare('DETACH DATABASE bak').run(); } catch (e) {} }
       try { fs.chmodSync(tmp, 0o644); } catch (e) {}
       fs.unlink(tmp, () => {});
     }
   });
+
+// ==================== 2.2) 自动覆盖式备份 ====================
+// 频率：hourly / daily / weekly；每次覆盖 backups/auto-backup-latest.db，只保留最新一份。
+// 设置存 params 表（key=auto_backup），由 server.js 启动的定时任务按设置执行。
+router.get('/api/settings/backup/auto', requireAdmin, (req, res) => {
+  res.json(autoBackupSvc.status());
+});
+
+router.put('/api/settings/backup/auto', requireAdmin, (req, res) => {
+  try {
+    autoBackupSvc.save(req.body || {});
+    const st = autoBackupSvc.status();
+    recordOp(req, 'auto-backup-settings', { key: 'audit_detail_auto_backup_settings', params: {} });
+    res.json(st);
+  } catch (e) {
+    res.status(e.invalid ? 400 : 500).json({
+      error: '保存自动备份设置失败：' + e.message,
+      error_en: 'Failed to save automatic backup settings: ' + (e.en || e.message),
+      code: 'AUTO_BACKUP_SETTINGS_FAILED',
+    });
+  }
+});
+
+router.post('/api/settings/backup/auto/run', requireAdmin, (req, res) => {
+  try {
+    const r = autoBackupSvc.runNow();
+    recordOp(req, 'auto-backup', { key: 'audit_detail_auto_backup', params: { file: r.file } });
+    res.json({ success: true, ...autoBackupSvc.status(), ranAt: r.at });
+  } catch (e) {
+    res.status(500).json({
+      error: '自动备份失败：' + e.message,
+      error_en: 'Automatic backup failed: ' + e.message,
+      code: 'AUTO_BACKUP_FAILED',
+    });
+  }
+});
 
 // ==================== 2.5) 成本差异结转 ====================
 // 期末一次结转：只把「未结转」差异标记为已结转，不动库存数量 / 金额 / 均价。
@@ -290,6 +369,8 @@ router.post('/api/settings/cost-variance/settle', requireAdmin, (req, res) => {
 });
 
 // ==================== 3) 只清业务数据 ====================
+// 用户、用户级权限（user_permissions / user_perm_state）、参数（含自动备份设置）都不在清单里，
+// 因此清完仍可用原账号登录，权限矩阵也不会被重置。
 router.post('/api/settings/data/clear-business', requireAdmin, (req, res) => {
   if ((req.body || {}).confirm !== CONFIRM_PHRASES.clearBusiness) return confirmMismatch(res);
   let backupName = '';
@@ -317,13 +398,18 @@ router.post('/api/settings/data/reset', requireAdmin, (req, res) => {
   try {
     backupName = autoBackup('inventory-before-reset');
     const tx = db.transaction(() => {
+      // 先删子表（用户级权限、登录会话）再删 users，避免留下孤儿授权行
+      USER_PERM_TABLES.concat(SESSION_TABLES).forEach(t => db.exec(`DELETE FROM ${q(t)}`));
       BUSINESS_TABLES.concat(ARCHIVE_TABLES).forEach(t => db.exec(`DELETE FROM ${q(t)}`));
+      // 自增序列归零：id 与单号都从干净状态开始（放在重建管理员之前，默认管理员才能拿到 id=1）
+      try { db.exec('DELETE FROM sqlite_sequence'); } catch (e) { /* 无自增表时忽略 */ }
       // 与首次启动口径一致：默认管理员 + 首次登录强制改密
-      db.prepare(`INSERT INTO users (username, password_hash, name, role, must_change_pwd)
+      const info = db.prepare(`INSERT INTO users (username, password_hash, name, role, must_change_pwd)
                   VALUES (?,?,?,?,1)`)
         .run(INITIAL_ADMIN_USERNAME, bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, 10), '系统管理员', 'admin');
-      // 自增序列归零：id 与单号都从干净状态开始
-      try { db.exec('DELETE FROM sqlite_sequence'); } catch (e) { /* 无自增表时忽略 */ }
+      // 显式按 admin 角色矩阵写入授权并标记已初始化，与首次启动后的状态完全一致，
+      // 不依赖「启动时补种」；admin 本身恒定全量权限，不会因为授权表为空被锁死
+      seedGrants({ id: info.lastInsertRowid, role: 'admin' });
       recordOp(req, 'reset', { key: 'audit_detail_reset', params: { file: backupName } });
     });
     tx();

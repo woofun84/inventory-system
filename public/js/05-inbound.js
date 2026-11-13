@@ -46,8 +46,15 @@ Object.assign(App, {
     const root = document.getElementById('ib-root');
     if (root) root.classList.toggle('ib-dense', !!s.dense);
     await this.loadInboundList();
+    // 跨模块跳转（查询中心「在原模块打开」等）：先按单据真实状态把行定位到列表
+    const reveal = this._ibRevealDoc;
+    if (reveal) {
+      this._ibRevealDoc = null;
+      this.ibRevealDoc(reveal);
+    }
     // 进入页面时若有选中的单据，强制重取详情，避免复用上次的快照
     if (s.sel) await this.ibOpen(s.sel); else this.ibRenderInspector();
+    if (reveal) this.docRowFlash('ib-scroll', 'tr[data-ra="inbound"][data-id="' + CSS.escape(String(reveal)) + '"]');
   },
 
   ibSkeleton() {
@@ -221,14 +228,14 @@ Object.assign(App, {
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" data-ib="open" data-id="${this.ibEsc(r.doc_no)}">${this.ibEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
       }],
-      ['date', this.t('ibd_date'), r => this.fmtDate(r.date)],
-      ['txn_type', this.t('ibd_type'), r => this.ibTypeBadge(r.txn_type)],
+      ['date', this.t('ibd_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
+      ['txn_type', this.t('ibd_type'), r => this.ibTypeBadge(r.txn_type), 'center'],
       ['supplier', this.t('ibd_supplier'), r => this.ibEsc(r.supplier || '')],
       ['line_count', this.t('ibd_lines'), r => r.line_count || 0, true],
       ['total_qty', this.t('ibd_qty'), r => this.qtyCell(r.total_qty), true],
       ['total_amount', this.t('ibd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('ibd_handler'), r => this.ibEsc(r.handler || '')],
-      ['status', this.t('ibd_status'), r => this.ibdStatusBadge(r.status)],
+      ['status', this.t('ibd_status'), r => this.ibdStatusBadge(r.status), 'center'],
       ['remarks', this.t('ibd_remarks'), r => this.ibEsc(r.remarks || '')],
     ];
     const shown = cols.filter(c => c[4] !== false);
@@ -237,7 +244,7 @@ Object.assign(App, {
       const on = sel === r.doc_no;
       const voided = r.status === 'voided';
       return `<tr class="pu-row${on ? ' sel' : ''}${voided ? ' ib-voided-row' : ''}" data-ra="inbound" data-id="${this.ibEsc(r.doc_no)}">` +
-        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+        shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>';
     }).join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
   },
@@ -762,12 +769,49 @@ Object.assign(App, {
     const s = this.ibState();
     s.sel = docNo;
     if (this.currentPage !== 'inbound' || !document.getElementById('ib-root')) {
-      // 由 renderInbound 统一重取列表并展开该单详情
+      // 由 renderInbound 统一重取列表、定位并展开该单详情
+      this._ibRevealDoc = docNo;
       return this.gotoPage('inbound');
     }
     // 同页内操作后打开单据：先刷新列表，避免列表/详情状态不一致
     await this.loadInboundList();
-    return this.ibOpen(docNo);
+    this.ibRevealDoc(docNo);
+    await this.ibOpen(docNo);
+    this.docRowFlash('ib-scroll', 'tr[data-ra="inbound"][data-id="' + CSS.escape(String(docNo)) + '"]');
+  },
+
+  // 按单据真实状态把行定位到列表：切对应页签 → 必要时清掉挡住该行的筛选 → 翻到该行所在页
+  ibRevealDoc(docNo) {
+    const row = (this._ibList || []).find(r => r.doc_no === docNo);
+    if (!row) return false;
+    const s = this.ibState();
+    const want = row.status === 'voided' ? 'voided' : (row.txn_type || '');
+    s.tab = this.ibTabDefs().some(d => d[0] === want) ? want : '';
+    if (!this.ibVisibleRows().some(r => r.doc_no === docNo)) {
+      s.f = { kw: '', from: '', to: '' };
+      s.kpi = '';
+      this.ibRenderFilters();
+    }
+    const st = this.getTableState('inbound');
+    st.page = 1;
+    const rows = this.sortData(this.ibVisibleRows(), st.sortKey, st.sortDir);
+    const idx = rows.findIndex(r => r.doc_no === docNo);
+    if (idx >= 0) st.page = Math.floor(idx / st.pageSize) + 1;
+    this.ibRenderTabs();
+    this.ibRenderList();
+    return true;
+  },
+
+  // 跳转定位后：滚动到列表中的单据行并短暂高亮（各模块共用）
+  docRowFlash(scrollId, selector) {
+    const box = document.getElementById(scrollId);
+    const row = box && box.querySelector(selector);
+    if (!row) return;
+    if (row.scrollIntoView) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.remove('doc-jump-flash');
+    void row.offsetWidth;
+    row.classList.add('doc-jump-flash');
+    setTimeout(() => row.classList.remove('doc-jump-flash'), 1800);
   },
 
   // ========== 跨单据互链：跳转与返回 ==========
@@ -858,7 +902,7 @@ Object.assign(App, {
     const typeLabel = this.ibTypeLabel(d.txn_type);
     const meta = [
       [d.txn_type === '采购退货' ? this.t('ibd_doc_type') : this.t('ibd_type'), typeLabel],
-      [this.t('ibd_date'), this.fmtDate(d.date) || '–'],
+      [this.t('ibd_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '–'],
       [this.t('ibd_supplier'), d.supplier || '–'],
       [this.t('ibd_handler'), d.handler || '–'],
       [this.t('in_po_no'), d.po_no || '–'],
@@ -887,23 +931,23 @@ Object.assign(App, {
     const isDraft = d.status === 'draft';
     const isCorrDraft = isDraft && !!String(d.corrects_doc_no || '');
     let foot = '';
-    if (isDraft && this.can('inbound', 'edit')) {
+    if (isDraft && this.can('inbound', isCorrDraft ? 'correct' : 'edit')) {
       if (isCorrDraft) {
-        foot += `<button type="button" class="btn btn-primary" data-ib="e-doc">✎ ${this.t('ibd_corr_continue')}</button>`;
+        foot += `<button type="button" class="btn btn-primary" data-ib="e-doc">${this.t('ibd_corr_continue')}</button>`;
       } else {
         foot += `<button type="button" class="btn btn-outline" data-ib="e-doc">${lines.length ? this.t('ibd_edit') : '+ ' + this.t('ibd_add_line')}</button>`;
-        if (lines.length) foot += `<button type="button" class="btn btn-primary" data-ib="confirm">✅ ${this.t(d.txn_type === '采购退货' ? 'ibd_confirm_return' : 'ibd_confirm')}</button>`;
+        if (lines.length) foot += `<button type="button" class="btn btn-primary" data-ib="confirm">${this.t(d.txn_type === '采购退货' ? 'ibd_confirm_return' : 'ibd_confirm')}</button>`;
       }
     }
-    foot += `<button type="button" class="btn btn-outline" data-ib="print">🖨 ${this.t('doc_print')}</button>`;
-    foot += `<button type="button" class="btn btn-outline" data-ib="export">⬇ ${this.t('doc_export')}</button>`;
+    foot += `<button type="button" class="btn btn-outline" data-ib="print">${this.t('doc_print')}</button>`;
+    foot += `<button type="button" class="btn btn-outline" data-ib="export">${this.t('doc_export')}</button>`;
     // 入库单详情直达退货（退货单自身不重复出现）
     if (d.txn_type !== '采购退货' && d.status === 'posted' && this.can('returns', 'create')) {
-      foot += `<button type="button" class="btn btn-outline" data-ib="to-return">↩ ${this.t('ret_from_inbound')}</button>`;
+      foot += `<button type="button" class="btn btn-outline" data-ib="to-return">${this.t('ret_from_inbound')}</button>`;
     }
     // 更正入口：已过账、非更正草稿、未被更正过（作废单不可再更正）
-    if (!isCorrDraft && d.correction && d.correction.eligible && this.can('inbound', 'edit')) {
-      foot += `<button type="button" class="btn btn-outline" data-ib="correct">✎ ${this.t('ibd_corr')}</button>`;
+    if (!isCorrDraft && d.correction && d.correction.eligible && this.can('inbound', 'correct')) {
+      foot += `<button type="button" class="btn btn-outline" data-ib="correct">${this.t('ibd_corr')}</button>`;
     }
     if (isDraft && this.can('inbound', 'delete')) {
       foot += `<button type="button" class="btn btn-danger" data-ib="del">${lines.length ? this.t('ibd_delete_draft') : this.t('ibd_delete_empty')}</button>`;
@@ -950,7 +994,7 @@ Object.assign(App, {
     } else if (String(d.corrected_by_doc_no || '') && d.status !== 'voided') {
       parts.push(`<span>${this.t('ibd_corr_to')} <button type="button" class="pu-lk" data-ib="open" data-id="${this.ibEsc(d.corrected_by_doc_no)}">${this.ibEsc(d.corrected_by_doc_no)}</button></span>`);
     }
-    if (c.has_draft && String(c.draft_doc_no || '')) {
+    if (c.has_draft && String(c.draft_doc_no || '') && this.can('inbound', 'correct')) {
       parts.push(`<span>${this.t('ibd_corr_draft_link')} <button type="button" class="pu-lk" data-ib="open" data-id="${this.ibEsc(c.draft_doc_no)}">${this.ibEsc(c.draft_doc_no)}</button></span>`);
     }
     return parts.length ? `<div class="ib-corr-bar">${parts.join('<i>·</i>')}</div>` : '';
@@ -982,7 +1026,7 @@ Object.assign(App, {
     return `<div class="rel-item${voided ? ' rel-item-voided' : ''}">
       <div class="rel-line">
         <button type="button" class="pu-lk rel-no" onclick="${jump.replace(/"/g, '&quot;')}">${this.ibEsc(o.doc.doc_no)}</button>
-        <span class="rel-cell rel-date">${this.ibEsc(o.doc.date || '–')}</span>
+        <span class="rel-cell rel-date">${this.ibEsc(this.fmtDocDate(o.doc.date, o.doc.created_at, o.doc.confirmed_at) || '–')}</span>
         <span class="rel-cell rel-type">${this.ibEsc(o.typeLabel || '')}</span>
         <span class="rel-cell rel-status">${o.statusBadge || ''}</span>
         <i class="rel-break" aria-hidden="true"></i>
@@ -1091,6 +1135,8 @@ Object.assign(App, {
       confirm: this.t('ibd_log_confirm'), post: this.t('ibd_log_confirm'), save: this.t('ibd_log_edit'),
       cancel: this.t('ibd_log_cancel'), void: this.t('ibd_log_cancel'), delete: this.t('ibd_log_delete'),
       add_line: this.t('ibd_log_edit'), update_line: this.t('ibd_log_edit'), delete_line: this.t('ibd_log_edit'),
+      'correction-draft': this.t('ibd_log_corr_draft'), 'confirm-correction': this.t('ibd_log_corr_confirm'),
+      'over-receipt': this.t('ibd_log_over'),
     };
     return m[a] || a;
   },
@@ -1248,7 +1294,7 @@ Object.assign(App, {
     const sum = k => lines.reduce((a, l) => a + Number(l[k] || 0), 0);
     const meta = [
       [this.t('ibd_type'), this.ibTypeLabel(d.txn_type)],
-      [this.t('ibd_date'), this.fmtDate(d.date)],
+      [this.t('ibd_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at)],
       [this.t('ibd_supplier'), d.supplier || ''],
       [this.t('ibd_handler'), d.handler || ''],
       [this.t('in_po_no'), d.po_no || ''],
@@ -1503,7 +1549,7 @@ Object.assign(App, {
       if (this._ibCorrection) {
         btnBox.innerHTML = `<button class="btn btn-outline" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button>
            <button class="btn btn-outline" onclick="App.saveInboundDraft()">${this.t('ibd_corr_save')}</button>
-           <button class="btn btn-primary" onclick="App.confirmCorrectionDoc()">✅ ${this.t('ibd_corr_confirm')}</button>`;
+           <button class="btn btn-primary" onclick="App.confirmCorrectionDoc()">${this.t('ibd_corr_confirm')}</button>`;
       } else {
         btnBox.innerHTML = isDraft
           ? `${linked ? '' : `<button class="btn btn-outline" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button>`}
@@ -1572,12 +1618,12 @@ Object.assign(App, {
     // 列序对齐采购编辑页：物料 / 数量 / 单价 / 行金额 / 合同号 / 备注 / 只读参照列 / 删除
     const headHtml = `<tr>
       <th>${this.t('pu_material')}</th>
-      <th>${isCorr ? this.t('ibd_corr_target_qty') : this.t('in_qty')}</th>
-      ${vp ? `<th>${this.t('in_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
+      <th class="text-right">${isCorr ? this.t('ibd_corr_target_qty') : this.t('in_qty')}</th>
+      ${vp ? `<th class="text-right">${this.t('in_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
       <th>${linked ? this.t('ret_source_doc') : this.t('in_contract')}</th>
       <th>${this.t('in_remarks')}</th>
       ${refCols}
-      <th></th>
+      <th class="text-center"></th>
     </tr>`;
 
     let tbody = '';
@@ -1688,7 +1734,7 @@ Object.assign(App, {
           <td style="min-width:140px"><input value="${this.ibEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
           ${corrUnrecCell}
           <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px"${(availTitle || isCorr) ? ` title="${this.ibEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
-          <td><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
+          <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
       }).join('');
     }

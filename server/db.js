@@ -8,6 +8,7 @@ const fs = require('fs');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const { DB_PATH, INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('./config');
+const { grantsOf } = require('./permissions');
 
 // 自动初始化数据库
 if (!fs.existsSync(DB_PATH)) {
@@ -36,6 +37,32 @@ function initSchema() {
     must_change_pwd INTEGER DEFAULT 0,
     last_login TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // 登录会话：同一账号只保留一条记录（后登录覆盖先登录）。
+  // token 里带 sid，鉴权时与这里的 sid 比对；不一致即视为已在其它终端登录。
+  // terminal 是前端 localStorage 里的稳定终端标识，同浏览器多标签共享，用于避免自己挤自己。
+  db.exec(`CREATE TABLE IF NOT EXISTS user_sessions (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    sid TEXT NOT NULL,
+    terminal TEXT DEFAULT '',
+    login_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    ip TEXT DEFAULT '',
+    user_agent TEXT DEFAULT ''
+  )`);
+
+  // 用户级权限：默认值由角色矩阵初始化，管理员可在用户管理里按用户覆盖
+  db.exec(`CREATE TABLE IF NOT EXISTS user_permissions (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    module TEXT NOT NULL,
+    action TEXT NOT NULL,
+    PRIMARY KEY (user_id, module, action)
+  )`);
+  // 记录用户权限已初始化，避免「全不勾选」在重启后被角色默认值重新填回
+  db.exec(`CREATE TABLE IF NOT EXISTS user_perm_state (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    seeded_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
 
   // ==================== 物料档案唯一性约束 ====================
@@ -373,6 +400,22 @@ function initSchema() {
     db.prepare(`INSERT INTO users (username, password_hash, name, role, must_change_pwd)
                 VALUES (?,?,?,?,1)`).run(INITIAL_ADMIN_USERNAME, bcrypt.hashSync(INITIAL_ADMIN_PASSWORD, 10), '系统管理员', 'admin');
     console.log(`已创建初始管理员账号: ${INITIAL_ADMIN_USERNAME}（首次登录需修改密码；密码默认 admin123，可用环境变量 INITIAL_ADMIN_PASSWORD 覆盖）`);
+  }
+
+  // 用户级权限初始化：从未初始化过的用户按当前角色矩阵写入一份完整授权。
+  // 已有账号不会因为这次改造丢权限；之后管理员在用户管理里的调整以库里的记录为准。
+  const pendingPermUsers = db.prepare(`SELECT u.id, u.role FROM users u
+    WHERE NOT EXISTS (SELECT 1 FROM user_perm_state s WHERE s.user_id = u.id)`).all();
+  if (pendingPermUsers.length) {
+    const insPerm = db.prepare('INSERT OR IGNORE INTO user_permissions (user_id, module, action) VALUES (?,?,?)');
+    const markPerm = db.prepare("INSERT OR REPLACE INTO user_perm_state (user_id, seeded_at) VALUES (?, datetime('now'))");
+    db.transaction(() => {
+      pendingPermUsers.forEach(u => {
+        Object.entries(grantsOf(u.role)).forEach(([m, acts]) => acts.forEach(a => insPerm.run(u.id, m, a)));
+        markPerm.run(u.id);
+      });
+    })();
+    console.log(`已按角色矩阵初始化 ${pendingPermUsers.length} 个用户的权限`);
   }
 
   // ==================== 系统审计日志 ====================

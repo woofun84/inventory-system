@@ -30,6 +30,7 @@
   /* 侧边栏前景色：独立于页面正文色，避免亮色主题下深底浅字失效 */
   --sidebar-fg: #e2e8f0;
   --sidebar-fg-muted: #94a3b8;
+  --sidebar-section-fg: #94a3b8;
   --radius: 10px;
   --radius-sm: 6px;
   --sidebar-w: 200px;
@@ -140,14 +141,19 @@ body {
 }
 
 /* ========== 侧边栏 ========== */
+/* 侧边栏为纵向 flex 列：标题 / 可滚动导航 / 底部用户块，避免依赖写死高度 */
 .sidebar {
-  display: contents;
-}
-
-/* 左上：系统标题 */
-.sidebar-header {
   grid-column: 1;
   grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-header {
+  flex: 0 0 auto;
   background: var(--sidebar-bg);
   padding: 18px 18px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -161,6 +167,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+.sidebar-header h1 span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sidebar-header .subtitle {
   font-size: 11px;
@@ -171,10 +184,7 @@ body {
 
 /* 左侧导航 */
 .sidebar-nav {
-  grid-column: 1;
-  grid-row: 1;
-  margin-top: 75px;
-  margin-bottom: 56px;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   padding: 8px 10px;
@@ -184,16 +194,15 @@ body {
 }
 
 .sidebar-user {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: end;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
   background: var(--sidebar-bg);
   border-top: 1px solid var(--border);
-  height: 48px;
+  min-height: 48px;
+  min-width: 0;
   box-sizing: border-box;
 }
 .sidebar-user-info {
@@ -213,17 +222,24 @@ body {
 .sidebar-user-role {
   font-size: 11px;
   color: var(--sidebar-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-section-label {
-  padding: 12px 10px 4px;
-  font-size: 10px;
-  color: #64748b;
+  padding: 14px 10px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--sidebar-section-fg);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.nav-section-label:first-child { padding-top: 2px; }
 
 .nav-item {
   display: flex;
@@ -238,6 +254,7 @@ body {
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nav-item:hover {
   background: var(--sidebar-hover-bg);
@@ -291,6 +308,33 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* 页头左侧：移动端 ☰ 与标题同一组，避免 space-between 把标题挤到中间 */
+.page-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.page-heading-text { min-width: 0; }
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 移动端抽屉遮罩（仅在窄屏媒体查询内启用） */
+.sidebar-overlay { display: none; }
 
 /* 主内容独立滚动 */
 .page-body {

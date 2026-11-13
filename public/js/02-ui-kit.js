@@ -133,12 +133,21 @@ Object.assign(App, {
     return `<span class="badge badge-info">${this.t('doc_revision', { n: Number(m[1]) })}</span>`;
   },
 
-  // 生成可排序的表头（right=true 时右对齐，与数字列的数据单元格保持一致）
-  sortTh(label, key, tableId, right) {
+  // 生成可排序的表头：align=true/'right' 数字列右对齐，'center' 状态/类型/操作列居中，
+  // 其余（文本、日期时间）左对齐，与数据单元格保持同一套规则
+  sortTh(label, key, tableId, align) {
     const st = this.getTableState(tableId);
     const active = st.sortKey === key;
     const arrow = active ? (st.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-    return `<th class="sort-th ${active ? 'active' : ''}${right ? ' text-right' : ''}" onclick="App.onSort('${tableId}','${key}')">${label}<span class="sort-arrow">${active ? (st.sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span></th>`;
+    const cls = this.colAlignClass(align);
+    return `<th class="sort-th ${active ? 'active' : ''}${cls ? ' ' + cls : ''}" onclick="App.onSort('${tableId}','${key}')">${label}<span class="sort-arrow">${active ? (st.sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span></th>`;
+  },
+
+  // 列对齐统一的唯一入口：数字→右，徽标/状态/操作→居中，文本与日期→左
+  colAlignClass(align) {
+    if (align === true || align === 'right') return 'text-right';
+    if (align === 'center') return 'text-center';
+    return '';
   },
 
   onSort(tableId, key) {
@@ -628,6 +637,12 @@ Object.assign(App, {
     let out = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
     if (withSeconds) out += ':' + p(d.getSeconds());
     return out;
+  },
+  // 单据业务日期（显示到分钟）：date 列本身只有日历日粒度（YYYY-MM-DD），
+  // 不伪造 00:00；有真实操作时刻时直接用该时刻——已过账/已确认优先 confirmed_at，
+  // 否则用 created_at；两者都没有才回退到业务日期。中英文共用同一数字格式。
+  fmtDocDate(date, createdAt, confirmedAt) {
+    return this.fmtDateTime(confirmedAt) || this.fmtDateTime(createdAt) || this.fmtDate(date);
   },
   // 读取 CSS 变量：图表等 Canvas 场景无法直接用 var()
   cssVar(name, fallback = '') {

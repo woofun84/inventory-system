@@ -46,8 +46,15 @@ Object.assign(App, {
     const root = document.getElementById('ob-root');
     if (root) root.classList.toggle('ob-dense', !!s.dense);
     await this.loadOutboundList();
+    // 跨模块跳转（查询中心「在原模块打开」等）：先按单据真实状态把行定位到列表
+    const reveal = this._obRevealDoc;
+    if (reveal) {
+      this._obRevealDoc = null;
+      this.obRevealDoc(reveal);
+    }
     // 进入页面时若有选中的单据，强制重取详情，避免复用上次的快照
     if (s.sel) await this.obOpen(s.sel); else this.obRenderInspector();
+    if (reveal) this.docRowFlash('ob-scroll', 'tr[data-ra="outbound"][data-id="' + CSS.escape(String(reveal)) + '"]');
   },
 
   obSkeleton() {
@@ -205,15 +212,15 @@ Object.assign(App, {
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" data-ob="open" data-id="${this.ibEsc(r.doc_no)}">${this.ibEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
       }],
-      ['date', this.t('obd_date'), r => this.fmtDate(r.date)],
+      ['date', this.t('obd_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
       ['txn_type', this.t('obd_type'), r => this.obTypeBadge(r.txn_type)
-        + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : '')],
+        + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],
       ['destination', this.t('obd_destination'), r => this.ibEsc(r.destination || '')],
       ['line_count', this.t('obd_lines'), r => r.line_count || 0, true],
       ['total_qty', this.t('obd_qty'), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
       ['total_amount', this.t('obd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('obd_handler'), r => this.ibEsc(r.handler || '')],
-      ['status', this.t('obd_status'), r => this.obdStatusBadge(r.status)],
+      ['status', this.t('obd_status'), r => this.obdStatusBadge(r.status), 'center'],
       ['remarks', this.t('obd_remarks'), r => this.ibEsc(r.remarks || '')],
     ];
     const shown = cols.filter(c => c[4] !== false);
@@ -222,7 +229,7 @@ Object.assign(App, {
       const on = sel === r.doc_no;
       const voided = r.status === 'voided';
       return `<tr class="pu-row${on ? ' sel' : ''}${voided ? ' ob-voided-row' : ''}" data-ra="outbound" data-id="${this.ibEsc(r.doc_no)}">` +
-        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>';
+        shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>';
     }).join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
   },
@@ -567,7 +574,7 @@ Object.assign(App, {
       <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>
         <th>${this.t('pu_material')}</th>
         <th class="text-right">${this.t('ret_source_orig_qty')}</th><th class="text-right">${this.t('ret_source_returned_qty')}</th>
-        <th class="text-right">${this.t('ret_remaining_qty')}</th><th>${this.t('ret_qty')}</th>
+        <th class="text-right">${this.t('ret_remaining_qty')}</th><th class="text-right">${this.t('ret_qty')}</th>
         ${vp ? `<th class="text-right">${this.t('out_cost_price')}</th>` : ''}
       </tr></thead><tbody>${trs}</tbody></table></div></div>`;
   },
@@ -682,12 +689,37 @@ Object.assign(App, {
     const s = this.obState();
     s.sel = docNo;
     if (this.currentPage !== 'outbound' || !document.getElementById('ob-root')) {
-      // 由 renderOutbound 统一重取列表并展开该单详情
+      // 由 renderOutbound 统一重取列表、定位并展开该单详情
+      this._obRevealDoc = docNo;
       return this.gotoPage('outbound');
     }
     // 跨模块跳转/确认更正后，列表状态可能已变化，先刷新数据再展开详情栏
     await this.loadOutboundList();
-    return this.obOpen(docNo);
+    this.obRevealDoc(docNo);
+    await this.obOpen(docNo);
+    this.docRowFlash('ob-scroll', 'tr[data-ra="outbound"][data-id="' + CSS.escape(String(docNo)) + '"]');
+  },
+
+  // 按单据真实状态把行定位到列表：切对应页签 → 必要时清掉挡住该行的筛选 → 翻到该行所在页
+  obRevealDoc(docNo) {
+    const row = (this._obList || []).find(r => r.doc_no === docNo);
+    if (!row) return false;
+    const s = this.obState();
+    const want = row.status === 'voided' ? 'voided' : (row.txn_type || '');
+    s.tab = this.obTabDefs().some(d => d[0] === want) ? want : '';
+    if (!this.obVisibleRows().some(r => r.doc_no === docNo)) {
+      s.f = { kw: '', from: '', to: '' };
+      s.kpi = '';
+      this.obRenderFilters();
+    }
+    const st = this.getTableState('outbound');
+    st.page = 1;
+    const rows = this.sortData(this.obVisibleRows(), st.sortKey, st.sortDir);
+    const idx = rows.findIndex(r => r.doc_no === docNo);
+    if (idx >= 0) st.page = Math.floor(idx / st.pageSize) + 1;
+    this.obRenderTabs();
+    this.obRenderList();
+    return true;
   },
 
   async obOpen(docNo) {
@@ -737,7 +769,7 @@ Object.assign(App, {
 
     const meta = [
       [this.t('obd_type'), this.obTypeLabel(d.txn_type)],
-      [this.t('obd_date'), this.fmtDate(d.date) || '–'],
+      [this.t('obd_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '–'],
       [this.t('obd_destination'), d.destination || '–'],
       [this.t('obd_receiver'), d.receiver || '–'],
       [this.t('obd_handler'), d.handler || '–'],
@@ -807,7 +839,7 @@ Object.assign(App, {
     if (String(d.corrects_doc_no || '')) {
       parts.push(`<span>✎ ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.ibEsc(d.corrects_doc_no)}">${this.ibEsc(d.corrects_doc_no)}</button></span>`);
     }
-    if (c && c.has_draft && String(c.draft_doc_no || '')) {
+    if (c && c.has_draft && String(c.draft_doc_no || '') && this.can('outbound', 'correct')) {
       parts.push(`<span>${this.t('ibd_corr_draft_link')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.ibEsc(c.draft_doc_no)}">${this.ibEsc(c.draft_doc_no)}</button></span>`);
     }
     return parts.length ? `<div class="ib-corr-bar">${parts.join('<i>·</i>')}</div>` : '';
@@ -816,19 +848,20 @@ Object.assign(App, {
   // 详情栏底部按钮组（原工具栏按钮，逻辑不变，只换容器）
   obRenderFoot(d, lines) {
     const isDraft = d.status === 'draft';
+    const isCorrDraft = isDraft && !!String(d.corrects_doc_no || '');
     const hasLines = lines.length > 0;
     let foot = '';
-    if (isDraft && this.can('outbound', 'edit')) {
+    if (isDraft && this.can('outbound', isCorrDraft ? 'correct' : 'edit')) {
       foot += `<button type="button" class="btn btn-outline" data-ob="edit">${hasLines ? this.t('obd_edit') : this.t('obd_add_line')}</button>`;
       if (hasLines) foot += `<button type="button" class="btn btn-primary" data-ob="confirm">${this.t(d.txn_type === '领料退库' ? 'obd_confirm_return' : 'obd_confirm')}</button>`;
     }
     // 退库按钮（仅原单已过账时显示；退库单自身不重复出现）
     if (d.txn_type !== '领料退库' && d.status === 'posted' && this.can('returns', 'create')) {
-      foot += `<button type="button" class="btn btn-outline" data-ob="to-return">↩ ${this.t('ret_from_outbound')}</button>`;
+      foot += `<button type="button" class="btn btn-outline" data-ob="to-return">${this.t('ret_from_outbound')}</button>`;
     }
     // 更正入口：已过账、未被更正过（作废单不可再更正）
-    if (d.correction && d.correction.eligible && this.can('outbound', 'edit')) {
-      foot += `<button type="button" class="btn btn-outline" data-ob="correct">✎ ${this.t('ibd_corr')}</button>`;
+    if (d.correction && d.correction.eligible && this.can('outbound', 'correct')) {
+      foot += `<button type="button" class="btn btn-outline" data-ob="correct">${this.t('ibd_corr')}</button>`;
     }
     if (isDraft && this.can('outbound', 'delete')) {
       foot += `<button type="button" class="btn btn-danger" data-ob="del">${hasLines ? this.t('obd_delete_draft') : this.t('obd_delete_empty')}</button>`;
@@ -947,6 +980,8 @@ Object.assign(App, {
       add_line: this.t('audit_act_update'), update_line: this.t('audit_act_update'), delete_line: this.t('audit_act_update'),
       confirm: this.t('audit_act_confirm'), post: this.t('audit_act_confirm'),
       void: this.t('audit_act_cancel'), cancel: this.t('audit_act_cancel'),
+      'correction-draft': this.t('ibd_log_corr_draft'), 'confirm-correction': this.t('ibd_log_corr_confirm'),
+      'over-receipt': this.t('ibd_log_over'),
       delete: this.t('audit_act_delete')
     };
     return m[a] || a;
@@ -1174,7 +1209,7 @@ Object.assign(App, {
           btns += `<button class="btn btn-outline" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>`;
           btns += `<button class="btn btn-outline" onclick="App.showOutboundBatchPicker()">${this.t('obd_batch_add')}</button>`;
           btns += `<button class="btn btn-outline" onclick="App.saveOutboundDraft()">${this.t('ibd_corr_save')}</button>`;
-          btns += `<button class="btn btn-primary" onclick="App.confirmOutboundCorrection()">✅ ${this.t('ibd_corr_confirm')}</button>`;
+          btns += `<button class="btn btn-primary" onclick="App.confirmOutboundCorrection()">${this.t('ibd_corr_confirm')}</button>`;
         } else {
           if (this._obIsReturn && !this._obNoOrigin) {
             btns += `<button class="btn btn-outline" onclick="App.fillOutboundOriginLines()">${this.t('ret_fill_origin')}</button>`;
@@ -1260,7 +1295,7 @@ Object.assign(App, {
             <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
             ${vp ? `<td class="pu-edit-amt" style="color:var(--text-muted)" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt" style="color:var(--text-muted)" data-line-amount="${i}">${refAmountText}</td>` : ''}
             <td style="min-width:140px">${remarksInput}</td>
-            <td>${delBtn}</td>
+            <td class="text-center">${delBtn}</td>
           </tr>`;
         } else {
           const qty = l.qty || 0;

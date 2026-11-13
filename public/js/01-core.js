@@ -28,6 +28,13 @@ const App = {
     return s;
   },
 
+  // 角色标签：字典缺失时回落原始值，避免界面出现 role_xxx 这类原始 key
+  roleLabel(role) {
+    const k = 'role_' + String(role || '');
+    const v = this.t(k);
+    return v === k ? String(role || '') : v;
+  },
+
   // 日志详情渲染：优先结构化 detail_json（{key, params}），解析失败/缺失回退纯文本 detail。
   // 找不到文案 key 时退化为 key 本身，不空白、不抛错。
   logDetailText(l) {
@@ -62,11 +69,15 @@ const App = {
       this.user = me;
       localStorage.setItem('user', JSON.stringify(me));
     } catch (e) {
+      // 已被其它终端挤下线：保留当前页面，由 handleKicked 弹出提示，不做静默跳转
+      if (this.conn && this.conn.kicked) return;
       this.logout();
       return;
     }
     // 启动空闲超时（5分钟无操作自动退出）
     this.startIdleTimer();
+    // 启动连接监视与登录会话心跳（14-connection.js）
+    if (this.startConnectionWatch) this.startConnectionWatch();
     // 强制改密：先加载 params 和渲染基础布局，再弹出改密弹窗
     if (this.user && this.user.must_change_pwd) {
       await this.loadParams();
@@ -90,6 +101,7 @@ const App = {
   },
   resetIdleTimer() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
+    if (this.conn && this.conn.kicked) return; // 已被挤下线：由被挤提示接管，不再触发空闲退出
     this._idleTimer = setTimeout(() => {
       this.toast(this.t('session_timeout'), 'error');
       this.logout();
@@ -97,6 +109,8 @@ const App = {
   },
 
   logout() {
+    // 通知服务端撤销本会话（失败不影响本地清理），避免令牌在服务端继续有效
+    if (this.revokeSession) this.revokeSession();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     location.href = '/login.html';
@@ -184,8 +198,8 @@ const App = {
 
   renderToolbar() {
     return `<div class="toolbar">
-      <button class="tool-btn tool-btn-sm" onclick="App.toggleLang()" title="Language">${this.lang === 'zh' ? 'EN' : '中文'}</button>
-      <button class="tool-btn" onclick="App.toggleTheme()" title="Theme">${this.theme === 'light' ? '🌙' : '☀'}</button>
+      <button class="tool-btn tool-btn-sm" onclick="App.toggleLang()" title="${this.t('hdr_lang_tip')}">${this.lang === 'zh' ? 'EN' : '中文'}</button>
+      <button class="tool-btn" onclick="App.toggleTheme()" title="${this.t('hdr_theme_tip')}">${this.theme === 'light' ? '🌙' : '☀'}</button>
     </div>`;
   },
 
@@ -222,6 +236,7 @@ const App = {
   },
 
   render() {
+    document.title = this.t('doc_title');
     const pages = {
       dashboard: () => this.renderDashboard(), materials: () => this.renderMaterials(),
       inbound: () => this.renderInbound(), outbound: () => this.renderOutbound(), returns: () => this.renderReturns(),
@@ -298,6 +313,7 @@ const App = {
   // hash 未变化（点当前菜单）时也强制重渲染+重新取数，不再依赖浏览器派发 hashchange。
   async gotoPage(name, opts = {}) {
     const { replace = false, render = true } = opts;
+    this.closeSidebar();
     const target = '#' + name;
     const hashChanged = location.hash !== target;
     if (hashChanged) {
@@ -318,22 +334,27 @@ const App = {
 
   renderSidebar() {
     const nav = [
-      { section: this.t('nav_home'), items: [{ key: 'dashboard', icon: '🏠', label: this.t('nav_home') }]},
-      { section: this.lang === 'zh' ? '常用操作' : 'Operations', items: [
+      { section: this.t('nav_sec_overview'), items: [{ key: 'dashboard', icon: '🏠', label: this.t('nav_home') }]},
+      { section: this.t('nav_sec_business'), items: [
         { key: 'inbound', icon: '📥', label: this.t('nav_inbound') }, { key: 'outbound', icon: '📤', label: this.t('nav_outbound') },
+        { key: 'purchase', icon: '🛒', label: this.t('nav_purchase') },
         { key: 'returns', icon: '↩️', label: this.t('nav_returns') },
         { key: 'stocktake', icon: '📋', label: this.t('nav_stocktake') },
-        { key: 'query', icon: '🔍', label: this.t('nav_query') }, { key: 'purchase', icon: '🛒', label: this.t('nav_purchase') },
       ]},
-      { section: this.lang === 'zh' ? '统计与资料' : 'Analytics & Data', items: [
+      { section: this.t('nav_sec_analytics'), items: [
+        { key: 'query', icon: '🔍', label: this.t('nav_query') },
+      ]},
+      { section: this.t('nav_sec_master'), items: [
         { key: 'materials', icon: '🏷', label: this.t('nav_materials') },
         { key: 'suppliers', icon: '🚚', label: this.t('nav_suppliers') },
-        { key: 'settings', icon: '⚙', label: this.t('nav_settings') },
+      ]},
+      { section: this.t('nav_sec_system'), items: [
         { key: 'users', icon: '👤', label: this.t('nav_users') },
+        { key: 'settings', icon: '⚙', label: this.t('nav_settings') },
         { key: 'audit', icon: '📜', label: this.t('nav_audit') },
       ]}
     ];
-    let html = `<div class="sidebar-header"><h1>📦 <span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
+    let html = `<div class="sidebar"><div class="sidebar-header"><h1>📦 <span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
     nav.forEach(s => {
       // 按权限过滤
       const visibleItems = s.items.filter(item => this.can(item.key, 'view'));
@@ -346,37 +367,50 @@ const App = {
     html += '</div>';
     // 底部用户信息栏
     if (this.user) {
-      const roleLabel = this.t('role_' + this.user.role);
+      const roleLabel = this.roleLabel(this.user.role);
       html += `<div class="sidebar-user">
         <div class="sidebar-user-info">
           <span class="sidebar-user-name">${this.user.name || this.user.username}</span>
           <span class="sidebar-user-role">${roleLabel}</span>
         </div>
         <button class="tool-btn tool-btn-sm" onclick="App.showChangePwdModal(false)" title="${this.t('change_password')}">🔑</button>
-        <button class="tool-btn tool-btn-sm" onclick="App.logout()" title="${this.lang === 'zh' ? '退出' : 'Logout'}">⏻</button>
+        <button class="tool-btn tool-btn-sm" onclick="App.logout()" title="${this.t('hdr_logout_tip')}">⏻</button>
       </div>`;
     }
+    html += '</div>';
     return html;
   },
+
+  // 窄屏抽屉侧边栏开合
+  openSidebar() { document.body.classList.add('nav-open'); },
+  closeSidebar() { document.body.classList.remove('nav-open'); },
 
   setMain(html) {
     // 页面整体重渲染时收起即时搜索浮层，避免固定定位面板残留到新页面
     if (this.msClose) this.msClose();
-    document.getElementById('app').innerHTML = `<div class="layout">${this.renderSidebar()}<div class="main">${html}</div></div>`;
+    document.getElementById('app').innerHTML = `<div class="layout">${this.renderSidebar()}<div class="sidebar-overlay" onclick="App.closeSidebar()"></div><div class="main">${html}</div></div>`;
   },
 
   pageWrap(title, desc, headerRight, bodyHtml) {
     const tools = this.renderToolbar();
     const right = (headerRight || '') + tools;
-    return `<div class="page-header-row"><div><div class="page-title">${title}</div>${desc ? `<div class="page-desc">${desc}</div>` : ''}</div><div>${right}</div></div><div class="page-body">${bodyHtml}</div>`;
+    return `<div class="page-header-row"><div class="page-heading"><button type="button" class="nav-toggle" onclick="App.openSidebar()" aria-label="${this.t('nav_menu')}" title="${this.t('nav_menu')}">☰</button><div class="page-heading-text"><div class="page-title">${title}</div>${desc ? `<div class="page-desc">${desc}</div>` : ''}</div></div><div>${right}</div></div><div class="page-body">${bodyHtml}</div>`;
   },
 
   async api(url, method = 'GET', body = null) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (this.token) opts.headers['Authorization'] = 'Bearer ' + this.token;
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    if (res.status === 401) { this.logout(); throw new Error(this.t('session_expired')); }
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (err) {
+      // 请求没有拿到任何响应：服务器不可达（进程停止 / 断网），交给连接监视器显示横幅
+      if (this.connMarkOffline) this.connMarkOffline();
+      throw new Error(this.t('net_offline_err'));
+    }
+    if (this.connMarkOnline) this.connMarkOnline();
+    if (res.status === 401) return this.handleUnauthorized(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: this.t('requestFailed') }));
       // 英文界面优先展示服务端 error_en；没有时回落中文 error
@@ -391,6 +425,24 @@ const App = {
     const data = await res.json();
     if (String(method).toUpperCase() !== 'GET') this.invalidateAfterWrite(url);
     return data;
+  },
+
+  // 401 分流：被其它终端挤下线 → 明确提示；其余（过期/无效令牌）→ 回登录页
+  async handleUnauthorized(res) {
+    const d = await res.json().catch(() => ({}));
+    const msg = (this.lang === 'en' && d.error_en) ? d.error_en : (d.error || this.t('session_expired'));
+    if (d.code === 'SESSION_KICKED' && this.handleKicked) {
+      this.handleKicked();
+      const e = new Error(msg);
+      e.code = 'SESSION_KICKED';
+      e.status = 401;
+      throw e;
+    }
+    this.logout();
+    const err = new Error(msg);
+    err.code = d.code;
+    err.status = 401;
+    throw err;
   },
 
   toast(msg, type = 'success') {

@@ -30,9 +30,15 @@ Object.assign(App, {
     const m = {
       create: this.t('audit_act_create'), update: this.t('audit_act_update'), delete: this.t('audit_act_delete'),
       confirm: this.t('audit_act_confirm'), cancel: this.t('audit_act_cancel'),
-      load: this.t('audit_act_load'),
+      void: this.t('audit_act_void'), load: this.t('audit_act_load'),
     };
     return m[a] || a;
+  },
+
+  // 采购单手动状态：后端以中文原值存储，界面按当前语言展示
+  puManualLabel(v) {
+    const m = { '已关闭': this.t('pu_manual_closed'), '已取消': this.t('pu_manual_cancelled') };
+    return m[v] || v || '';
   },
 
   puContractStatusBadge(s) {
@@ -294,14 +300,14 @@ Object.assign(App, {
     if (s.tab === 'orders') {
       cols = [
         ['po_no', this.t('pu_po_no_filter'), r => `<button type="button" class="pu-lk" data-pu="open" data-t="orders" data-id="${this.puEsc(r.po_no)}">${this.puEsc(r.po_no)}</button>`],
-        ['status', this.t('pu_order_status'), r => this.puOrderStatusBadge(r.status)],
-        ['date', this.t('pu_date'), r => this.fmtDate(r.date)],
+        ['status', this.t('pu_order_status'), r => this.puOrderStatusBadge(r.status), 'center'],
+        ['date', this.t('pu_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
         ['supplier', this.t('pu_supplier'), r => this.puEsc(r.supplier || '')],
         ['contract_display', this.t('pu_contract_filter'), r => this.puContractLinks(r.contract_nos)],
         ['line_count', this.t('pu_line_count'), r => r.line_count, true],
         ['received_qty', this.t('pu_progress'), r => this.puRateBar(r.received_qty, r.order_qty)],
         ['order_amount', this.t('pu_order_amount'), r => this.fmtMoney(r.order_amount), true, vp],
-        ['delivery_status', this.t('pu_delivery'), r => this.puDeliveryBadge(r.delivery_status)],
+        ['delivery_status', this.t('pu_delivery'), r => this.puDeliveryBadge(r.delivery_status), 'center'],
         ['overdue_days', this.t('pu_overdue'), r => r.overdue_days || '', true],
         ['expected_date', this.t('pu_expected'), r => this.fmtDate(r.expected_date)],
       ];
@@ -316,7 +322,7 @@ Object.assign(App, {
         ['line_count', this.t('pu_line_count'), r => r.line_count, true],
         ['order_amount', this.t('pu_order_amount'), r => this.fmtMoney(r.order_amount), true, vp],
         ['receive_rate', this.t('pu_receive_rate'), r => r.receive_rate + '%', true, showRate],
-        ['status', this.t('pu_status'), r => this.puContractStatusBadge(r.status)],
+        ['status', this.t('pu_status'), r => this.puContractStatusBadge(r.status), 'center'],
       ];
     } else {
       cols = [
@@ -325,7 +331,7 @@ Object.assign(App, {
         ['contract_no_eff', this.t('pu_contract_filter'), r => r.contract_no_eff ? `<button type="button" class="pu-lk" data-pu="open" data-t="contracts" data-id="${this.puEsc(r.contract_no_eff)}">${this.puEsc(r.contract_no_eff)}</button>` : '<span class="pu-mu">–</span>'],
         ['received_qty', this.t('pu_progress'), r => this.puRateBar(r.received_qty, r.order_qty)],
         ['order_amount', this.t('pu_order_amount'), r => this.fmtMoney(r.order_amount), true, vp],
-        ['line_status', this.t('pu_line_status'), r => this.puDeliveryBadge(r.line_status)],
+        ['line_status', this.t('pu_line_status'), r => this.puDeliveryBadge(r.line_status), 'center'],
         ['overdue_days', this.t('pu_overdue'), r => r.overdue_days || '', true],
       ];
     }
@@ -335,7 +341,7 @@ Object.assign(App, {
     const body = pageData.map(r => {
       const on = this.puIsSelected(r);
       return `<tr class="pu-row${on ? ' sel' : ''}" data-ra="${s.tab === 'lines' ? 'orders' : s.tab}" data-id="${this.puEsc(r[sid])}">` +
-        shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2] ? c[2](r) : this.puEsc(r[c[0]] == null ? '' : r[c[0]])}</td>`).join('') +
+        shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2] ? c[2](r) : this.puEsc(r[c[0]] == null ? '' : r[c[0]])}</td>`).join('') +
         '</tr>';
     }).join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -471,9 +477,9 @@ Object.assign(App, {
     const amt = lines.reduce((a, l) => a + Number(l.order_amount || 0), 0);
 
     const meta = isPo
-      ? [[this.t('pu_supplier'), d.supplier || '–'], [this.t('pu_date'), this.fmtDate(d.date) || '–'],
+      ? [[this.t('pu_supplier'), d.supplier || '–'], [this.t('pu_date'), this.fmtDocDate(d.date, d.created_at) || '–'],
          [this.t('pu_project'), d.project || '–'], [this.t('pu_expected'), this.fmtDate(d.expected_date) || '–'],
-         [this.t('pu_contract_default'), d.contract_no || '–'], [this.t('pu_manual_status'), d.manual_status || '–']]
+         [this.t('pu_contract_default'), d.contract_no || '–'], [this.t('pu_manual_status'), this.puManualLabel(d.manual_status) || '–']]
       : [[this.t('pu_contract_name'), d.name || '–'], [this.t('pu_supplier'), d.supplier || '–'],
          [this.t('pu_sign_date'), this.fmtDate(d.sign_date) || '–'],
          [this.t('pu_contract_amount'), this.hasField(d, 'amount') ? this.fmtMoney(d.amount) : '–']];
@@ -489,11 +495,11 @@ Object.assign(App, {
     if (isPo && this.can('purchase', 'create')) foot += `<button class="btn btn-primary" data-pu="n-line">+ ${this.t('pu_add_line')}</button>`;
     // 收货：直接建一张采购入库单并带出未到货明细（数量留空待填写）
     if (this.can('inbound', 'create') && lines.some(l => Number(l.unreceived_qty) > 0)) {
-      foot += `<button class="btn btn-primary" data-pu="receive">📥 ${this.t('pu_receive')}</button>`;
+      foot += `<button class="btn btn-primary" data-pu="receive">${this.t('pu_receive')}</button>`;
     }
     // 只读输出（打印/导出）排在写操作之前；删除作为高危操作固定在最右
-    foot += `<button class="btn btn-outline" data-pu="print">🖨 ${this.t('doc_print')}</button>`;
-    foot += `<button class="btn btn-outline" data-pu="export">⬇ ${this.t('doc_export')}</button>`;
+    foot += `<button class="btn btn-outline" data-pu="print">${this.t('doc_print')}</button>`;
+    foot += `<button class="btn btn-outline" data-pu="export">${this.t('doc_export')}</button>`;
     if (this.can('purchase', 'edit')) foot += `<button class="btn btn-outline" data-pu="e-entity">${this.t('edit')}</button>`;
     if (this.can('purchase', 'delete')) foot += `<button class="btn btn-danger" data-pu="d-entity">${this.t('delete')}</button>`;
 
@@ -648,7 +654,7 @@ Object.assign(App, {
     const st = this.getTableState('purchase_detail_lines');
     const sorted = this.sortData(lines, st.sortKey, st.sortDir);
     const th = shown.map(c => this.sortTh(c[1], c[0], 'purchase_detail_lines', c[3])).join('');
-    const body = sorted.map(r => `<tr>` + shown.map(c => `<td${c[3] ? ' class="text-right"' : ''}>${c[2](r)}</td>`).join('') + '</tr>').join('');
+    const body = sorted.map(r => `<tr>` + shown.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>').join('');
     return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body || `<tr><td colspan="${shown.length}" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('noData')}</td></tr>`}</tbody></table></div>`;
   },
 
@@ -659,7 +665,7 @@ Object.assign(App, {
       <div class="pu-item-top">
         <div>
           <button type="button" class="pu-lk" data-pu="open" data-t="orders" data-id="${this.puEsc(o.po_no)}">${this.puEsc(o.po_no)}</button>
-          <div class="pu-log-meta">${this.fmtDate(o.date)} · ${this.puEsc(o.supplier || '')}${o.project ? ' · ' + this.puEsc(o.project) : ''}</div>
+          <div class="pu-log-meta">${this.fmtDocDate(o.date, o.created_at)} · ${this.puEsc(o.supplier || '')}${o.project ? ' · ' + this.puEsc(o.project) : ''}</div>
         </div>
       </div>
     </li>`).join('') + '</ul>';
@@ -822,9 +828,9 @@ Object.assign(App, {
 
     const sum = k => lines.reduce((a, l) => a + Number(l[k] || 0), 0);
     const meta = isPo
-      ? [[this.t('pu_supplier'), d.supplier || ''], [this.t('pu_date'), this.fmtDate(d.date)],
+      ? [[this.t('pu_supplier'), d.supplier || ''], [this.t('pu_date'), this.fmtDocDate(d.date, d.created_at)],
          [this.t('pu_project'), d.project || ''], [this.t('pu_expected'), this.fmtDate(d.expected_date)],
-         [this.t('pu_contract_default'), d.contract_no || ''], [this.t('pu_manual_status'), d.manual_status || ''],
+         [this.t('pu_contract_default'), d.contract_no || ''], [this.t('pu_manual_status'), this.puManualLabel(d.manual_status)],
          [this.t('pu_line_count'), String(lines.length)],
          [this.t('pu_progress'), `${this.fmtQty(sum('received_qty'))} / ${this.fmtQty(sum('order_qty'))}`]]
       : [[this.t('pu_contract_name'), d.name || ''], [this.t('pu_supplier'), d.supplier || ''],
@@ -941,7 +947,7 @@ Object.assign(App, {
         <th class="text-right">${this.t('pu_hist_cum')}</th><th>${this.t('pu_hist_supplier')}</th><th>${this.t('pu_hist_handler')}</th>
       </tr></thead><tbody>` +
         d.history.map(r => `<tr>
-          <td>${this.puEsc(r.doc_no || r.grn_no || '-')}</td><td>${this.fmtDate(r.date)}</td>
+          <td>${this.puEsc(r.doc_no || r.grn_no || '-')}</td><td>${this.fmtDocDate(r.date, r.doc_created_at, r.doc_confirmed_at)}</td>
           <td class="text-right">${this.fmtQty(r.qty)}</td>
           ${vp ? `<td class="text-right">${this.fmtMoney(r.price)}</td><td class="text-right">${this.fmtMoney(r.amount)}</td>` : ''}
           <td class="text-right"><b>${this.fmtQty(r.cum_qty)}</b></td>
@@ -1081,7 +1087,7 @@ Object.assign(App, {
     const lk = this._puEditLookups || { suppliers: [], contracts: [] };
     const supList = (lk.suppliers || []).map(x => `<option value="${this.puEsc(x.name)}"></option>`).join('');
     const cList = (lk.contracts || []).map(x => `<option value="${this.puEsc(x.contract_no)}"></option>`).join('');
-    const msOpts = ['', '已关闭', '已取消'].map(v => `<option value="${v}" ${po.manual_status === v ? 'selected' : ''}>${v || this.t('pu_manual_none')}</option>`).join('');
+    const msOpts = ['', '已关闭', '已取消'].map(v => `<option value="${v}" ${po.manual_status === v ? 'selected' : ''}>${v ? this.puManualLabel(v) : this.t('pu_manual_none')}</option>`).join('');
     box.innerHTML = `<div class="form-grid" style="max-width:none">
       <div class="form-group"><label>${this.t('pu_po_no_filter')}</label><input id="pu_e_no" value="${this.puEsc(po.po_no || '')}" ${isNew ? `placeholder="${this.t('pu_po_no_manual_ph')}"` : 'readonly'}></div>
       <div class="form-group"><label>${this.t('pu_date')} *</label><input id="pu_e_date" type="date" value="${this.fmtDate(po.date)}"></div>
@@ -1156,7 +1162,7 @@ Object.assign(App, {
           <td style="min-width:130px"><input list="pu_e_clist" value="${this.puEsc(l.contract_no || '')}" oninput="App.puEditSet(${i},'contract_no',this.value)"></td>
           <td style="min-width:140px"><input value="${this.puEsc(l.remarks || '')}" oninput="App.puEditSet(${i},'remarks',this.value)"></td>
           <td class="pu-edit-amt">${recv > 0 ? this.fmtQty(recv) : '—'}</td>
-          <td><button type="button" class="pu-edit-del" onclick="App.puEditRemoveRow(${i})">${this.t('in_remove_row')}</button></td>
+          <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.puEditRemoveRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
       }).join('');
     }
@@ -1167,10 +1173,10 @@ Object.assign(App, {
         <span class="pu-mu" id="pu_mat_cnt">${this.puMatFiltered().length} / ${mats.length}</span>
       </div>
       <div class="table-wrap"><table class="pu-edit-lines"><thead><tr>
-        <th>${this.t('pu_material')}</th><th>${this.t('pu_order_qty')}</th>
-        ${vp ? `<th>${this.t('pu_order_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
+        <th>${this.t('pu_material')}</th><th class="text-right">${this.t('pu_order_qty')}</th>
+        ${vp ? `<th class="text-right">${this.t('pu_order_price')}</th><th class="text-right">${this.t('pu_line_amount')}</th>` : ''}
         <th>${this.t('pu_contract_filter')}</th><th>${this.t('pu_remarks')}</th>
-        <th class="text-right">${this.t('pu_received_qty')}</th><th></th>
+        <th class="text-right">${this.t('pu_received_qty')}</th><th class="text-center"></th>
       </tr></thead><tbody>${tbody}</tbody></table></div>
       <div class="pu-edit-sum">
         <span>${this.t('pu_line_count')}: <b id="pu_es_lines">${lines.length}</b></span>

@@ -99,11 +99,12 @@ balance_amount -= amount_out
 | 领料退库（无原单） | 当前均价 → 历史均价 → `NO_BASIS` |
 | 盘盈 | 当前均价 → 历史均价 → `NO_BASIS` |
 | 盘亏 | 当前结存均价 `CURRENT_AVG` |
-| 期初结存 | 物料 `opening_price`，业务日期 `1970-01-01` |
+| 期初结存 | 物料 `opening_price`，业务日期 `1970-01-01`；保存物料时立即写入，物料有其它流水后即锁定 |
 
 ## 7. 负库存
 
 - 出库前置校验 `validateOutboundStock`：按批次累计同一物料的出库量，超出可用量即拒绝并返回明细（`requested` / `available` / `shortfall`）。
+- 校验不再只发生在路由入口：过账 / 更正 / 盘点确认都在 `BEGIN IMMEDIATE` 事务内重新读取状态、可退量与可用量，校验与写流水处于同一临界区，避免两个请求同时通过前置检查。并发写冲突转为 `DB_BUSY`，单据状态被抢先修改返回 `DOC_STATE_CHANGED`，均不产生部分写入。
 - 对「本次操作前可用量已经为负」的物料做豁免：属于历史遗留错账，允许继续出库 / 盘亏修正，避免无法修账；该豁免不会放过把正常库存出成负数的情况。
 - 核算层兜底：`recomputeFrom` 中任一有效流水核算后 `balance_qty < 0`，抛 `INSUFFICIENT_STOCK`，整笔业务（含更正重算）回滚。
 - 可用库存一律读 `stock_balance`，不由单据表现算。
@@ -139,11 +140,13 @@ balance_amount -= amount_out
 | `renumberFrom(code, fromSequence)` | 按核算顺序重排同物料 `posting_sequence` |
 | `voidDocLedger(sourceType, docNo)` | 把单据流水置 `voided`，返回需要重算的锚点 |
 | `rebuildAll()` | 全量重建库存流水与余额 |
-| `ensureOpeningBalances()` | 把物料 `opening_qty` / `opening_price` 补成期初流水，业务日期 `1970-01-01` |
+| `syncOpeningLedger(code, qty, price, opts)` | 保存物料时在同一事务内写入 / 更新期初流水，业务日期 `1970-01-01`；已有非期初流水时拒绝 |
+| `hasNonOpeningLedger(code)` | 判断物料是否已有期初以外的有效流水，用于期初字段锁定 |
+| `ensureOpeningBalances()` | 历史数据兜底：把尚无期初流水的物料按 `opening_qty` / `opening_price` 补一条期初流水 |
 | `captureBalances()` | 重算结束后刷新 `stock_balance` 快照 |
 | `logCorrection({...})` | 把更正重算的范围与前后余额写入 `inventory_recalc_logs` |
 
-服务启动时会执行一次 `ensureOpeningBalances()`，保证「余额可由流水完整推导」。
+期初的正常入口是物料保存（`PUT /api/materials/:id` 等）调用的 `syncOpeningLedger()`，保存完成即可由流水推导余额。`ensureOpeningBalances()` 只在启动时兜底历史数据，不再承担日常「保存期初」的职责。
 
 ## 10. 作废与更正对成本的影响
 

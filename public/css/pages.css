@@ -8,15 +8,37 @@
    ========================================== */
 
 @media (max-width: 768px) {
-  :root { --sidebar-w: 64px; }
-  .sidebar-header { padding: 12px 4px; }
-  .sidebar-header h1 { justify-content: center; }
-  .sidebar-header h1 span:last-child,
-  .sidebar-header .subtitle { display: none; }
-  .sidebar-nav { padding: 8px 4px; margin-top: 60px; }
-  .nav-section-label { display: none; }
-  .nav-item { justify-content: center; padding: 12px 0; }
-  .nav-item span:not(.nav-icon) { display: none; }
+  :root { --sidebar-w: 0px; }
+
+  /* —— 侧边栏改为抽屉：默认收起，点页头 ☰ 展开 —— */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 260px);
+    z-index: 900;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 18px rgba(15, 23, 42, 0.28);
+  }
+  body.nav-open .sidebar { transform: none; }
+  .sidebar-header { padding: 16px 16px 12px; }
+  .sidebar-nav {
+    padding: 8px 10px;
+    overflow-y: auto;
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 890;
+  }
+  body.nav-open .sidebar-overlay { display: block; }
+
+  .nav-toggle { display: inline-flex; }
+
   .page-header,
   .page-header-row { padding: 12px; }
   .page-body { padding: 12px; }
@@ -24,8 +46,6 @@
 }
 
 @media (max-width: 480px) {
-  :root { --sidebar-w: 52px; }
-  .sidebar-nav { margin-top: 56px; padding: 6px 2px; }
   .page-title { font-size: 17px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -62,6 +82,15 @@
 
     .table-wrap thead th {
         padding: 10px;
+    }
+}
+
+/* 窄屏：滚动容器保留触摸惯性；表格本身保持 table-layout:auto，
+   内容（nowrap）撑开表格后由外层横向滚动，列不会被压扁。
+   固定布局的宽表（库存查询、物料流水）在 JS 里单独给出 px 列宽与 min-width。 */
+@media (max-width: 900px) {
+    .table-wrap {
+        -webkit-overflow-scrolling: touch;
     }
 }
 
@@ -512,6 +541,12 @@ button.pu-kpi { cursor: pointer; }
 .pu-row { cursor: pointer; }
 .pu-row.sel > td { background: var(--table-row-selected); }
 .pu-row.sel > td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+/* 跨模块跳转定位后的短暂高亮，帮助在列表中锁定该行 */
+.pu-row.doc-jump-flash > td { animation: pu-doc-jump-flash 1.8s ease-out; }
+@keyframes pu-doc-jump-flash {
+  0%, 35% { background: rgba(59, 130, 246, 0.32); }
+  100% { background: transparent; }
+}
 
 /* --- 徽章 / 进度 --- */
 .pu-badge { display: inline-flex; gap: 5px; align-items: center; }
@@ -712,6 +747,8 @@ button.pu-kpi { cursor: pointer; }
 .pu-edit-lines input, .pu-edit-lines select { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
 .pu-edit-lines input:focus, .pu-edit-lines select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-edit-lines td { vertical-align: middle; }
+/* 数字列：表头与录入框统一右对齐，纵向成一条线 */
+.pu-edit-lines input[type="number"], .pu-edit-lines td input.qty-input, .pu-edit-lines td input.price-input { text-align: right; font-variant-numeric: tabular-nums; }
 .pu-edit-amt { font-variant-numeric: tabular-nums; text-align: right; color: var(--text-muted); white-space: nowrap; }
 .pu-edit-del { background: none; border: 0; color: var(--danger); cursor: pointer; font-size: 13px; font-family: inherit; padding: 0; }
 .pu-edit-del:hover { text-decoration: underline; }

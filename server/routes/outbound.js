@@ -618,7 +618,7 @@ router.get('/api/outbound-docs/:docNo/correction-info', requirePerm('outbound', 
 });
 
 // 创建更正草稿：继承日期/类型/去向/领用人/退库原单/明细；确认后原单作废、新单直接过账
-router.post('/api/outbound-docs/:docNo/correction', requirePerm('outbound', 'edit'), (req, res) => {
+router.post('/api/outbound-docs/:docNo/correction', requirePerm('outbound', 'correct'), (req, res) => {
   const orig = db.prepare("SELECT * FROM outbound_docs WHERE doc_no=?").get(req.params.docNo);
   if (!orig) return res.status(404).json({ error: '出库单据不存在' });
 
@@ -668,7 +668,7 @@ router.post('/api/outbound-docs/:docNo/correction', requirePerm('outbound', 'edi
 });
 
 // 确认更正：单事务完成「原单作废 + 退库单改指向 + 新单过账」；明细全删则只作废原单
-router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outbound', 'edit'), (req, res) => {
+router.post('/api/outbound-docs/:docNo/confirm-correction', requirePerm('outbound', 'correct'), (req, res) => {
   const docNo = req.params.docNo;
   const doc = db.prepare("SELECT * FROM outbound_docs WHERE doc_no=?").get(docNo);
   if (!doc) return res.status(404).json({ error: '出库单据不存在' });

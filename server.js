@@ -27,6 +27,8 @@ const { auditMiddleware } = require('./server/middleware/audit');
 require('./server/db');
 // 期初结存纳入流水，保证库存余额可由流水完整推导
 require('./server/services/costing').ensureOpeningBalances();
+// 自动覆盖式备份：按「参数设置」里保存的频率定时执行（设置存库，重启后仍生效）
+require('./server/services/auto-backup').start();
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -54,6 +56,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
+
+// 健康检查：前端用它判断「服务器是否还在」，因此不要求登录
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, time: Date.now() });
+});
 
 // ==================== 路由挂载 ====================
 // 以下 /api 接口需要登录（login 单独放行）

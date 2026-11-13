@@ -11,9 +11,9 @@
 server.js
   ├─ config.js              环境变量校验（JWT_SECRET 等）
   ├─ middleware/audit.js    审计埋点（/api 写操作）
-  ├─ middleware/auth.js     JWT 鉴权 → req.user / req.canViewPrice
+  ├─ middleware/auth.js     JWT + sid 会话鉴权 → req.user / req.grants / req.canViewPrice
   ├─ routes/*.js            参数校验 + 权限校验 + 事务编排
-  └─ services/*.js          领域逻辑（成本、库存、编号、脱敏）
+  └─ services/*.js          领域逻辑（成本、库存、编号、会话、备份、脱敏）
         │
         ▼
 better-sqlite3（WAL）→ inventory.db
@@ -22,11 +22,12 @@ better-sqlite3（WAL）→ inventory.db
 启动链路：
 
 1. `server.js` 加载 `server/config.js`，缺少 `JWT_SECRET` 或长度不足 32 时打印提示并退出。
-2. `require('./server/db')` 建立连接并执行建表 / 迁移，必要时创建初始管理员。
-3. `costing.ensureOpeningBalances()` 把物料期初结存补成库存流水（业务日期 `1970-01-01`），保证余额可由流水完整推导。
-4. 注册 `express.json()`、JSON 解析错误兜底、审计中间件、静态资源（禁用缓存）。
-5. `/api/auth/login` 免鉴权，其余 `/api` 统一经过 `requireAuth`。
-6. 挂载各路由模块，最后 `app.get('*')` 回落到 `public/index.html` 支持前端路由。
+2. `require('./server/db')` 建立连接并执行建表，必要时创建初始管理员；只为从未初始化过的用户按角色矩阵补一份默认授权。
+3. 新建或修改物料时，`costing.syncOpeningLedger()` 与物料档案在同一事务内写入期初流水（业务日期 `1970-01-01`），保存后余额即可由流水推导。启动时的 `ensureOpeningBalances()` 只作为历史数据兜底，不再承担「保存期初」的职责。
+4. `services/auto-backup.js` 启动定时器：读取 `params.auto_backup`，启动 3 秒后先判一次是否已错过周期（停机期间错过的会立即补跑）。
+5. 注册 `express.json()`、JSON 解析错误兜底、审计中间件、静态资源（禁用缓存）。
+6. `/api/health` 与 `/api/auth/login` 免鉴权，其余 `/api` 统一经过 `requireAuth`。
+7. 挂载各路由模块，最后 `app.get('*')` 回落到 `public/index.html` 支持前端路由。
 
 ## 2. 目录与文件职责
 
@@ -36,12 +37,12 @@ better-sqlite3（WAL）→ inventory.db
 | --- | --- |
 | `server.js` | 入口、中间件顺序、路由挂载、监听与局域网地址打印 |
 | `server/config.js` | 读取 `.env` / 进程环境变量；导出 `DB_PATH`、`HOST`、`PORT`、`JWT_SECRET`、`JWT_EXPIRES`、初始管理员配置 |
-| `server/db.js` | SQLite 连接、建表与增量迁移、初始管理员创建 |
-| `server/permissions.js` | `ROLE_PERMISSIONS`、`MODULE_ACTIONS`、`grantsOf`、`canDo`、`PRICE_ROLES`、`canViewPrice` |
-| `server/middleware/auth.js` | `requireAuth`（解析 JWT、校验账号状态、注入 `req.canViewPrice`）、`requirePerm`、`publicUser` |
+| `server/db.js` | SQLite 连接、建表与唯一索引（含物料四字段唯一性预检）、初始管理员与用户默认授权 |
+| `server/permissions.js` | `ROLE_PERMISSIONS`、`MODULES`、`MODULE_ACTIONS`、`actionsOf`、`grantsOf`、`hasGrant`、`PRICE_ROLES`、`canViewPrice` |
+| `server/middleware/auth.js` | `requireAuth`（解析 JWT、校验 `sid` 会话、注入 `req.grants` / `req.canViewPrice`）、`requirePerm`、`publicUser` |
 | `server/middleware/audit.js` | 对 `/api` 写操作统一写 `audit_logs` |
-| `server/routes/auth.js` | 登录、当前用户、修改密码 |
-| `server/routes/users.js` | 用户增删改查，保护最后一个管理员 |
+| `server/routes/auth.js` | 登录（签发 / 沿用会话）、当前用户、会话心跳、退出、修改密码 |
+| `server/routes/users.js` | 用户增删改查、用户级权限保存、`GET /api/permissions/catalog`，保护最后一个管理员 |
 | `server/routes/dashboard.js` | 首页看板数据 |
 | `server/routes/materials.js` | 物料档案与编码生成 |
 | `server/routes/suppliers.js` | 供应商档案 |
@@ -53,8 +54,8 @@ better-sqlite3（WAL）→ inventory.db
 | `server/routes/stocktake.js` | 盘点建单、载入、录入、确认 |
 | `server/routes/purchase.js` | 采购单、合同、采购明细、到货履历 |
 | `server/routes/params.js` | 类别 / 单位 / 去向词库、单据编号规则 |
-| `server/routes/settings-ops.js` | 备份下载、备份恢复、清业务数据、全清、成本差异结转 |
-| `server/routes/audit.js` | 系统日志查询 |
+| `server/routes/settings-ops.js` | 备份下载、备份恢复、自动备份设置与立即执行、清业务数据、全清、成本差异结转 |
+| `server/routes/audit.js` | 系统日志查询、清空全部日志（仅管理员） |
 
 ### 服务层
 
@@ -65,6 +66,10 @@ better-sqlite3（WAL）→ inventory.db
 | `services/costing.js` | 库存流水与余额的唯一写入口：插入、重排、重算、过账、作废、重建、期初、更正留痕 |
 | `services/stock.js` | 可用库存、负库存校验、退库可退量校验、到货核销、库存汇总 |
 | `services/docno.js` | 单据编号 `{前缀}-{YYYYMMDD}-{序号}`、编号规则校验、更正号 `-R{n}` |
+| `services/session.js` | 单终端登录会话：`issueSession`（同终端沿用 `sid`）、`getSession`、`touchSession`（60 秒内不重复写）、`revokeSession` |
+| `services/user-permissions.js` | 用户级授权的规范化、整表覆盖写入、按角色初始化与读取（`admin` 直接返回全量） |
+| `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、`VACUUM INTO` 快照、状态查询、启动补跑 |
+| `services/errors.js` | 写路径业务码英文文案、`SQLITE_BUSY` 识别、库存不足 / 业务异常的统一响应体 |
 | `services/price-mask.js` | 无价格权限时按行删除价格 / 金额键 |
 | `services/audit.js` | 审计日志记录 |
 | `services/logdetail.js` | 单据操作日志的写入与结构化明细 |
@@ -89,9 +94,12 @@ better-sqlite3（WAL）→ inventory.db
 | `categories` | `id`, `name` UNIQUE, `prefix` | 物料类别 |
 | `units` | `id`, `name` UNIQUE | 计量单位 |
 | `destinations` | `id`, `name` UNIQUE | 领用去向词库 |
-| `materials` | `id`, `code` UNIQUE, `name`, `spec`, `category`, `unit`, `opening_qty`, `opening_price`, `min_stock`, `brand`, `status` | 物料档案；`status='停用'` 不进入库存汇总与搜索 |
+| `materials` | `id`, `code` UNIQUE, `name`, `spec`, `category`, `unit`, `opening_qty`, `opening_price`, `min_stock`, `brand`, `status` | 物料档案；`status='停用'` 不进入库存汇总与搜索；「类别+名称+规格+品牌」有唯一索引（去首尾空格、忽略大小写，空值按空串） |
 | `suppliers` | `id`, `name` UNIQUE, `contact`, `phone`, `remarks` | 供应商档案 |
 | `users` | `id`, `username` UNIQUE, `password_hash`, `name`, `role`, `status`, `must_change_pwd`, `last_login` | 用户与角色 |
+| `user_permissions` | `user_id`, `module`, `action`，`PRIMARY KEY(user_id, module, action)` | 用户级授权；某用户的全部行就是最终授权集合（整表覆盖，不做增量合并） |
+| `user_perm_state` | `user_id` PK, `seeded_at` | 标记该用户权限已初始化，避免「全部取消」后在重启时被角色默认值填回 |
+| `user_sessions` | `user_id` PK, `sid`, `terminal`, `login_at`, `last_seen`, `ip`, `user_agent` | 单终端登录会话，每用户一行；后登录覆盖 `sid`，旧 token 因 `sid` 不匹配立即失效 |
 
 ### 4.2 单据
 
@@ -133,6 +141,7 @@ better-sqlite3（WAL）→ inventory.db
 
 ### 4.6 主要索引
 
+- 唯一索引 `uq_materials_identity(category, name, spec, brand)`：列上使用 `lower(trim(COALESCE(...,'')))`，建索引前先检测重复组，有冲突直接阻断启动并列出记录。
 - `inbound(code)`、`inbound(date)`、`inbound(grn_no)`、`inbound(doc_no)`、`inbound(order_line_id)`、`inbound(origin_line_id)`
 - `outbound(code)`、`outbound(date)`、`outbound(gin_no)`、`outbound(doc_no)`、`outbound(origin_line_id)`
 - `inbound_docs(status)`、`inbound_docs(corrects_doc_no)`、`inbound_docs(corrected_by_doc_no)`；`outbound_docs` 同组，另有 `outbound_docs(receiver)`
@@ -143,10 +152,12 @@ better-sqlite3（WAL）→ inventory.db
 
 ## 5. 权限与中间件
 
-- `ROLE_PERMISSIONS` 定义四个角色的模块动作集合；`admin` 为 `['*']`，展开时按 `MODULE_ACTIONS` / `DEFAULT_MODULE_ACTIONS` 生成完整授权表。
-- `canDo(role, module, action)` 是唯一的判定函数；`requirePerm(module, action)` 在路由层返回 403。
-- `requireAuth` 解析 `Authorization: Bearer <token>`，查库确认用户存在且 `status='active'`，然后挂载 `req.user` 与 `req.canViewPrice`。
+- 授权存在库里：`user_permissions` 是某用户的最终授权集合，`user_perm_state` 标记已初始化。`ROLE_PERMISSIONS` 只用于建号、改角色或首次初始化的默认值；`grantsOf(role)` 负责展开 `admin: ['*']`。
+- `hasGrant(grants, module, action)` 是唯一的判定函数；`requirePerm(module, action)` 在路由层返回 403。`admin` 恒定全量（`grantsForUser` 直接返回完整矩阵），不依赖授权表。
+- `requireAuth` 解析 `Authorization: Bearer <token>`，查库确认用户存在且 `status='active'`，再比对 `user_sessions.sid`：缺 `sid` 或会话已撤销返回 `SESSION_REQUIRED`，`sid` 不一致返回 `SESSION_KICKED`。通过后挂载 `req.user`、`req.sessionSid`、`req.grants`、`req.canViewPrice`。
+- 用户管理页通过 `GET /api/permissions/catalog` 取模块 / 动作全集与各角色默认值，`PUT /api/users/:id` 提交 `permissions` 时整表覆盖；`users` 模块本身不可勾选，避免非管理员获得用户管理入口。
 - `canViewPrice` 仅在角色为 `admin` / `manager` 时为真；无权限的接口必须删除价格键（`price`、`amount`、`cost_price`、`cost_amount`、`total_amount`、`unit_cost`、`avg_cost`、`stock_value` 等），不能只依赖前端隐藏。
+- 涉及已有库存与单据状态的写路径（过账、更正 / 作废、盘点确认、物料期初修改）统一用 `tx.immediate()`（`BEGIN IMMEDIATE`）：状态守卫、库存 / 可退量 / 超收校验与写流水在同一临界区；新物料建档这类没有并发争用的首次写入仍可用普通事务。`SQLITE_BUSY` 由 `services/errors.js` 转成 `DB_BUSY`。
 - `auditMiddleware` 记录 `/api` 写操作；设置页运维接口在自身路由内写审计，并把备份文件名等写入 `detail`。
 
 ## 6. 主要接口一览
@@ -157,9 +168,13 @@ better-sqlite3（WAL）→ inventory.db
 | --- | --- | --- |
 | POST | `/api/auth/login` | 公开 |
 | GET | `/api/auth/me` | 登录 |
+| GET | `/api/auth/session` | 登录；会话心跳，`sid` 失效时返回 401 `SESSION_KICKED` |
+| POST | `/api/auth/logout` | 登录；只撤销当前 `sid` 的会话 |
+| GET | `/api/health` | 公开；前端探测服务器是否可达 |
 | POST | `/api/auth/change-password` | 登录 |
 | GET/POST | `/api/users` | `users:view` / `users:create` |
 | PUT/DELETE | `/api/users/:id` | `users:edit` / `users:delete` |
+| GET | `/api/permissions/catalog` | `users:view`；模块 / 动作全集与角色默认值 |
 
 ### 基础档案
 
@@ -184,7 +199,8 @@ better-sqlite3（WAL）→ inventory.db
 | POST | `/api/inbound-docs` | `inbound:create` |
 | GET | `/api/inbound-docs/:docNo`、`/:docNo/correction-info` | `inbound:view` |
 | PUT | `/api/inbound-docs/:docNo/lines` | `inbound:edit` |
-| POST | `/api/inbound-docs/:docNo/confirm`、`/:docNo/correction`、`/:docNo/confirm-correction` | `inbound:edit` |
+| POST | `/api/inbound-docs/:docNo/confirm` | `inbound:edit` |
+| POST | `/api/inbound-docs/:docNo/correction`、`/:docNo/confirm-correction` | `inbound:correct` |
 | DELETE | `/api/inbound-docs/:docNo` | `inbound:delete` |
 
 ### 出库
@@ -195,7 +211,8 @@ better-sqlite3（WAL）→ inventory.db
 | POST | `/api/outbound-docs` | `outbound:create` |
 | GET | `/api/outbound-docs/:docNo`、`/:docNo/returnable`、`/:docNo/correction-info` | `outbound:view` |
 | PUT | `/api/outbound-docs/:docNo/lines` | `outbound:edit` |
-| POST | `/api/outbound-docs/:docNo/confirm`、`/:docNo/correction`、`/:docNo/confirm-correction` | `outbound:edit` |
+| POST | `/api/outbound-docs/:docNo/confirm` | `outbound:edit` |
+| POST | `/api/outbound-docs/:docNo/correction`、`/:docNo/confirm-correction` | `outbound:correct` |
 | DELETE | `/api/outbound-docs/:docNo` | `outbound:delete` |
 
 ### 退货退库
@@ -256,35 +273,62 @@ better-sqlite3（WAL）→ inventory.db
 | 方法 | 路径 | 权限 |
 | --- | --- | --- |
 | GET | `/api/settings/backup/download` | 仅 `admin` |
-| POST | `/api/settings/backup/restore` | 仅 `admin` |
+| POST | `/api/settings/backup/restore` | 仅 `admin`；结构不一致返回 `BACKUP_SCHEMA_MISMATCH` |
+| GET/PUT | `/api/settings/backup/auto` | 仅 `admin`；读取 / 保存自动覆盖式备份设置 |
+| POST | `/api/settings/backup/auto/run` | 仅 `admin`；立即覆盖 `backups/auto-backup-latest.db` |
 | POST | `/api/settings/cost-variance/settle` | 仅 `admin` |
 | POST | `/api/settings/data/clear-business` | 仅 `admin` |
 | POST | `/api/settings/data/reset` | 仅 `admin` |
 | GET | `/api/dashboard` | `dashboard:view` |
 | GET | `/api/audit-logs` | `audit:view` |
+| DELETE | `/api/audit-logs` | 仅 `admin`；清空全部日志并保留一条本次清空记录 |
 
 ## 7. 前端组织
 
-- `public/index.html` 按编号顺序加载 `00-i18n.js` 至 `13-returns.js`，全部挂到全局 `window.App`；同时通过 CDN 引入 Chart.js 4 用于看板图表。
-- `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。`public/style.css` 为历史遗留主题，已无页面引用。
-- `01-core.js` 负责：读取 / 保存 token、统一 `api()` 请求与 401 处理、hash 路由、`canDo` / `canViewPrice` 前端判定、登录页。
-- `02-ui-kit.js` 提供通用表格、弹窗、Toast、分页、单据打印与 CSV 导出（UTF-8 BOM，Excel 中文不乱码）。
+- `public/index.html` 按编号顺序加载 `00-i18n.js` 至 `14-connection.js`，全部挂到全局 `window.App`；同时通过 CDN 引入 Chart.js 4 用于看板图表。
+- `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。登录时会带上 `localStorage.terminal_id`（首次登录生成并复用），用于区分终端：同一浏览器的多标签共享同一终端，不互相挤下线。`public/style.css` 为历史遗留主题，已无页面引用。
+- `01-core.js` 负责：读取 / 保存 token、统一 `api()` 请求与 401 处理、hash 路由、`can(module, action)` / `canViewPrice` 前端判定、登录页，以及状态徽标与业务类型徽标的单一映射（`docStatusMeta`、`docTypeBadgeClass`、`statusBadge`）。
+- `02-ui-kit.js` 提供通用表格、弹窗、Toast、分页、单据打印与 CSV 导出（UTF-8 BOM，Excel 中文不乱码）；表头排序按列类型传 `align`（数字右对齐、状态 / 类型 / 操作居中），表格容器统一 `overflow-x` 横向滚动，单元格 `nowrap` 不再被压缩；日期与时刻统一走 `fmtDateTime` / `fmtDocDate`，业务日期显示到分钟。
+- `09-admin.js` 用户管理页从 `/api/permissions/catalog` 渲染模块动作勾选面板，`admin` 行只读；保存时随用户一起提交 `permissions`。
 - 各业务脚本以 `App.xxx` 方法扩展，页面刷新通过 hash 路由重渲染，不做组件级状态管理。
-- 语言切换即时重渲染；文本统一走 `t('key')`，新增文案需同时补中英两份词典。
+- `14-connection.js` 负责「前端如何感知自己还能不能用」：轮询 `/api/health` 判断服务器是否可达（顶部横幅提示，恢复后自动消失并按需重渲染当前页），轮询 `/api/auth/session` 及时发现被其它终端挤下线（弹窗提示，不静默跳登录页）。
+- 导航固定为五个分组：概览、业务办理、查询分析、基础资料、系统管理（`01-core.js` 的 `renderSidebar`），按 `view` 权限过滤。
+- 语言切换即时重渲染；文本统一走 `t('key')`，中英词典各 1280 条且 key 必须对齐，新增文案需同时补两份。
+- 主界面样式全部在 `public/css/` 的静态文件中，颜色只使用 `base.css` 的语义 token（`--success-*`、`--warning-*`、`--table-*` 等）；状态徽标、单号链接（`.pu-lk`）、确认弹窗、表格定义都只有一处定义，页面脚本不再运行时注入 `<style>`。打印预览是独立打印文档，样式随打印模板内联生成，不影响主界面。
 
 ## 8. 错误码约定
 
 | 错误码 | 含义 |
 | --- | --- |
-| `INSUFFICIENT_STOCK` | 核算后库存为负，整笔过账回滚 |
+| `INSUFFICIENT_STOCK` | 核算后库存为负或可用量不足，整笔过账回滚 |
 | `NO_COST_BASIS` | 物料从未有过正库存，按 0 成本入账需管理员确认 |
 | `DOC_NO_EXISTS` | 更正单号已存在 |
+| `DOC_NO_CONFLICT` | 并发建单时单号刚被其它请求占用，本次未保存 |
+| `DOC_STATE_CHANGED` | 单据已被其它请求处理（确认 / 作废），本次未生效，需刷新 |
+| `STOCKTAKE_STATE_CHANGED` | 盘点单已被其它请求确认，本次未生效，需刷新 |
+| `RETURN_QTY_EXCEEDED` | 退货 / 退库数量超过原单剩余可退量 |
+| `RETURN_EXCEEDS_CORRECTED_QTY` | 原出库单被更正后，已确认的退库数量超过新数量，需先调整退库单 |
+| `OVER_RECEIPT` | 到货数量超过采购单剩余量，需显式确认超收 |
+| `MATERIAL_DUPLICATE` | 物料「类别+名称+规格+品牌」与已有物料重复（忽略大小写与首尾空格） |
+| `MATERIAL_CODE_EXISTS` | 物料编码已存在 |
+| `MATERIAL_OPENING_LOCKED` | 物料已有期初以外的流水，期初数量 / 单价不可再改 |
+| `DB_BUSY` | 并发写冲突（`SQLITE_BUSY`），本次操作未生效，可稍后重试 |
+| `SESSION_KICKED` | 该账号已在其它终端登录，旧会话失效（401） |
+| `SESSION_REQUIRED` | 令牌不含 `sid` 或会话已撤销，需重新登录（401） |
+| `BACKUP_SCHEMA_MISMATCH` | 备份的表 / 列结构或列类型与当前版本不一致，拒绝恢复 |
+| `INVALID_BACKUP` | 上传文件不是有效 SQLite 库或不是本系统的备份 |
+| `RESTORE_FAILED` | 结构校验通过但数据导入失败（如违反唯一约束），事务已回滚 |
+| `AUTO_BACKUP_FAILED` | 自动 / 立即备份执行失败，原因写入 `last_error` 并返回 |
 | `CONFIRM_MISMATCH` | 清库 / 恢复的确认短语不正确 |
 | `FORBIDDEN` | 非管理员执行管理员操作 |
 
 ## 9. 开发约定
 
 - 库存数量与金额只能由 `services/costing.js` 写 `stock_ledger` / `stock_balance`，其他模块不得直接改余额。
+- 涉及已有库存与单据状态的写操作必须放在 `tx.immediate()` 事务内，并把状态守卫与库存 / 可退量 / 超收校验一起放进事务；错误统一走 `services/errors.js` 的 `businessError` / `stockBody`，不要直接把 SQLite 原文抛给用户。
+- 物料期初只能通过物料保存接口修改，且必须与物料档案同事务调用 `syncOpeningLedger()`；已有非期初流水后期初字段锁定。
 - 业务路由只做参数校验、权限校验与事务编排，跨模块计算放到 `services/`。
 - 新增接口必须显式加 `requirePerm`；涉及金额的返回必须考虑 `req.canViewPrice`。
+- 新增权限动作时同步更新 `MODULE_ACTIONS`，否则用户管理页不会出现该勾选项；新增角色时同步 `ROLE_PERMISSIONS`。
 - 新增单据类型时，同步更新 `services/docno.js` 的 `TYPES` / 默认前缀与参数设置中的编号规则校验。
+- 数据库结构变更直接改建表语句，不写兼容迁移；`init-db.js` 被 require 时不得产生副作用，直接执行时目标库已存在应拒绝，只有 `--force` 才改名备份后重建。

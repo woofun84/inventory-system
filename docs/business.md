@@ -8,18 +8,21 @@
 
 | 角色 | 定位 | 权限范围 |
 | --- | --- | --- |
-| `admin` | 管理员 | 全部权限（`['*']`），含用户管理、备份恢复、清库、成本差异结转 |
+| `admin` | 管理员 | 恒定全部权限（不读授权表），含用户管理、备份恢复、清库、成本差异结转、清空日志 |
 | `manager` | 主管 | 业务全权：入出库、退货退库、物料、供应商、采购、查询、盘点（含确认）、参数设置、日志；不含用户管理 |
-| `operator` | 操作员 | 入库 / 出库 / 退货退库仅 `view + create`；物料、供应商、采购只读；盘点可建单和录入，不能确认 |
+| `operator` | 操作员 | 入库 / 出库 / 退货退库可建单、改草稿、过账与查看（`view + create + edit`）；不能更正重开 / 作废（`correct`）、不能删除；物料、供应商、采购只读；盘点可建单和录入，不能确认 |
 | `viewer` | 只读 | 各业务模块 `view` |
 
-权限粒度是「模块 + 动作」：`view` / `create` / `edit` / `delete`，盘点另有独立动作 `confirm`。盘点确认必须显式授予，草稿删除并入 `create`。
+权限粒度是「模块 + 动作」：`view` / `create` / `edit` / `delete`，入库与出库另有独立动作 `correct`（更正重开 / 作废），盘点另有 `confirm`。`correct` 与 `edit` 刻意拆开，这样把日常改草稿、过账开放给操作员时，不会连带放开破坏性操作；盘点确认必须显式授予，草稿删除并入 `create`。
 
 ### 1.2 服务端校验
 
-- 每个业务路由通过 `requirePerm(module, action)` 校验，无权限返回 403。
-- 前端 `canDo(role, module, action)` 只用于控制菜单与按钮显隐，不构成安全边界。
-- 需要管理员的操作（备份、恢复、清库、成本差异结转）在路由内单独校验 `role === 'admin'`。
+- 每个业务路由通过 `requirePerm(module, action)` 校验，内部读 `req.grants`，无权限返回 403。
+- 授权以数据库为准：`user_permissions` 存最终授权集合，管理员可在用户管理里按用户勾选，保存即生效；`user_perm_state` 防止「全部取消」在重启后被默认值填回。角色矩阵只提供建号 / 改角色时的默认值。
+- `admin` 恒定拥有全部权限，不读取授权表，避免误操作把唯一管理员锁死；用户管理页的 `admin` 行只读。
+- 前端 `App.can(module, action)` 只用于控制菜单与按钮显隐，不构成安全边界。
+- 权限元数据（模块 / 动作全集、各角色默认值）由 `GET /api/permissions/catalog` 下发；`users` 模块本身不开放勾选。
+- 需要管理员的操作（备份、恢复、自动备份、清库、成本差异结转、清空日志）在路由内单独校验 `role === 'admin'`。
 
 ### 1.3 价格脱敏
 
@@ -34,6 +37,13 @@
 | 领用人查询 | 汇总与明细的 `amount` |
 | ABC 分析 | `out_amount`、`share`、`cum_share`、`stock_value`，汇总只保留分类计数 |
 | 呆滞分析 | `stock_value`、`avg_cost`，保留数量与天数 |
+
+### 1.4 登录会话
+
+- 同一账号同时只允许一个终端在线。登录成功后在 `user_sessions` 覆盖该用户的 `sid`，JWT 里带同一个 `sid`；先前终端再发起请求时 `sid` 不匹配，返回 401 `SESSION_KICKED`，前端弹窗提示「已在其它终端登录」，不静默跳转登录页。
+- 终端标识来自登录页写入 `localStorage` 的 `terminal_id`：同一浏览器的多个标签页共享同一终端，重新登录沿用原 `sid`，不会自己挤自己；换浏览器 / 换电脑 / 手机登录才会顶掉旧会话。
+- 前端轮询 `/api/auth/session` 作为心跳，同时刷新 `last_seen`；主动退出只撤销当前 `sid`，旧标签页不会误删新会话。
+- `/api/health` 不需要登录，前端用它探测服务器是否可达，断线时显示顶部横幅，恢复后自动消失。
 
 ## 2. 单据状态机
 
@@ -53,6 +63,7 @@ voided（已作废，流水置为 voided）
 - `posted`：明细行 `status='posted'`，生成 `stock_ledger`，库存余额可被查询与核算。
 - `voided`：原单保留可追溯，`voided_at` / `voided_by` 记录作废信息；对应流水 `status='voided'`，重算后不再影响余额。
 - 已过账单据不允许直接改行，只能走「更正（作废重开）」。
+- 建单、改草稿与过账默认对 `operator` 开放；作废与更正重开需要独立的 `correct` 权限。过账、更正与盘点确认都在 `BEGIN IMMEDIATE` 事务内先校验状态再写流水，状态已被其它请求改动时返回 `DOC_STATE_CHANGED` / `STOCKTAKE_STATE_CHANGED`，整笔不生效。
 
 盘点单为 `draft → confirmed` 两态；采购单使用 `status` 与 `manual_status`，没有入出库单的作废/更正链。
 
@@ -88,9 +99,11 @@ voided（已作废，流水置为 voided）
 
 - 新建：`POST /api/inbound-docs`
 - 改行：`PUT /api/inbound-docs/:docNo/lines`（仅草稿）
-- 确认：`POST /api/inbound-docs/:docNo/confirm`
-- 删除：`DELETE /api/inbound-docs/:docNo`（仅草稿）
-- 更正：`GET /:docNo/correction-info` → `POST /:docNo/correction` → `POST /:docNo/confirm-correction`
+- 确认：`POST /api/inbound-docs/:docNo/confirm`（`inbound:edit`）
+- 删除：`DELETE /api/inbound-docs/:docNo`（仅草稿，`inbound:delete`）
+- 更正：`GET /:docNo/correction-info` → `POST /:docNo/correction` → `POST /:docNo/confirm-correction`（后两步需要 `inbound:correct`）
+
+过账时在同一事务内复核单据状态、可退量 / 超收与库存；并发下单据已被处理返回 `DOC_STATE_CHANGED`，超收未显式确认返回 `OVER_RECEIPT`，单号刚被占用返回 `DOC_NO_CONFLICT`。
 
 ## 4. 出库
 
@@ -110,7 +123,7 @@ voided（已作废，流水置为 voided）
 
 ### 4.3 出库单操作
 
-与入库单一致：新建、改行（仅草稿）、确认、删除（仅草稿）、更正重开。
+与入库单一致：新建、改行（仅草稿）、确认、删除（仅草稿）、更正重开；更正步骤需要 `outbound:correct`。确认时可用库存与退库可退量都在写事务内复核，不足分别返回 `INSUFFICIENT_STOCK` / `RETURN_QTY_EXCEEDED`。
 
 ## 5. 退货与退库查询
 
@@ -164,14 +177,25 @@ voided（已作废，流水置为 voided）
 ### 8.2 备份与恢复
 
 - 备份下载：`VACUUM INTO` 生成一致性快照（含 WAL 未 checkpoint 的已提交数据），文件名带时间戳，默认写入 `backups/`。
-- 恢复：上传 `.db` 文件，先校验「表集合、列名集合、列声明类型」与当前版本完全一致，通过后自动备份当前库再恢复。确认短语为 `恢复`。
-- 清业务数据：保留物料、供应商、用户、参数、类别、单位、去向，清空单据、流水、余额、盘点、成本差异与审计日志。确认短语为 `清空`。
-- 全部清空：在清业务数据基础上再删除物料、供应商、合同、用户，重建默认管理员。确认短语为 `全部清空`。
+- 自动覆盖式备份：管理员在参数设置里选择每小时 / 每天 / 每周（每天、每周可指定时刻，每周可指定星期），设置存 `params.auto_backup`，重启后仍生效。每次执行覆盖同一份 `backups/auto-backup-latest.db`，不堆积历史文件；停机期间错过的周期会在启动后补跑一次。也可随时「立即备份」。
+- 恢复：上传 `.db` 文件，先校验「表集合、列名集合、列声明类型」与当前版本完全一致，通过后自动备份当前库再恢复。确认短语为 `恢复`。结构不一致的旧版本备份会被直接拒绝（`BACKUP_SCHEMA_MISMATCH`）；`user_sessions` 不参与结构比对，旧备份不含该表时按空会话恢复，需要重新登录。
+- 清业务数据：保留物料、供应商、用户、用户级权限、参数、类别、单位、去向，清空单据、流水、余额、盘点、成本差异与审计日志，随后按物料档案重新生成期初流水，并补写一条本次清库记录。确认短语为 `清空`。
+- 全部清空：在清业务数据基础上再删除物料、供应商、合同、用户、用户级授权与登录会话，重建默认管理员。确认短语为 `全部清空`。
 - 危险操作前都会自动快照当前库，响应返回备份文件名；操作完成后补写一条审计记录。
 
 ### 8.3 成本差异结转
 
 `POST /api/settings/cost-variance/settle`（仅 `admin`）把 `cost_variances` 中 `status='open'` 的记录批量置为 `settled`，写入结转批次与时间。结转只改状态，不动库存数量、金额与均价。
+
+### 8.4 物料档案的唯一性与期初锁定
+
+- 「类别 + 名称 + 规格 + 品牌」四字段唯一（比较时去首尾空格、忽略大小写，空值按空串）。保存时先查重，命中返回 `MATERIAL_DUPLICATE`；编码重复返回 `MATERIAL_CODE_EXISTS`。建索引前若库里已有重复组，服务启动会直接阻断并列出冲突记录，不静默合并。
+- 期初数量 / 单价在保存物料时即写入期初流水（业务日期 `1970-01-01`），不再依赖重启补账。物料一旦有期初以外的流水，期初字段即锁定，再改返回 `MATERIAL_OPENING_LOCKED`，避免倒挂历史成本。
+
+### 8.5 系统日志
+
+- 管理员可在系统日志页「清空全部日志」。清空在同一事务内先删除全部记录，再补写一条本次清空记录（含删除条数），保证「谁在何时清空了日志」仍可追溯。
+- 日志详情按结构化 `detail_json` 渲染为中文摘要与字段标签；历史记录缺结构化数据时回退到模块 + 动作生成的摘要，不再直接展示原始 JSON。
 
 ## 9. 查询中心
 
@@ -210,11 +234,11 @@ voided（已作废，流水置为 voided）
 
 ## 10. 作废与更正重开
 
-- 作废：已过账单据可作废，单据状态置 `voided`，对应流水置 `voided` 并触发重算，原单信息保留可追溯。
+- 作废：已过账单据可作废，单据状态置 `voided`，对应流水置 `voided` 并触发重算，原单信息保留可追溯。作废与更正重开同属 `correct` 动作，操作员默认没有该权限。
 - 更正重开（修订号）：
   1. 读取更正信息 `GET /:docNo/correction-info`；
   2. 创建更正单 `POST /:docNo/correction`，原单作废，新单号沿用原单前缀与日期段并追加 `-R1`、`-R2`……修订号不占用正常流水序号；
   3. 在更正单上修改明细；
   4. `POST /:docNo/confirm-correction` 过账。
 - 更正单没有任何改动时会被拦截，避免产生无意义的修订版本。
-- 更正号冲突返回 `DOC_NO_EXISTS`；更正重算若导致负库存，整笔回滚并返回 `INSUFFICIENT_STOCK`。
+- 更正号冲突返回 `DOC_NO_EXISTS`；更正重算若导致负库存，整笔回滚并返回 `INSUFFICIENT_STOCK`；并发下原单或更正草稿状态已变化，返回 `DOC_STATE_CHANGED`，同样不落任何改动。

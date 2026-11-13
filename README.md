@@ -11,7 +11,7 @@
 - 采购管理：采购单、合同、采购明细、到货履历与到货核销
 - 库存核算：移动加权平均成本、库存流水台账、成本差异台账与期末结转
 - 查询中心：库存查询、单据查询、领用人查询、库存分析（ABC / 周转率 / 呆滞）
-- 系统管理：用户与角色、参数与单据编号规则、系统日志、备份 / 恢复 / 清库
+- 系统管理：用户与角色、按用户勾选的模块权限、参数与单据编号规则、系统日志、自动备份、备份 / 恢复 / 清库
 
 ## 技术栈
 
@@ -39,7 +39,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 # 2. 安装依赖
 npm install
 
-# 3. 启动（首次启动会自动建表 / 迁移并创建初始管理员）
+# 3. 启动（首次启动会自动建表并创建初始管理员）
 npm start
 ```
 
@@ -78,10 +78,10 @@ warehouse_cn/
 ├─ seed-random.js             # 随机测试数据生成脚本（开发用）
 ├─ server/
 │  ├─ config.js               # 环境变量与默认配置
-│  ├─ db.js                   # 数据库连接、建表与迁移、初始管理员
-│  ├─ permissions.js          # 角色权限矩阵、canDo、canViewPrice
+│  ├─ db.js                   # 数据库连接、建表与唯一索引、初始管理员与用户默认授权
+│  ├─ permissions.js          # 角色默认矩阵、模块动作全集、hasGrant、canViewPrice
 │  ├─ middleware/
-│  │  ├─ auth.js              # JWT 鉴权、requirePerm、req.canViewPrice 注入
+│  │  ├─ auth.js              # JWT 鉴权、sid 会话校验、requirePerm、req.canViewPrice 注入
 │  │  └─ audit.js             # /api 写操作审计埋点
 │  ├─ routes/                 # 各业务 REST 路由（见下文「接口」）
 │  └─ services/
@@ -89,8 +89,12 @@ warehouse_cn/
 │     ├─ scaled-db.js         # SQLite 定点数读写自动换算
 │     ├─ costing.js           # 成本核算与库存流水（唯一写入口）
 │     ├─ stock.js             # 可用库存、负库存校验、到货核销、库存汇总
+│     ├─ session.js           # 单终端登录会话：签发 / 查询 / 心跳 / 撤销
+│     ├─ user-permissions.js  # 用户级授权的读取、覆盖写入与角色默认初始化
+│     ├─ auto-backup.js       # 自动覆盖式备份（每小时 / 每天 / 每周）
 │     ├─ docno.js             # 单据编号与更正修订号
 │     ├─ price-mask.js        # 无价格权限时的字段脱敏
+│     ├─ errors.js            # 写路径业务码与 SQLITE_BUSY 统一出口
 │     ├─ audit.js             # 审计日志写入
 │     ├─ logdetail.js         # 单据操作日志
 │     ├─ sign.js              # 单据操作签名 / 留痕辅助
@@ -116,12 +120,13 @@ warehouse_cn/
 | `05-inbound.js` | 入库（采购入库 / 零星入库 / 采购退货） |
 | `06-outbound.js` | 出库 |
 | `07-stock.js` | 查询中心四个板块、全局搜索、详情卡 |
-| `08-orders.js` | 基础资料与运维：供应商档案、参数设置、备份下载 / 恢复 / 清库、成本差异结转 |
-| `09-admin.js` | 用户管理 |
+| `08-orders.js` | 基础资料与运维：供应商档案、参数设置、自动备份、备份下载 / 恢复 / 清库、成本差异结转 |
+| `09-admin.js` | 用户管理与按用户的模块授权 |
 | `10-purchase.js` | 采购单、合同、采购明细 |
 | `11-stocktake.js` | 盘点 |
 | `12-audit.js` | 系统日志 |
 | `13-returns.js` | 退货与退库 |
+| `14-connection.js` | 服务器断开提示（顶部横幅）、登录会话心跳与「被其它终端挤下线」提示 |
 
 样式文件：`base.css`（基础与变量）、`components.css`（通用组件）、`pages.css`（页面与查询中心样式包）、`theme-dark.css`（深色主题）。
 
@@ -135,17 +140,20 @@ warehouse_cn/
 | 盘点 | 按物料维度盘点，确认后生成库存调整流水，不污染入出库统计 |
 | 采购管理 | 采购单、合同、采购明细、到货履历、按采购单 / 合同关联入库单 |
 | 查询中心 | 库存查询、单据查询、领用人查询、库存分析 |
-| 参数设置 | 类别 / 单位 / 去向词库、单据编号规则、备份恢复、清库、成本差异结转 |
-| 系统管理 | 用户与角色、系统审计日志 |
+| 参数设置 | 类别 / 单位 / 去向词库、单据编号规则、自动备份、备份恢复、清库、成本差异结转 |
+| 系统管理 | 用户与按用户授权的权限、系统审计日志（含清空日志） |
 
 单据状态机（`draft → posted → voided`）、作废与更正重开的业务规则见 [业务说明](docs/business.md)。
 
 ## 权限与价格脱敏
 
 - 角色：`admin`（管理员）、`manager`（主管）、`operator`（操作员）、`viewer`（只读）。
-- 权限粒度为「模块 + 动作」，矩阵定义在 `server/permissions.js` 的 `ROLE_PERMISSIONS`；盘点确认 `stocktake:confirm` 是独立动作。
-- 服务端路由用 `requirePerm(module, action)` 校验；前端用 `canDo` 控制菜单与按钮显隐。
+- 权限粒度为「模块 + 动作」。授权以数据库为准：`user_permissions` 存每个用户的最终授权集合，`user_perm_state` 标记该用户已初始化；角色矩阵（`server/permissions.js` 的 `ROLE_PERMISSIONS`）只在建号或改角色时提供默认值。
+- 管理员可在「用户管理」里按用户勾选模块动作，保存即生效；`GET /api/permissions/catalog` 提供模块 / 动作全集与各角色默认值。`admin` 恒定拥有全部权限，不读取授权表，避免误操作锁死唯一管理员。
+- 动作中 `correct`（更正重开 / 作废）与 `edit` 分开授予。`operator` 默认具备入库、出库、退货退库的建单、改草稿与过账权限，但没有 `correct`、`delete` 等破坏性动作；盘点确认 `stocktake:confirm` 仍是独立动作。
+- 服务端路由用 `requirePerm(module, action)` 校验（内部读 `req.grants`）；前端用 `App.can(module, action)` 控制菜单与按钮显隐，不构成安全边界。
 - 价格可见性由 `canViewPrice` 判定，仅 `admin` / `manager` 为真。鉴权中间件把结果挂到 `req.canViewPrice`，各接口在无权限时**服务端删除**金额、单价、成本等键，而不是仅靠前端隐藏。
+- 同一账号单终端登录：`user_sessions` 每用户一行，JWT 带 `sid`；后登录的终端覆盖 `sid`，旧终端再请求时返回 401 `SESSION_KICKED`。终端标识存在浏览器 `localStorage`，同一浏览器的多个标签页视为同一终端，不会互踢。
 
 ## 文档
 
@@ -157,4 +165,5 @@ warehouse_cn/
 
 - 列表级 CSV 导出 / 打印目前只在查询中心四个板块与各单据详情页提供，其他模块的列表页没有导出入口。
 - 单据详情渲染存在两套实现：业务模块详情页与查询中心的只读详情卡各有一套组装逻辑，字段展示需分别维护。
-- 数据库为单文件 SQLite，适合单机 / 小团队并发；不支持多实例同时写入。
+- 数据库为单文件 SQLite，适合单机 / 小团队并发；不支持多实例同时写入。并发写冲突会以 `DB_BUSY` 提示，而不是静默失败。
+- 旧结构（表或列类型不一致）的备份不允许恢复，恢复接口会直接拒绝；`public/style.css` 已无页面引用，暂时保留未删。

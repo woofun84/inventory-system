@@ -3,6 +3,12 @@
  * 注意：主题切换时需 destroyCharts() 后重建，图表颜色动态取值
  */
 Object.assign(App, {
+  // 成本差异原因：字典缺失时回落原始值，不暴露 cv_reason_xxx 这类 key
+  cvReasonLabel(reason) {
+    const k = 'cv_reason_' + String(reason || ''), v = this.t(k);
+    return v === k ? String(reason || '') : v;
+  },
+
   // ========== 仪表盘 ==========
   async renderDashboard() {
     this.setMain(this.pageWrap('🏠 ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
@@ -96,7 +102,7 @@ Object.assign(App, {
           ${vp ? `<td class="text-right">${this.fmtQty(r.unit_cost)}</td>
           <td class="text-right">${this.fmtQty(r.avg_cost)}</td>
           <td class="text-right"><b>${this.fmtMoney(r.amount)}</b></td>` : ''}
-          <td><span class="badge badge-warning">${this.t('cv_reason_' + r.reason)}</span></td>
+          <td><span class="badge badge-warning">${this.cvReasonLabel(r.reason)}</span></td>
         </tr>`).join('');
         body = `<p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">${this.t('cv_notice')}</p>
           <div class="table-wrap"><table><thead><tr>
