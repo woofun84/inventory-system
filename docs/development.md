@@ -297,7 +297,7 @@ better-sqlite3（WAL）→ inventory.db
 ## 7. 前端组织
 
 - `public/index.html` 按编号顺序加载 `00-i18n.js` 至 `14-connection.js`，全部挂到全局 `window.App`；同时通过 CDN 引入 Chart.js 4 用于看板图表。
-- `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。登录时会带上 `localStorage.terminal_id`（首次登录生成并复用），用于区分终端：同一浏览器的多标签共享同一终端，不互相挤下线。`public/style.css` 为历史遗留主题，已无页面引用。
+- `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。登录时会带上 `localStorage.terminal_id`（首次登录生成并复用），用于区分终端：同一浏览器的多标签共享同一终端，不互相挤下线。
 - `01-core.js` 负责：读取 / 保存 token、统一 `api()` 请求与 401 处理、hash 路由、`can(module, action)` / `canViewPrice` 前端判定、登录页，以及状态徽标与业务类型徽标的单一映射（`docStatusMeta`、`docTypeBadgeClass`、`statusBadge`）。
 - 会话过期保留草稿：401 / 被挤下线前把当前页表单值按 hash 写入 `sessionStorage`（`wms_session_draft`，24 小时内有效），重新登录后回到原 hash 并回填未提交字段，回填成功即清除草稿。
 - `02-ui-kit.js` 提供通用表格、弹窗、Toast、分页、单据打印与 CSV 导出（UTF-8 BOM，Excel 中文不乱码）；表头排序按列类型传 `align`（数字右对齐、状态 / 类型 / 操作居中），表格容器统一 `overflow-x` 横向滚动，单元格 `nowrap` 不再被压缩；日期与时刻统一走 `fmtDateTime` / `fmtDocDate`，业务日期显示到分钟。
