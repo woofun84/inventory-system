@@ -206,6 +206,9 @@ Object.assign(App, {
     if (!sizes.includes(st.pageSize)) st.pageSize = 10;
     const tp = Math.max(1, Math.ceil(total / st.pageSize));
     if (st.page > tp) st.page = tp;
+    // 记录总数：翻页时据此夹住越界页码，避免连点/键盘触发到空页
+    this._tableTotals = this._tableTotals || {};
+    this._tableTotals[tableId] = total;
     const page = st.page;
     const tot = totText != null ? totText : `${total} ${this.t('records')}`;
     return `<span class="pu-tot">${tot}</span>
@@ -217,7 +220,9 @@ Object.assign(App, {
 
   onPage(tableId, page) {
     const st = this.getTableState(tableId);
-    st.page = page;
+    const total = this._tableTotals ? this._tableTotals[tableId] : null;
+    const tp = total == null ? null : Math.max(1, Math.ceil(total / st.pageSize));
+    st.page = tp == null ? Math.max(1, page) : Math.min(Math.max(1, page), tp);
     if (this._tableRenderers && this._tableRenderers[tableId]) this._tableRenderers[tableId]();
   },
 
@@ -272,6 +277,22 @@ Object.assign(App, {
     el.classList.add('error');
     const errorEl = el.parentElement.querySelector('.form-error');
     if (errorEl) { errorEl.textContent = msg; errorEl.classList.add('show'); }
+  },
+
+  // 校验失败定位：滚动到字段、高亮闪烁并弹 toast，避免"点了没反应"
+  flagFieldError(fieldId, msg) {
+    const el = document.getElementById(fieldId);
+    const box = el ? (el.closest('.form-group') || el) : null;
+    if (box) {
+      box.classList.remove('field-flash');
+      void box.offsetWidth; // 重置动画，连续点击也能再次闪烁
+      box.classList.add('field-flash');
+      if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (el && el.focus) { try { el.focus({ preventScroll: true }); } catch (_) {} }
+      if (this._fieldFlashTimer) clearTimeout(this._fieldFlashTimer);
+      this._fieldFlashTimer = setTimeout(() => box.classList.remove('field-flash'), 1800);
+    }
+    if (msg) this.toast(msg, 'error');
   },
 
   // 生成带 error div 的 form-group（辅助函数）
@@ -616,6 +637,12 @@ Object.assign(App, {
     const s = Math.abs(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return (n < 0 ? '-¥' : '¥') + s;
   },
+  // 单价输入框显示：固定两位小数，规避浮点尾数（如 112.30000305175781）
+  fmtPrice2(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    return isNaN(n) ? '' : n.toFixed(2);
+  },
   // 业务日期（date 列，日历日，不做时区换算）
   fmtDate(d) { if (!d) return ''; return String(d).slice(0, 10); },
   // 本机日历日期 YYYY-MM-DD（业务日期默认值；不要用 toISOString，那是 UTC 日期）
@@ -768,16 +795,39 @@ Object.assign(App, {
   },
 
   // ========== 模态框 ==========
-  showModal(title, bodyHtml, btnText, onConfirm, onCancel, large) {
+  // opts.maximizable：标题栏显示最大化/还原按钮（大面积表格类弹窗用）
+  showModal(title, bodyHtml, btnText, onConfirm, onCancel, large, opts) {
+    // 单例：已有弹窗时忽略重复打开（连点 / 回车二次触发），避免叠层后按钮全部点不动
+    if (document.getElementById('modal-overlay')) return false;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'modal-overlay';
     const modalClass = large ? 'modal modal-lg' : 'modal';
-    overlay.innerHTML = `<div class="${modalClass}"><div class="modal-header">${title}<button class="modal-close" id="modal-close-btn">&times;</button></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer"><button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button><button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
+    const maximizable = !!(opts && opts.maximizable);
+    overlay.innerHTML = `<div class="${modalClass}"><div class="modal-header">${title}<div class="modal-header-actions">${maximizable ? `<button class="modal-max-btn" id="modal-max-btn" type="button" title="${this.t('modal_maximize')}" aria-label="${this.t('modal_maximize')}">⤢</button>` : ''}<button class="modal-close" id="modal-close-btn">&times;</button></div></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer"><button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button><button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
     document.body.appendChild(overlay);
+    if (maximizable) {
+      const box = overlay.querySelector('.modal');
+      const btn = document.getElementById('modal-max-btn');
+      btn.onclick = () => {
+        const on = box.classList.toggle('modal-maximized');
+        btn.textContent = on ? '🗗' : '⤢';
+        btn.title = this.t(on ? 'modal_restore' : 'modal_maximize');
+        btn.setAttribute('aria-label', btn.title);
+      };
+    }
     const doCancel = () => { this.closeModal(); if (onCancel) onCancel(); };
     document.getElementById('modal-close-btn').onclick = doCancel;
     document.getElementById('modal-cancel-btn').onclick = doCancel;
     overlay.addEventListener('click', e => { if (e.target === overlay) doCancel(); });
-    document.getElementById('modal-confirm-btn').onclick = onConfirm;
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    confirmBtn.onclick = () => {
+      if (confirmBtn.dataset.busy === '1') return; // 防连点：一次提交流程未结束前不再触发
+      confirmBtn.dataset.busy = '1';
+      const reset = () => { if (document.body.contains(confirmBtn)) confirmBtn.dataset.busy = ''; };
+      let r;
+      try { r = onConfirm(); } catch (e) { reset(); throw e; }
+      if (r && typeof r.then === 'function') r.then(reset, reset);
+      else reset();
+    };
   },
 
   closeModal() { const el = document.getElementById('modal-overlay'); if (el) el.remove(); }

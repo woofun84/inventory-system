@@ -8,7 +8,7 @@
  *  1. 前缀与序号位数保存在 params 表（key = 'doc_no_rules'），可在「参数设置」页修改，
  *     未配置时回落到下方默认值，因此历史库无需迁移即可运行。
  *  2. 默认前缀采用英文规范码：
- *     GRN 采购入库 / RET 采购退货 / GIN 正常出库 / GIT 领料退库 / ST 库存盘点
+ *     GRN 采购入库 / RET 采购退货 / RTS 零星退货 / GIN 正常出库 / GIT 领料退库 / ST 库存盘点
  *     注：库存调整（原 ADJ）已并入盘点，无独立单号。
  *  3. 序号取「同前缀同日期已有编号的最大号 +1」，不用 COUNT，
  *     删掉中间号后也不会与既有单号重复。
@@ -19,6 +19,7 @@ const db = require('../db');
 const DEFAULT_PREFIXES = {
   grn: 'GRN',
   ret: 'RET',
+  rts: 'RTS',
   gin: 'GIN',
   git: 'GIT',
   st: 'ST',
@@ -32,6 +33,7 @@ const DEFAULT_PAD = 4;
 const TYPES = {
   grn: { label: '采购入库', sources: [{ table: 'inbound_docs', col: 'doc_no' }] },
   ret: { label: '采购退货', sources: [{ table: 'inbound_docs', col: 'doc_no' }] },
+  rts: { label: '零星退货', sources: [{ table: 'inbound_docs', col: 'doc_no' }] },
   gin: { label: '正常出库', sources: [{ table: 'outbound_docs', col: 'doc_no' }] },
   git: { label: '领料退库', sources: [{ table: 'outbound_docs', col: 'doc_no' }] },
   st: { label: '库存盘点', sources: [{ table: 'stocktakes', col: 'stocktake_no' }] },
@@ -154,6 +156,30 @@ function compareDocNo(a, b) {
   return c !== 0 ? c : pa.rev - pb.rev;
 }
 
+// 预览下一号：按「候选前缀 + 位数 + 指定日期」计算，不写库、不占用号段
+// 供参数设置页在规则尚未保存时显示真实的下一号
+function previewDocNo(type, date, prefix, pad) {
+  const t = TYPES[type];
+  if (!t) return '';
+  const p = String(prefix || '').trim().toUpperCase();
+  const d = String(date || '').slice(0, 10).replace(/-/g, '');
+  if (!p || !d) return '';
+  const like = `${p}-${d}-%`;
+
+  let maxSeq = 0;
+  t.sources.forEach(s => {
+    const rows = db.prepare(`SELECT ${s.col} AS no FROM ${s.table} WHERE ${s.col} LIKE ?`).all(like);
+    rows.forEach(r => {
+      const n = parseInt(String(r.no || '').split('-').pop(), 10);
+      if (!isNaN(n) && n > maxSeq) maxSeq = n;
+    });
+  });
+
+  const np = Number(pad);
+  const width = (Number.isInteger(np) && np >= 1 && np <= 8) ? np : DEFAULT_PAD;
+  return `${p}-${d}-${String(maxSeq + 1).padStart(width, '0')}`;
+}
+
 module.exports = {
   DEFAULT_PREFIXES,
   DEFAULT_PAD,
@@ -163,5 +189,6 @@ module.exports = {
   setRules,
   genDocNo,
   genRevisionDocNo,
+  previewDocNo,
   compareDocNo,
 };

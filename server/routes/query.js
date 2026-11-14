@@ -43,7 +43,10 @@ const outParty = a => `TRIM(COALESCE(${a}.destination,'') || CASE WHEN TRIM(COAL
 // 三个来源统一成同一列集合；盘点单状态 confirmed 在此映射为 posted
 const DOCS_UNION = `
   SELECT od.doc_no AS doc_no, od.date AS date, od.txn_type AS doc_type, 'inbound' AS source,
-         COALESCE(od.supplier,'') AS party, od.status AS status, COALESCE(od.handler,'') AS handler,
+         CASE WHEN od.txn_type = '零星退货'
+           THEN COALESCE((SELECT o.supplier FROM inbound_docs o WHERE o.doc_no = od.origin_doc_no),'')
+           ELSE COALESCE(od.supplier,'') END AS party,
+         od.status AS status, COALESCE(od.handler,'') AS handler,
          COALESCE(od.origin_doc_no,'') AS origin_doc_no,
          (SELECT COUNT(*) FROM inbound l WHERE l.doc_no = od.doc_no) AS line_count,
          (SELECT COALESCE(SUM(l.amount),0) FROM inbound l WHERE l.doc_no = od.doc_no) AS amount,

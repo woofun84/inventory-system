@@ -92,6 +92,52 @@
     .table-wrap {
         -webkit-overflow-scrolling: touch;
     }
+
+    /* 入库/出库/采购/退货/盘点等 .pu-split 页面，宽屏的 .data-scroll
+       被设成 overflow:visible；窄屏由基础 .data-scroll 规则接管，自己横滚 */
+
+    /* 横向滚动条常显，提示右侧还有列 */
+    .data-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: var(--text-muted) transparent;
+    }
+    .data-scroll::-webkit-scrollbar {
+        height: 10px;
+    }
+    .data-scroll::-webkit-scrollbar-thumb {
+        background: var(--text-muted);
+        border-radius: 5px;
+    }
+    .data-scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    /* 其他页面的操作按钮组可换行，避免整页横移 */
+    .pu-head-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}
+
+/* 窄屏横向滚动提示：JS 检测到表格超出容器时给 .data-scroll 加 .q-hscroll，
+   提示条随横向滚动固定在左侧，不会挡住表格内容 */
+.data-scroll.q-hscroll::before,
+.table-wrap.q-hscroll::before {
+    content: attr(data-hint);
+    display: block;
+    position: sticky;
+    left: 0;
+    width: fit-content;
+    margin: 0 0 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-bg);
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 
@@ -201,6 +247,22 @@
   display: none;
 }
 .form-error.show { display: block; }
+.form-note {
+  font-size: 11px;
+  color: var(--warning);
+  margin-top: 2px;
+  display: none;
+}
+.form-note.show { display: block; }
+/* 校验失败时滚动定位到字段并高亮闪烁（配合 App.flagFieldError） */
+.field-flash {
+  border-radius: var(--radius-sm);
+  animation: fieldFlash 0.9s ease 2;
+}
+@keyframes fieldFlash {
+  0%, 100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; }
+  50% { background-color: var(--danger-bg); box-shadow: 0 0 0 3px var(--danger-border); }
+}
 
 
 /* ==========================================
@@ -286,7 +348,6 @@
 .st-load-search:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 
 /* 盘点页：密度、载入清单窗口（三种方式）、已选物料芯片 */
-#st-root { padding-top: 20px; }
 #st-root.st-dense .table-wrap tbody td { padding: 4px 10px; height: auto; }
 #st-root.st-dense .table-wrap thead th { padding: 6px 10px; height: auto; }
 .st-load-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
@@ -309,6 +370,13 @@
 .st-pick-results { max-height: 280px; overflow: auto; }
 .st-load-stat { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
 @media (max-width: 760px) { .st-load-cat-list { grid-template-columns: 1fr; } }
+/* 详情栏顶部动作条：录入实盘 / 只显示未盘 / 批量填 0 与列表同屏可见 */
+.st-insp-actions { position: static; padding: 0 16px 10px; margin: 0; border-bottom: 1px solid var(--border); }
+.st-insp-actions .btn { padding: 4px 10px; font-size: 12px; }
+/* 确认弹窗内的差异小表 */
+.st-cf-table { width: 100%; border-collapse: collapse; }
+.st-cf-table th, .st-cf-table td { padding: 6px 8px; font-size: 13px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.st-cf-table input { width: 96px; height: 28px; padding: 0 6px; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-family: inherit; font-size: 13px; }
 
 
 .pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
@@ -461,7 +529,7 @@
 
 /* --- 查询中心：全局搜索（与板块页签同一行，右侧固定宽度；结果就地展开，不浮层/不抽屉） --- */
 #q-root .q-global-bar { display: flex; align-items: center; gap: 12px; }
-#q-root .q-global-bar #q-tabs { flex: 1 1 auto; min-width: 0; }
+#q-root .q-global-bar #q-tabs { flex: 0 1 auto; min-width: 0; }
 #q-root .q-gsearch { flex: 0 0 280px; max-width: 320px; padding-bottom: 5px; }
 #q-root .q-gsearch .pu-search { width: 100%; }
 #q-root .q-search-panel { margin: 10px 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
@@ -488,16 +556,76 @@
    现改为静态加载，首屏即生效，不依赖任何页面渲染顺序。
    使用方：入库 / 出库 / 采购 / 退货退库 / 盘点 / 查询中心。 */
 
-/* --- 页头：视图页签（下划线风格，横向铺满） --- */
-.pu-viewtabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
-.pu-viewtab { border: 0; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 14px; color: var(--text-muted); font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit; }
-.pu-viewtab:hover { color: var(--text); }
-.pu-viewtab[aria-selected=true] { color: var(--primary); font-weight: 600; border-bottom-color: var(--primary); }
+/* --- 页头：视图页签（分段胶囊：浅底槽 + 选中主色浅底，一眼可点） --- */
+.pu-viewtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.pu-viewtab {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: background-color .15s ease, color .15s ease;
+}
+.pu-viewtab:hover { background: var(--card-bg); color: var(--text); }
+/* 选中态沿用项目既有语义：primary-light 底 + primary 文字（与 .pu-kpi[aria-pressed=true] 一致） */
+.pu-viewtab[aria-selected=true] { background: var(--primary-light); color: var(--primary); font-weight: 600; box-shadow: var(--shadow); }
+.pu-viewtab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 
 /* --- 条件区 + 主操作：一行铺满 --- */
 .pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; }
 .pu-filter-inner { display: contents; }
 .pu-head-actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* --- 退货退库：四个新建入口按内容自然宽度排在工具栏右侧（与其他模块一致），
+   空间不足时在组内换行，不整组独占一行 --- */
+#ret-head-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+/* 窄屏：四个按钮按内容各自换行会长短参差，改为等分网格——
+   ≤960px 两列满宽等分（四个正好 2×2），≤640px 一列满宽 */
+@media (max-width: 960px) {
+    #ret-head-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+    }
+    #ret-head-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    #ret-head-actions .btn:last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+    }
+}
+@media (max-width: 640px) {
+    #ret-head-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    /* 单列时列宽可能小于英文标签，允许在按钮内换行，避免文字溢出按钮外 */
+    #ret-head-actions .btn {
+        white-space: normal;
+        text-align: center;
+    }
+}
 .pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
 .pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
 .pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
@@ -520,12 +648,19 @@ button.pu-kpi { cursor: pointer; }
 /* 页面整体滚动（.page-body 为滚动容器），表头 sticky 在滚动到页面顶端时吸顶；
    不能在 .data-scroll 上再做内部滚动，否则移动端工具栏会占满屏幕、数据无空间 */
 /* 去掉滚动容器顶部内边距，让吸顶表头与页面主标题严丝合缝（原 20px 会变成缝隙）；
-   该内边距下沉到 #pu-root，未吸顶时的视觉与原布局一致 */
+   该内边距改由页面根容器统一承担：入库 / 出库 / 采购 / 退货 / 盘点 / 查询中心一致，
+   数值与普通页面 .page-body 的 20px 相同，窄屏同步为 12px */
 .page-body.pu-page-body { padding-top: 0; padding-bottom: 0; }
-#pu-root { padding-top: 20px; }
+.page-body.pu-page-body > .data-page { padding-top: 20px; }
+@media (max-width: 768px) {
+  .page-body.pu-page-body > .data-page { padding-top: 12px; }
+}
 .pu-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .pu-split.open { grid-template-columns: minmax(0, 1fr) 480px; }
-.pu-split .data-scroll { overflow: visible; }
+/* 宽屏由整页纵向滚动、表头 sticky 依赖 page-body；窄屏改由 .data-scroll 自己滚动 */
+@media (min-width: 901px) {
+  .pu-split .data-scroll { overflow: visible; }
+}
 .pu-insp { position: sticky; top: 0; max-height: calc(100vh - 140px); overflow: hidden; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
 .pu-insp[hidden] { display: none; }
 /* 展开（wide）时隐藏列表，并让详情栏独占整行 —— 避免右侧残留空白 */
@@ -573,7 +708,12 @@ button.pu-kpi { cursor: pointer; }
 .pu-dtab[aria-selected=true] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
 /* 详情主体自行滚动：头部/页签/底部按钮固定，明细行在中间滚动 —— 避免按钮被顶到列表中间 */
 .pu-dpanel { padding: 12px 16px; flex: 1 1 auto; min-height: 0; overflow: auto; }
-.pu-insp-foot { flex: 0 0 auto; background: var(--card-bg); border-top: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* 操作条常驻底栏：宽屏在容器内吸底，窄屏/展开宽屏随页面吸底，
+   不再依赖「⤢」展开才看得到打印/导出/退货/更正 */
+.pu-insp-foot { flex: 0 0 auto; position: sticky; bottom: 0; z-index: 3; background: var(--card-bg); border-top: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+/* 详情正文整体可滚动（头部/元信息/页签跟随滚动，明细不再单独滚动） */
+.pu-insp-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.pu-insp-body .pu-dpanel { flex: 0 0 auto; min-height: 0; overflow: visible; }
 .pu-mback { display: none; margin: 12px 16px 0; align-self: flex-start; }
 
 /* --- 明细手风琴 --- */
@@ -673,6 +813,19 @@ button.pu-kpi { cursor: pointer; }
 .ob-link-bar .pu-lk { font-variant-numeric: tabular-nums; }
 .ob-voided-panel { border-left: 3px solid var(--danger); }
 .ob-ref-hint { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.ob-confirm-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.ob-confirm-lines { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.ob-confirm-lines th, .ob-confirm-lines td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.ob-confirm-lines tr.ob-confirm-short td { background: var(--danger-bg); color: var(--danger); }
+.ob-confirm-warn { color: var(--danger); font-size: 12px; margin: 4px 0; }
+.ob-confirm-cost { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
+.ob-confirm-cost > div { display: flex; justify-content: space-between; gap: 12px; }
+.ob-confirm-cost .ob-confirm-diff { color: var(--warning); }
+.line-error-tip { display: none; font-size: 12px; color: var(--danger); margin-top: 2px; }
+.line-error-tip.show { display: block; }
+/* 明细表格内的行级校验红框（采购 / 入库编辑页共用） */
+.pu-edit-lines input.error,
+.ib-edit-qty.error { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1); }
 .ob-batch-cb { width: auto; }
 #ib-root.ib-dense .table-wrap tbody td { padding: 4px 10px; height: auto; }
 #ib-root.ib-dense .table-wrap thead th { padding: 6px 10px; height: auto; }
@@ -752,6 +905,14 @@ button.pu-kpi { cursor: pointer; }
 .pu-edit-amt { font-variant-numeric: tabular-nums; text-align: right; color: var(--text-muted); white-space: nowrap; }
 .pu-edit-del { background: none; border: 0; color: var(--danger); cursor: pointer; font-size: 13px; font-family: inherit; padding: 0; }
 .pu-edit-del:hover { text-decoration: underline; }
+/* 批量新增：可输入过滤的类别/单位 combobox（菜单挂在 body 上，避免被表格裁切） */
+.mat-combo { position: relative; }
+.mat-combo-menu { position: fixed; z-index: 1200; max-height: 190px; overflow: auto; padding: 4px 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.mat-combo-menu[hidden] { display: none; }
+.mat-combo-item { padding: 6px 10px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.mat-combo-item:hover, .mat-combo-item.active { background: var(--bg); }
+.mat-combo-same { color: var(--primary); border-bottom: 1px solid var(--border); }
+.mat-combo-empty { padding: 6px 10px; font-size: 12px; color: var(--text-muted); }
 /* 明细物料筛选条：类别下拉 + 编码/名称/规格/品牌 模糊筛选 */
 .pu-matfilter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .pu-matfilter label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
@@ -886,7 +1047,7 @@ button.pu-kpi { cursor: pointer; }
 
 /* --- 库存分析四个子页签（原 qBoardAnalysis 内联段） --- */
 #q-analysis .q-an-subtabs { margin-bottom: 12px; }
-#q-analysis .q-an-subtabs .pu-viewtab { padding: 7px 12px; font-size: 12px; }
+#q-analysis .q-an-subtabs .pu-viewtab { padding: 5px 10px; font-size: 12px; }
 #q-analysis .q-an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 12px; }
 #q-analysis .q-an-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
 #q-analysis .q-an-card h3 { margin: 0 0 10px; font-size: 13px; }

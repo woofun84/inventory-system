@@ -44,17 +44,17 @@ better-sqlite3（WAL）→ inventory.db
 | `server/routes/auth.js` | 登录（签发 / 沿用会话）、当前用户、会话心跳、退出、修改密码 |
 | `server/routes/users.js` | 用户增删改查、用户级权限保存、`GET /api/permissions/catalog`，保护最后一个管理员 |
 | `server/routes/dashboard.js` | 首页看板数据 |
-| `server/routes/materials.js` | 物料档案与编码生成 |
-| `server/routes/suppliers.js` | 供应商档案 |
-| `server/routes/inbound.js` | 入库单（采购入库 / 零星入库 / 采购退货）及更正重开 |
+| `server/routes/materials.js` | 物料档案、编码生成、图片上传 / 读取 / 删除、批量新增、CSV 导入预校验 |
+| `server/routes/suppliers.js` | 供应商档案、软停用 / 启用、统一下拉数据源 |
+| `server/routes/inbound.js` | 入库单（采购入库 / 零星入库 / 采购退货 / 零星退货）及更正重开；确认时剔除 0 数量行 |
 | `server/routes/outbound.js` | 出库单（正常出库 / 领料退库）及更正重开 |
-| `server/routes/returns.js` | 退货退库的只读聚合查询 |
+| `server/routes/returns.js` | 退货退库的只读聚合与原单候选（采购 / 零星 / 出库三组） |
 | `server/routes/stock.js` | 库存汇总、物料台账、成本差异查询 |
 | `server/routes/query.js` | 查询中心单据 / 领用人 / 分析与全局搜索 |
-| `server/routes/stocktake.js` | 盘点建单、载入、录入、确认 |
+| `server/routes/stocktake.js` | 盘点建单、候选查询、载入、录入、确认、行级差异更正 |
 | `server/routes/purchase.js` | 采购单、合同、采购明细、到货履历 |
 | `server/routes/params.js` | 类别 / 单位 / 去向词库、单据编号规则 |
-| `server/routes/settings-ops.js` | 备份下载、备份恢复、自动备份设置与立即执行、清业务数据、全清、成本差异结转 |
+| `server/routes/settings-ops.js` | 备份包下载 / 恢复、自动备份设置与立即执行、清业务数据、全清、成本差异结转 |
 | `server/routes/audit.js` | 系统日志查询、清空全部日志（仅管理员） |
 
 ### 服务层
@@ -68,7 +68,10 @@ better-sqlite3（WAL）→ inventory.db
 | `services/docno.js` | 单据编号 `{前缀}-{YYYYMMDD}-{序号}`、编号规则校验、更正号 `-R{n}` |
 | `services/session.js` | 单终端登录会话：`issueSession`（同终端沿用 `sid`）、`getSession`、`touchSession`（60 秒内不重复写）、`revokeSession` |
 | `services/user-permissions.js` | 用户级授权的规范化、整表覆盖写入、按角色初始化与读取（`admin` 直接返回全量） |
-| `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、`VACUUM INTO` 快照、状态查询、启动补跑 |
+| `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、`VACUUM INTO` 快照、打包 `images/` 与 `manifest.json`、状态查询、启动补跑 |
+| `services/backup-package.js` | 备份包（`.zip`）的生成与解包、清单校验、图片目录同步、旧 `.db` 备份兼容 |
+| `services/zip.js` | 无第三方依赖的最小 ZIP 读写（仅存储，不压缩） |
+| `services/material-images.js` | 物料图片落盘：魔数识别、300KB 上限、按物料 id 命名、替换 / 删除 / 清空 |
 | `services/errors.js` | 写路径业务码英文文案、`SQLITE_BUSY` 识别、库存不足 / 业务异常的统一响应体 |
 | `services/price-mask.js` | 无价格权限时按行删除价格 / 金额键 |
 | `services/audit.js` | 审计日志记录 |
@@ -83,6 +86,7 @@ better-sqlite3（WAL）→ inventory.db
 - 金额：整数，单位分（存 `100` 表示 1 元）。
 - 金额由数量与单价推导：`CAST(ROUND(qty * price / 1e12) AS INTEGER)`。`inbound.amount`、`outbound.cost_amount`、`order_lines.order_amount` 是 SQLite `STORED` 生成列，直接由该表达式计算。
 - 业务代码不直接读写定点整数：`scaled-db.js` 在 SQL 层按列名约定自动换算。新增涉及数量 / 单价 / 金额的列时，列名必须符合既有约定，否则会出现「单位被放大 1e6 / 1e8」的错误。
+- 别名校验的坑：换算按**结果列名**匹配，不解析表达式。`SUM(r.qty) AS r` 这类别名不含 `qty` / `amount` 约定时不会被登记，`×1e6` 的原始定点值会直接参与比较或返回（曾导致「已到货数量恒为 0」的误判）。写聚合 SQL 时别名要命中既有定点列名（`qty`、`received_qty`、`order_qty`、`amount` 等），否则需在 JS 侧显式换算；新增别名时同步检查 `scaled-db.js` 的列名判定。
 
 ## 4. 数据库表
 
@@ -94,8 +98,8 @@ better-sqlite3（WAL）→ inventory.db
 | `categories` | `id`, `name` UNIQUE, `prefix` | 物料类别 |
 | `units` | `id`, `name` UNIQUE | 计量单位 |
 | `destinations` | `id`, `name` UNIQUE | 领用去向词库 |
-| `materials` | `id`, `code` UNIQUE, `name`, `spec`, `category`, `unit`, `opening_qty`, `opening_price`, `min_stock`, `brand`, `status` | 物料档案；`status='停用'` 不进入库存汇总与搜索；「类别+名称+规格+品牌」有唯一索引（去首尾空格、忽略大小写，空值按空串） |
-| `suppliers` | `id`, `name` UNIQUE, `contact`, `phone`, `remarks` | 供应商档案 |
+| `materials` | `id`, `code` UNIQUE, `name`, `spec`, `category`, `unit`, `opening_qty`, `opening_price`, `min_stock`, `brand`, `status`, `image_path`, `image_updated_at` | 物料档案；`status='停用'` 不进入库存汇总与新单候选；`image_path` 只存 `materials/<id>.<ext>` 相对路径；「类别+名称+规格+品牌」有唯一索引（去首尾空格、忽略大小写，空值按空串） |
+| `suppliers` | `id`, `name` UNIQUE, `contact`, `phone`, `remarks`, `status` | 供应商档案；`status='disabled'` 为软停用，历史单据仍可引用，可重新启用 |
 | `users` | `id`, `username` UNIQUE, `password_hash`, `name`, `role`, `status`, `must_change_pwd`, `last_login` | 用户与角色 |
 | `user_permissions` | `user_id`, `module`, `action`，`PRIMARY KEY(user_id, module, action)` | 用户级授权；某用户的全部行就是最终授权集合（整表覆盖，不做增量合并） |
 | `user_perm_state` | `user_id` PK, `seeded_at` | 标记该用户权限已初始化，避免「全部取消」后在重启时被角色默认值填回 |
@@ -105,7 +109,7 @@ better-sqlite3（WAL）→ inventory.db
 
 | 表 | 关键列 | 说明 |
 | --- | --- | --- |
-| `inbound_docs` | `doc_no` PK, `date`, `txn_type`, `supplier`, `handler`, `po_no`, `contract_no`, `status`, `return_tier`, `origin_doc_no`, `return_ref_no`, `return_reason`, `voided_at/by`, `corrects_doc_no`, `corrected_by_doc_no` | 入库单头。`txn_type`：采购入库 / 零星入库 / 采购退货 |
+| `inbound_docs` | `doc_no` PK, `date`, `txn_type`, `supplier`, `handler`, `po_no`, `contract_no`, `status`, `return_tier`, `origin_doc_no`, `return_ref_no`, `return_reason`, `voided_at/by`, `corrects_doc_no`, `corrected_by_doc_no` | 入库单头。`txn_type`：采购入库 / 零星入库 / 采购退货 / 零星退货；零星退货的来源单位读取时由 `origin_doc_no` 派生，不重复落库 |
 | `inbound` | `id`, `date`, `grn_no`, `code`, `qty`, `price`, `amount`(生成列), `supplier`, `handler`, `po_no`, `contract_no`, `txn_type`, `doc_no`, `status`, `order_line_id`, `origin_line_id` | 入库明细行 |
 | `inbound_doc_logs` | `id`, `doc_no`, `action`, `operator`, `detail`, `detail_json` | 入库单操作日志 |
 | `outbound_docs` | `doc_no` PK, `date`, `txn_type`, `destination`, `receiver`, `handler`, `status`, `origin_doc_no`, `return_reason`, `voided_at/by`, `corrects_doc_no`, `corrected_by_doc_no` | 出库单头。`txn_type`：正常出库 / 领料退库 |
@@ -180,10 +184,15 @@ better-sqlite3（WAL）→ inventory.db
 
 | 方法 | 路径 | 权限 |
 | --- | --- | --- |
-| GET | `/api/materials`、`/api/materials/next-code` | `materials:view` |
+| GET | `/api/materials`、`/api/materials/next-code`、`/api/materials/import-template` | `materials:view` |
 | POST / PUT / DELETE | `/api/materials`、`/api/materials/:code` | `materials:create/edit/delete` |
-| GET/POST | `/api/suppliers` | `suppliers:view/create` |
-| PUT/DELETE | `/api/suppliers/:id` | `suppliers:edit/delete` |
+| POST | `/api/materials/batch` | `materials:create`；批量新增，整批校验通过才写入 |
+| POST / DELETE | `/api/materials/:code/image` | `materials:edit`；上传（octet-stream，魔数校验） / 删除参考图 |
+| GET | `/uploads/materials/:name` | 登录；物料图片静态读取 |
+| GET | `/api/suppliers`、`/api/suppliers/options` | `suppliers:view`；`options` 另允许 `purchase:view` / `inbound:view` / `returns:view` |
+| POST | `/api/suppliers` | `suppliers:create` |
+| PUT/DELETE | `/api/suppliers/:id` | `suppliers:edit/delete`；DELETE 为软停用 |
+| POST | `/api/suppliers/:id/enable` | `suppliers:edit`；重新启用 |
 | GET | `/api/params` | 登录 |
 | POST | `/api/params/:type` | `settings:create` |
 | DELETE | `/api/params/:type/:id` | `settings:delete` |
@@ -221,9 +230,10 @@ better-sqlite3（WAL）→ inventory.db
 | --- | --- | --- |
 | GET | `/api/returns/docs`、`/api/returns/docs/:docNo` | `returns:view` |
 | GET | `/api/returns/purchase/origins`、`/origin-lines` | `returns:view` |
+| GET | `/api/returns/misc/origins`、`/origin-lines` | `returns:view`；零星退货原单候选 |
 | GET | `/api/returns/purchase/scope-options`、`/scope-lines` | `returns:view` |
 
-退货退库为只读聚合接口；实际的采购退货与领料退库写入走入库 / 出库路由。
+退货退库为只读聚合接口；实际的采购退货、零星退货写入走入库路由，领料退库写入走出库路由。原单候选只返回已过账且仍有可退量的单据。
 
 ### 库存与查询中心
 
@@ -250,6 +260,7 @@ better-sqlite3（WAL）→ inventory.db
 | PUT | `/api/stocktakes/:no/lines` | `stocktake:create` |
 | DELETE | `/api/stocktakes/:no/lines/:id` | `stocktake:create` |
 | POST | `/api/stocktakes/:no/confirm` | `stocktake:confirm` |
+| POST | `/api/stocktakes/:no/lines/:id/correct` | `stocktake:confirm`；已确认单的行级差异更正 |
 
 ### 采购管理
 
@@ -272,10 +283,10 @@ better-sqlite3（WAL）→ inventory.db
 
 | 方法 | 路径 | 权限 |
 | --- | --- | --- |
-| GET | `/api/settings/backup/download` | 仅 `admin` |
-| POST | `/api/settings/backup/restore` | 仅 `admin`；结构不一致返回 `BACKUP_SCHEMA_MISMATCH` |
+| GET | `/api/settings/backup/download` | 仅 `admin`；默认导出含库与图片的 `.zip` 备份包 |
+| POST | `/api/settings/backup/restore` | 仅 `admin`；支持 `.zip` 与旧 `.db`，结构不一致返回 `BACKUP_SCHEMA_MISMATCH` |
 | GET/PUT | `/api/settings/backup/auto` | 仅 `admin`；读取 / 保存自动覆盖式备份设置 |
-| POST | `/api/settings/backup/auto/run` | 仅 `admin`；立即覆盖 `backups/auto-backup-latest.db` |
+| POST | `/api/settings/backup/auto/run` | 仅 `admin`；立即覆盖 `backups/auto-backup-latest.zip` |
 | POST | `/api/settings/cost-variance/settle` | 仅 `admin` |
 | POST | `/api/settings/data/clear-business` | 仅 `admin` |
 | POST | `/api/settings/data/reset` | 仅 `admin` |
@@ -288,7 +299,17 @@ better-sqlite3（WAL）→ inventory.db
 - `public/index.html` 按编号顺序加载 `00-i18n.js` 至 `14-connection.js`，全部挂到全局 `window.App`；同时通过 CDN 引入 Chart.js 4 用于看板图表。
 - `public/login.html` 是独立登录页，加载 `public/css/base.css`、`components.css`、`theme-dark.css`，登录样式写在页内 `<style>`；登录成功后把 token 与用户信息写入 `localStorage`，并跳转 `/` 进入 SPA。登录时会带上 `localStorage.terminal_id`（首次登录生成并复用），用于区分终端：同一浏览器的多标签共享同一终端，不互相挤下线。`public/style.css` 为历史遗留主题，已无页面引用。
 - `01-core.js` 负责：读取 / 保存 token、统一 `api()` 请求与 401 处理、hash 路由、`can(module, action)` / `canViewPrice` 前端判定、登录页，以及状态徽标与业务类型徽标的单一映射（`docStatusMeta`、`docTypeBadgeClass`、`statusBadge`）。
+- 会话过期保留草稿：401 / 被挤下线前把当前页表单值按 hash 写入 `sessionStorage`（`wms_session_draft`，24 小时内有效），重新登录后回到原 hash 并回填未提交字段，回填成功即清除草稿。
 - `02-ui-kit.js` 提供通用表格、弹窗、Toast、分页、单据打印与 CSV 导出（UTF-8 BOM，Excel 中文不乱码）；表头排序按列类型传 `align`（数字右对齐、状态 / 类型 / 操作居中），表格容器统一 `overflow-x` 横向滚动，单元格 `nowrap` 不再被压缩；日期与时刻统一走 `fmtDateTime` / `fmtDocDate`，业务日期显示到分钟。
+- 弹窗同一时间只保留一个实例，右上角可最大化 / 还原；行级校验用 `flagFieldError` / 行内提示定位到具体输入框，不再只弹整屏 toast。分页统一在 `renderPager` 内夹住页码（`page <= 0`、超出总页数都回落到有效页），查询中心与各列表共用。
+- 可搜索下拉统一走 `searchableSelect`：输入即过滤、键盘上下选择、支持「历史值 / 已停用」标记；物料类别、单位与供应商下拉共用同一实现。
+- 物料批量新增 / 导入共用可搜索下拉与逐行错误标注；导入仅 CSV（UTF-8 / GBK / GB18030，Excel 文件提示另存为 CSV），先预览后写入；批量新增单次上限 500 行。
+- `05-inbound.js`：0 数量行在保存时保留、确认时由服务端剔除并删除；行级错误按 `line_id` 定位到物料 / 数量单元格。
+- `06-outbound.js`：确认前用当前 `stock_balance` 做库存预校验并展示缺口；再按当前均价重算成本，差异弹二次确认；两处都确认后才调确认接口。
+- `10-purchase.js`：供应商 / 合同号可后补，保存后刷新下游单；明细单价输入与展示统一两位小数；订购数量低于已到货时按行定位报错。
+- `11-stocktake.js`：新建弹窗内选范围（全盘 / 按类别）并自动载入；右侧实盘面板顶部常驻动作条（行数 / 已盘 / 差异 / 录入 / 只显示未盘 / 批量填 0 / 确认）；未保存行有独立徽标；确认弹窗展示差异表并允许直接改实盘；已确认行可「更正此差异」。
+- `12-audit.js`：「对象」列由 `auditTargetLabel` 输出业务名，参数类显示「参数：类别-名称」；详情优先渲染结构化摘要。
+- `13-returns.js`：新建统一从原单发起，采购 / 零星 / 领料退库三组候选分别取对应接口；无可退量时入口置灰并说明原因。
 - `09-admin.js` 用户管理页从 `/api/permissions/catalog` 渲染模块动作勾选面板，`admin` 行只读；保存时随用户一起提交 `permissions`。
 - 各业务脚本以 `App.xxx` 方法扩展，页面刷新通过 hash 路由重渲染，不做组件级状态管理。
 - `14-connection.js` 负责「前端如何感知自己还能不能用」：轮询 `/api/health` 判断服务器是否可达（顶部横幅提示，恢复后自动消失并按需重渲染当前页），轮询 `/api/auth/session` 及时发现被其它终端挤下线（弹窗提示，不静默跳登录页）。
@@ -307,15 +328,28 @@ better-sqlite3（WAL）→ inventory.db
 | `DOC_STATE_CHANGED` | 单据已被其它请求处理（确认 / 作废），本次未生效，需刷新 |
 | `STOCKTAKE_STATE_CHANGED` | 盘点单已被其它请求确认，本次未生效，需刷新 |
 | `RETURN_QTY_EXCEEDED` | 退货 / 退库数量超过原单剩余可退量 |
+| `ORIGIN_DOC_REQUIRED` / `ORIGIN_DOC_NOT_FOUND` | 未选择原单 / 原单不存在 |
+| `ORIGIN_DOC_INVALID` / `ORIGIN_DOC_NOT_POSTED` | 原单类型不匹配 / 原单未过账或已作废 |
+| `RETURN_TIER_REQUIRED` | 采购退货未提供有效关联档位 |
+| `RETURN_PRICE_MISMATCH` | 退货明细单价未继承原入库行价格 |
+| `NO_LINES` / `NO_QTY_LINES` | 单据没有明细行 / 确认时 0 数量行被剔除后没有有效行 |
+| `PO_QTY_BELOW_RECEIVED` | 采购明细订购数量小于已到货数量 |
+| `NO_DIFF` | 盘点行账面与实盘一致，无需生成更正 |
+| `STOCK_CHANGED` | 盘点确认时载入快照与当前账面不一致，需 `force=true` 确认以实盘为准 |
 | `RETURN_EXCEEDS_CORRECTED_QTY` | 原出库单被更正后，已确认的退库数量超过新数量，需先调整退库单 |
 | `OVER_RECEIPT` | 到货数量超过采购单剩余量，需显式确认超收 |
 | `MATERIAL_DUPLICATE` | 物料「类别+名称+规格+品牌」与已有物料重复（忽略大小写与首尾空格） |
 | `MATERIAL_CODE_EXISTS` | 物料编码已存在 |
+| `MATERIAL_CODE_CONFLICT_STOCKTAKE` | 改编码时与同一盘点单中的已有明细冲突 |
+| `MATERIAL_IN_USE` | 物料已被单据 / 流水引用，不能删除 |
 | `MATERIAL_OPENING_LOCKED` | 物料已有期初以外的流水，期初数量 / 单价不可再改 |
+| `IMAGE_EMPTY` / `IMAGE_TOO_LARGE` / `IMAGE_TYPE_INVALID` | 图片为空 / 超过 300KB / 不是 JPEG、PNG、WebP |
 | `DB_BUSY` | 并发写冲突（`SQLITE_BUSY`），本次操作未生效，可稍后重试 |
 | `SESSION_KICKED` | 该账号已在其它终端登录，旧会话失效（401） |
 | `SESSION_REQUIRED` | 令牌不含 `sid` 或会话已撤销，需重新登录（401） |
 | `BACKUP_SCHEMA_MISMATCH` | 备份的表 / 列结构或列类型与当前版本不一致，拒绝恢复 |
+| `BACKUP_IMAGES_NOT_INCLUDED` | `.db` 备份引用了物料图片但未附带图片目录，需改用 `.zip` 备份包 |
+| `BACKUP_IMAGE_MISSING` | 备份包清单中的图片在包内缺失 |
 | `INVALID_BACKUP` | 上传文件不是有效 SQLite 库或不是本系统的备份 |
 | `RESTORE_FAILED` | 结构校验通过但数据导入失败（如违反唯一约束），事务已回滚 |
 | `AUTO_BACKUP_FAILED` | 自动 / 立即备份执行失败，原因写入 `last_error` 并返回 |
@@ -328,6 +362,10 @@ better-sqlite3（WAL）→ inventory.db
 - 涉及已有库存与单据状态的写操作必须放在 `tx.immediate()` 事务内，并把状态守卫与库存 / 可退量 / 超收校验一起放进事务；错误统一走 `services/errors.js` 的 `businessError` / `stockBody`，不要直接把 SQLite 原文抛给用户。
 - 物料期初只能通过物料保存接口修改，且必须与物料档案同事务调用 `syncOpeningLedger()`；已有非期初流水后期初字段锁定。
 - 业务路由只做参数校验、权限校验与事务编排，跨模块计算放到 `services/`。
+- 采购单保存的供应商 / 合同号后补必须放在同一事务内调用级联同步：先刷新入库单单头，再按 `order_line_id` 刷新入库明细，最后回填退货单头与退货明细；供应商按采购单当前值原样同步，合同号只在采购单有值时覆盖。
+- 新增聚合查询时检查结果列名是否被 `scaled-db.js` 识别，未登记的别名校验会导致定点原值参与比较（详见第 3 节）。
+- 行级校验错误返回可定位的 `line_id` / `code`，前端用 `flagFieldError` 标注到具体单元格；不要只返回整单错误文案。
+- 涉及图片的运维路径（恢复、全清）必须同时处理 `uploads/materials/`，备份导出默认打包图片，避免恢复后档案有路径无文件。
 - 新增接口必须显式加 `requirePerm`；涉及金额的返回必须考虑 `req.canViewPrice`。
 - 新增权限动作时同步更新 `MODULE_ACTIONS`，否则用户管理页不会出现该勾选项；新增角色时同步 `ROLE_PERMISSIONS`。
 - 新增单据类型时，同步更新 `services/docno.js` 的 `TYPES` / 默认前缀与参数设置中的编号规则校验。

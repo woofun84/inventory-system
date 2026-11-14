@@ -17,6 +17,8 @@
   --card-bg: #1e293b;
   --text: #e2e8f0;
   --text-muted: #94a3b8;
+  /* 表单占位符：比次要文字再亮一档，暗色下才看得清（筛选栏大搜索框等） */
+  --placeholder: #b6c3d2;
   --border: #334155;
   --shadow: 0 1px 3px rgba(0,0,0,0.3);
   --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.4);
@@ -111,7 +113,7 @@
   border: 0;
 }
 [data-theme="dark"] :where(input, textarea)::placeholder {
-  color: var(--text-muted);
+  color: var(--placeholder);
   opacity: 1;
 }
 [data-theme="dark"] .btn-outline {

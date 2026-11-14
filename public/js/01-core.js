@@ -35,8 +35,36 @@ const App = {
     return v === k ? String(role || '') : v;
   },
 
-  // 日志详情渲染：优先结构化 detail_json（{key, params}），解析失败/缺失回退纯文本 detail。
-  // 找不到文案 key 时退化为 key 本身，不空白、不抛错。
+  // 物料参考图地址：库内存相对路径 materials/<id>.<ext>，加更新时间做缓存失效
+  materialImageUrl(m) {
+    if (!m || !m.image_path) return '';
+    const rel = String(m.image_path).split('/').map(encodeURIComponent).join('/');
+    return '/uploads/' + rel + '?v=' + encodeURIComponent(m.image_updated_at || '');
+  },
+
+  // 图片放大预览：点击遮罩 / 关闭按钮 / Esc 退出
+  openImageLightbox(src) {
+    if (!src) return;
+    const old = document.getElementById('image-lightbox');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'image-lightbox';
+    ov.className = 'image-lightbox';
+    ov.innerHTML = `<img src="${src}" alt=""><button type="button" class="image-lightbox-close" aria-label="${this.t('mat_image_lightbox_close')}">&times;</button>`;
+    ov.addEventListener('click', e => {
+      if (e.target === ov || (e.target.closest && e.target.closest('.image-lightbox-close'))) ov.remove();
+    });
+    document.body.appendChild(ov);
+    const onKey = e => {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); ov.remove(); }
+    };
+    document.addEventListener('keydown', onKey);
+  },
+
+  // 日志详情渲染（全项目唯一入口）：优先结构化 detail_json（{key, params}），
+  // 其次把历史/中间件写入的 JSON 摘要 detail 转成可读文本，最后才回退纯文本。
+  // 字段名走 auditFieldLabel、值走 auditPlainValue / auditEnumLabel，中英同一套映射，
+  // 界面不会露出原始 key、原始英文枚举或未格式化的 JSON。
   logDetailText(l) {
     const raw = l && l.detail_json;
     if (raw) {
@@ -48,15 +76,33 @@ const App = {
           Object.keys(o.params || {}).forEach(k => {
             const v = (o.params || {})[k];
             params[k] = Array.isArray(v)
-              ? v.map(x => (x && typeof x.key === 'string') ? this.t(x.key, x.params || {}) : String(x)).join(sep)
+              ? v.map(x => {
+                if (x && typeof x.key === 'string') {
+                  const s = this.t(x.key, x.params || {});
+                  return s === x.key ? '' : s; // 缺词条时宁可不展示，也不露 key
+                }
+                return this.auditPlainValue(x);
+              }).filter(Boolean).join(sep)
               : v;
           });
           const out = this.t(o.key, params);
-          return out === o.key ? o.key : out;
+          return out === o.key ? '' : out;
         }
-      } catch (_) { /* 解析失败 → 回退纯文本 */ }
+      } catch (_) { /* 解析失败 → 回退 detail */ }
     }
-    return String((l && l.detail) || '');
+    const text = String((l && l.detail) || '').trim();
+    if (!text) return '';
+    // detail 为 JSON 摘要（中间件 summarize 的产物）：转成同一套字段名 / 枚举映射的可读文本
+    if (text[0] === '{' || text[0] === '[') {
+      try {
+        const o = JSON.parse(text);
+        if (o == null || typeof o !== 'object') return String(o);
+        const sep = this.lang === 'zh' ? '、' : ', ';
+        if (Array.isArray(o)) return o.map(x => this.auditPlainValue(x)).filter(Boolean).join(sep);
+        return this.auditFieldsText(o);
+      } catch (_) { /* 非合法 JSON → 原样文本 */ }
+    }
+    return text;
   },
 
   async init() {
@@ -71,7 +117,7 @@ const App = {
     } catch (e) {
       // 已被其它终端挤下线：保留当前页面，由 handleKicked 弹出提示，不做静默跳转
       if (this.conn && this.conn.kicked) return;
-      this.logout();
+      this.gotoLogin('expired');
       return;
     }
     // 启动空闲超时（5分钟无操作自动退出）
@@ -87,7 +133,10 @@ const App = {
     }
     await this.loadParams();
     this.router();
+    this.initTableScrollHints();
     window.addEventListener('hashchange', () => this.router());
+    // 会话过期回跳：恢复离开时的页面与表单草稿
+    this.restoreSessionDraft();
   },
 
   // 空闲超时：5分钟无操作自动退出
@@ -103,8 +152,8 @@ const App = {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     if (this.conn && this.conn.kicked) return; // 已被挤下线：由被挤提示接管，不再触发空闲退出
     this._idleTimer = setTimeout(() => {
-      this.toast(this.t('session_timeout'), 'error');
-      this.logout();
+      this.saveSessionDraft();
+      this.gotoLogin('expired');
     }, this._idleTimeout);
   },
 
@@ -114,6 +163,68 @@ const App = {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     location.href = '/login.html';
+  },
+
+  // ========== 会话过期：保留页面与表单草稿 ==========
+  _sessionDraftKey: 'wms_session_draft',
+  saveSessionDraft() {
+    try {
+      const fields = [];
+      document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        const type = String(el.type || '').toLowerCase();
+        if (type === 'password' || type === 'file' || type === 'hidden') return;
+        if (el.disabled) return;
+        if (type === 'checkbox' || type === 'radio') {
+          if (el.checked) fields.push({ id: el.id, checked: true });
+          return;
+        }
+        fields.push({ id: el.id, value: el.value });
+      });
+      if (!fields.length && !location.hash) return;
+      sessionStorage.setItem(this._sessionDraftKey, JSON.stringify({ hash: location.hash, fields, at: Date.now() }));
+    } catch (e) { /* 草稿保存失败不阻塞跳转 */ }
+  },
+
+  // 登录回跳后恢复草稿：先填已存在的字段，短时观察 DOM 以便用户重开同一表单时补填
+  restoreSessionDraft() {
+    let d = null;
+    try { d = JSON.parse(sessionStorage.getItem(this._sessionDraftKey) || 'null'); } catch (e) { d = null; }
+    if (!d || !Array.isArray(d.fields) || !d.fields.length) { sessionStorage.removeItem(this._sessionDraftKey); return; }
+    if (Date.now() - (d.at || 0) > 24 * 60 * 60 * 1000) { sessionStorage.removeItem(this._sessionDraftKey); return; }
+    const pending = new Set(d.fields.map(f => f.id));
+    let restored = 0;
+    const apply = () => {
+      d.fields.forEach(f => {
+        if (!pending.has(f.id)) return;
+        const el = document.getElementById(f.id);
+        if (!el) return;
+        if (f.checked) {
+          if (el.type !== 'checkbox' && el.type !== 'radio') return;
+          el.checked = true;
+        } else {
+          el.value = f.value;
+          el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+        }
+        pending.delete(f.id);
+        restored++;
+      });
+    };
+    apply();
+    if (restored) this.toast(this.t('draft_restored'), 'success');
+    const observer = new MutationObserver(() => {
+      const before = restored;
+      apply();
+      if (restored > before && before === 0) this.toast(this.t('draft_restored'), 'success');
+      if (!pending.size) finish();
+    });
+    const timer = setTimeout(finish, 2 * 60 * 1000);
+    function finish() {
+      try { observer.disconnect(); } catch (e) { /* 已断开 */ }
+      clearTimeout(timer);
+      sessionStorage.removeItem('wms_session_draft');
+    }
+    if (!pending.size) finish();
+    else observer.observe(document.body, { childList: true, subtree: true });
   },
 
   // 权限检查：can(模块, 操作)
@@ -389,6 +500,41 @@ const App = {
     // 页面整体重渲染时收起即时搜索浮层，避免固定定位面板残留到新页面
     if (this.msClose) this.msClose();
     document.getElementById('app').innerHTML = `<div class="layout">${this.renderSidebar()}<div class="sidebar-overlay" onclick="App.closeSidebar()"></div><div class="main">${html}</div></div>`;
+    this.scheduleTableScrollHints();
+  },
+
+  // 窄屏表格横向滚动提示：数据异步渲染 / 切页签 / 翻页后重新检测
+  initTableScrollHints() {
+    if (this._tblHintReady) return;
+    this._tblHintReady = true;
+    const app = document.getElementById('app') || document.body;
+    new MutationObserver(() => this.scheduleTableScrollHints())
+      .observe(app, { childList: true, subtree: true });
+    window.addEventListener('resize', () => this.scheduleTableScrollHints());
+    // 捕获阶段监听：.data-scroll 的 scroll 不冒泡，也能触发提示状态刷新
+    document.addEventListener('scroll', () => this.scheduleTableScrollHints(), true);
+  },
+  scheduleTableScrollHints() {
+    if (this._tblHintTimer) return;
+    this._tblHintTimer = setTimeout(() => {
+      this._tblHintTimer = null;
+      this.refreshTableScrollHints();
+    }, 100);
+  },
+  refreshTableScrollHints() {
+    const narrow = window.innerWidth <= 900;
+    const hint = narrow ? this.t('table_hscroll_hint') : '';
+    const mark = el => {
+      const on = narrow && el.offsetParent !== null && el.scrollWidth > el.clientWidth + 2;
+      el.classList.toggle('q-hscroll', on);
+      if (on) el.setAttribute('data-hint', hint);
+      else el.removeAttribute('data-hint');
+    };
+    document.querySelectorAll('.data-scroll').forEach(mark);
+    // 不在 .data-scroll 内的独立表格（详情栏、编辑页等）同样可能被裁切，提示逻辑保持一致
+    document.querySelectorAll('.table-wrap').forEach(el => {
+      if (!el.closest('.data-scroll')) mark(el);
+    });
   },
 
   pageWrap(title, desc, headerRight, bodyHtml) {
@@ -438,7 +584,8 @@ const App = {
       e.status = 401;
       throw e;
     }
-    this.logout();
+    this.saveSessionDraft();
+    this.gotoLogin('expired');
     const err = new Error(msg);
     err.code = d.code;
     err.status = 401;
@@ -452,16 +599,30 @@ const App = {
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
   },
 
-  confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger') {
+  confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger', opts = {}) {
+    // 单例：已有确认弹窗时忽略重复触发（连点 / 回车二次提交），避免叠层后按钮全部失效
+    if (document.getElementById('confirm-overlay')) return;
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
     const okCls = intent === 'primary' ? 'btn-primary' : 'btn-danger';
     overlay.innerHTML = `<div class="confirm-box"><div class="confirm-icon">${this.t('cf_warning')}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
-    const close = () => { overlay.remove(); if (onCancel) onCancel(); };
+    if (opts && opts.okDisabled) {
+      const okBtn = document.getElementById('cf-ok');
+      if (okBtn) { okBtn.disabled = true; okBtn.title = opts.okTitle || ''; }
+    }
+    let done = false;
+    const close = () => { if (done) return; done = true; overlay.remove(); if (onCancel) onCancel(); };
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     document.getElementById('cf-cancel').onclick = close;
-    document.getElementById('cf-ok').onclick = () => { overlay.remove(); onConfirm(); };
+    document.getElementById('cf-ok').onclick = () => {
+      if (done) return;
+      done = true;
+      const ok = document.getElementById('cf-ok');
+      if (ok) ok.disabled = true;
+      overlay.remove();
+      onConfirm();
+    };
   },
 
   // ===== 徽标单一事实源 =====
@@ -491,6 +652,7 @@ const App = {
       '采购入库': 'badge-info',
       '零星入库': 'badge-info',
       '采购退货': 'badge-danger',
+      '零星退货': 'badge-danger',
       '正常出库': 'badge-warning',
       '领料退库': 'badge-success',
       '盘点单': 'badge-muted',

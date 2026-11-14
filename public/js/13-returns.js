@@ -37,6 +37,7 @@ Object.assign(App, {
     return [
       ['', this.t('ret_tab_all')],
       ['采购退货', this.t('ret_tab_purchase')],
+      ['零星退货', this.t('ret_tab_misc')],
       ['领料退库', this.t('ret_tab_stock')],
       ['voided', this.t('ibd_void_tab')],
     ];
@@ -54,6 +55,7 @@ Object.assign(App, {
   async renderReturns() {
     const s = this.retState();
     this._retData = null;
+    this._retOriginRows = null;
     this.setMain(this.pageWrap('↩ ' + this.t('ret_title'), this.t('ret_desc'), '',
       `<div id="ret-root" class="data-page">
         <div class="data-toolbar">
@@ -137,23 +139,69 @@ Object.assign(App, {
     if (!box) return;
     const s = this.retState();
     if (!this.can('returns', 'create') || s.tab === 'voided') { box.innerHTML = ''; return; }
-    box.innerHTML = `<button type="button" class="btn btn-primary" onclick="App.retPickOrigin('purchase')">+ ${this.t('ret_new_purchase_origin')}</button>
-      <button type="button" class="btn btn-outline" onclick="App.retPickOrigin('stock')">+ ${this.t('ret_new_stock_origin')}</button>`
-      + ((s.tab === '' || s.tab === '领料退库')
-        ? `<button type="button" class="btn btn-outline" onclick="App.newOutboundDoc('领料退库', null, true)">+ ${this.t('ret_no_origin_new')}</button>`
-        : '');
+    // 退货单落在入库模块创建、退库单落在出库模块创建：按钮显隐需与后端写权限一致
+    const canIn = this.can('inbound', 'create');
+    const canOut = this.can('outbound', 'create');
+    // 新建入口属于页面级操作，不随页签筛选变化，避免切换页签时按钮数量跳动
+    // 三个来源型入口统一文案为「从原单发起」，是否可用由原单可退量决定（异步置灰）
+    const originBtn = (kind, text, call) => `<span class="ret-origin-wrap" data-ret-origin-wrap="${kind}"><button type="button" class="btn btn-primary" data-ret-origin="${kind}" onclick="${call}">+ ${text}</button></span>`;
+    box.innerHTML = [
+      canIn ? originBtn('purchase', this.t('ret_btn_new_purchase'), "App.retPickOrigin('purchase')") : '',
+      canIn ? originBtn('misc', this.t('ret_btn_new_misc'), "App.retPickOrigin('misc')") : '',
+      canOut ? originBtn('stock', this.t('ret_btn_new_stock'), "App.retPickOrigin('stock')") : '',
+      canOut ? `<button type="button" class="btn btn-primary" title="${this.retEsc(this.t('ret_no_origin_hint'))}" onclick="App.newOutboundDoc('领料退库', null, true)">+ ${this.t('ret_btn_new_no_origin')}</button>` : '',
+    ].join('');
+    this.retRefreshOriginAvailability();
+  },
+
+  // 原单候选（带可退量过滤）；同一次页面渲染内缓存，避免置灰检查与点击重复请求
+  retOriginRows(kind) {
+    if (!this._retOriginRows) this._retOriginRows = {};
+    if (!this._retOriginRows[kind]) {
+      const p = kind === 'purchase' ? this.retPickPurchaseOrigins()
+        : (kind === 'misc' ? this.retPickMiscOrigins() : this.retPickStockOrigins());
+      this._retOriginRows[kind] = p.catch(e => { delete this._retOriginRows[kind]; throw e; });
+    }
+    return this._retOriginRows[kind];
+  },
+
+  // 无可用原单时置灰并说明原因（悬停提示 + aria-label，辅助技术可读）
+  async retRefreshOriginAvailability() {
+    let avail = {};
+    try {
+      const [p, m, s] = await Promise.all([
+        this.retOriginRows('purchase'), this.retOriginRows('misc'), this.retOriginRows('stock'),
+      ]);
+      avail = { purchase: p.length > 0, misc: m.length > 0, stock: s.length > 0 };
+    } catch (e) { return; }
+    const reason = this.t('ret_pick_empty');
+    ['purchase', 'misc', 'stock'].forEach(k => {
+      const btn = document.querySelector(`[data-ret-origin="${k}"]`);
+      if (!btn) return;
+      const ok = !!avail[k];
+      const text = (btn.textContent || '').trim();
+      btn.disabled = !ok;
+      btn.setAttribute('aria-disabled', String(!ok));
+      btn.setAttribute('aria-label', ok ? text : `${text} — ${reason}`);
+      const wrap = btn.closest('[data-ret-origin-wrap]');
+      if (wrap) wrap.title = ok ? '' : reason;
+    });
   },
 
   // ========== 新建前置：先选原单 ==========
-  // kind=purchase：列可退入库单；kind=stock：列可退出库单
+  // kind=purchase：列可退采购入库单；kind=misc：列可退零星入库单；kind=stock：列可退出库单
   async retPickOrigin(kind) {
     const isPurchase = kind === 'purchase';
+    const isMisc = kind === 'misc';
     let rows = [];
-    try { rows = isPurchase ? await this.retPickPurchaseOrigins() : await this.retPickStockOrigins(); }
-    catch (e) { this.toast(e.message, 'error'); return; }
+    try {
+      rows = await this.retOriginRows(kind);
+    } catch (e) { this.toast(e.message, 'error'); return; }
     if (!rows.length) { this.toast(this.t('ret_pick_empty'), 'error'); return; }
-    const title = isPurchase ? this.t('ret_pick_origin_title_purchase') : this.t('ret_pick_origin_title_stock');
-    const partyLabel = isPurchase ? this.t('ibd_supplier') : this.t('ret_col_origin_party');
+    const title = isPurchase ? this.t('ret_pick_origin_title_purchase')
+      : (isMisc ? this.t('ret_pick_origin_title_misc') : this.t('ret_pick_origin_title_stock'));
+    const partyLabel = isMisc ? this.t('ret_source_unit')
+      : (isPurchase ? this.t('ibd_supplier') : this.t('ret_col_origin_party'));
     const table = `<div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
         <th style="width:36px"></th><th>${this.t('ret_col_doc_no')}</th><th>${this.t('ret_col_date')}</th>
         <th>${partyLabel}</th><th class="text-right">${this.t('ret_col_origin_total')}</th></tr></thead><tbody>
@@ -167,34 +215,43 @@ Object.assign(App, {
       if (!sel) { this.toast(this.t('ret_pick_required'), 'error'); return; }
       this.closeModal();
       if (isPurchase) this.newInboundDoc('采购退货', sel.value);
+      else if (isMisc) this.newInboundDoc('零星退货', sel.value);
       else this.newOutboundDoc('领料退库', sel.value);
     }, null, true);
-    if (rows.length === 1) document.getElementById('ret_pick_0')?.click();
   },
 
   async retPickPurchaseOrigins() {
     const origins = await this.api('/api/returns/purchase/origins') || [];
-    const out = [];
-    for (const o of origins) {
+    const rows = await Promise.all((origins || []).map(async o => {
       let lines = [];
       try { lines = await this.api('/api/returns/purchase/origin-lines?docNo=' + encodeURIComponent(o.doc_no)); } catch { lines = []; }
       const total = (lines || []).reduce((sum, l) => sum + Math.max(0, Number(l.available) || 0), 0);
-      if (total > 0) out.push({ doc_no: o.doc_no, date: o.date || '', party: o.supplier || '', total });
-    }
-    return out;
+      return total > 0 ? { doc_no: o.doc_no, date: o.date || '', party: o.supplier || '', total } : null;
+    }));
+    return rows.filter(Boolean);
+  },
+
+  async retPickMiscOrigins() {
+    const origins = await this.api('/api/returns/misc/origins') || [];
+    const rows = await Promise.all((origins || []).map(async o => {
+      let lines = [];
+      try { lines = await this.api('/api/returns/misc/origin-lines?docNo=' + encodeURIComponent(o.doc_no)); } catch { lines = []; }
+      const total = (lines || []).reduce((sum, l) => sum + Math.max(0, Number(l.available) || 0), 0);
+      return total > 0 ? { doc_no: o.doc_no, date: o.date || '', party: o.source_unit || '', total } : null;
+    }));
+    return rows.filter(Boolean);
   },
 
   async retPickStockOrigins() {
     const res = await this.api('/api/outbound-docs?txnType=' + encodeURIComponent('正常出库') + '&pageSize=200');
     const docs = (res.items && res.items.length ? res.items : res) || [];
-    const out = [];
-    for (const d of docs.filter(x => x.status === 'posted')) {
-      let res = {};
-      try { res = await this.api('/api/outbound-docs/' + encodeURIComponent(d.doc_no) + '/returnable'); } catch { res = {}; }
-      const total = (res.lines || []).reduce((sum, l) => sum + Math.max(0, Number(l.remaining) || 0), 0);
-      if (total > 0) out.push({ doc_no: d.doc_no, date: d.date || '', party: d.destination || '', total });
-    }
-    return out;
+    const rows = await Promise.all(docs.filter(x => x.status === 'posted').map(async d => {
+      let ret = {};
+      try { ret = await this.api('/api/outbound-docs/' + encodeURIComponent(d.doc_no) + '/returnable'); } catch { ret = {}; }
+      const total = (ret.lines || []).reduce((sum, l) => sum + Math.max(0, Number(l.remaining) || 0), 0);
+      return total > 0 ? { doc_no: d.doc_no, date: d.date || '', party: d.destination || '', total } : null;
+    }));
+    return rows.filter(Boolean);
   },
 
   // 跨模块跳转定位：按单据真实状态（作废 / 采购退货 / 领料退库）切页签，
@@ -326,6 +383,7 @@ Object.assign(App, {
   retLinesLabel(doc) {
     const st = (doc && doc.sub_type) || '';
     if (st === '采购退货') return this.t('ret_lines_purchase');
+    if (st === '零星退货') return this.t('ret_lines_misc');
     if (st === '领料退库') return this.t('ret_lines_stock');
     return this.t('pu_tab_detail_lines');
   },
@@ -333,11 +391,15 @@ Object.assign(App, {
   retTypeLabel(doc) {
     const st = (doc && doc.sub_type) || '';
     if (st === '采购退货') return this.t('ret_tab_purchase');
+    if (st === '零星退货') return this.t('ret_tab_misc');
     if (st === '领料退库') return this.t('ret_tab_stock');
     return st || '-';
   },
 
   retSubTypeBadge(subType) {
+    if (subType === '零星退货') {
+      return `<span class="badge ${this.docTypeBadgeClass('零星退货')}">${this.t('ret_tab_misc')}</span>`;
+    }
     const isPurchase = subType === '采购退货';
     const cls = this.docTypeBadgeClass(isPurchase ? '采购退货' : '领料退库');
     return `<span class="badge ${cls}">${this.t(isPurchase ? 'ret_tab_purchase' : 'ret_tab_stock')}</span>`;
@@ -383,7 +445,7 @@ Object.assign(App, {
       ['date', this.t('ret_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
       ['sub_type', this.t('ret_subtype'), r => this.retSubTypeBadge(r.sub_type)
         + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],
-      ['party', this.t('ret_party'), r => this.retEsc(r.party || '-')],
+      ['party', s.tab === '零星退货' ? this.t('ret_source_unit') : this.t('ret_party'), r => this.retEsc(r.party || '-')],
       ['line_count', this.t('ret_lines'), r => r.line_count || 0, true],
       ['total_qty', this.t('ret_qty'), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
       ['total_amount', this.t('ret_amount'), r => this.fmtMoney(r.total_amount), true, vp],
@@ -520,7 +582,7 @@ Object.assign(App, {
     const meta = [
       [this.t('ret_subtype'), typeLabel],
       [this.t('ret_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '–'],
-      [this.t('ret_party'), d.party || '–'],
+      [this.t(d.sub_type === '零星退货' ? 'ret_source_unit' : 'ret_party'), d.party || '–'],
       [this.t('ret_handler'), d.handler || '–'],
       [this.t('ret_ref'), d.ref_no || '–'],
       [this.t('ret_lines'), String(lines.length)],
@@ -747,7 +809,7 @@ Object.assign(App, {
     const meta = [
       [this.t('ret_subtype'), this.retTypeLabel(d)],
       [this.t('ret_date'), this.fmtDocDate(d.date, d.created_at, d.confirmed_at)],
-      [this.t('ret_party'), d.party || ''],
+      [this.t(d.sub_type === '零星退货' ? 'ret_source_unit' : 'ret_party'), d.party || ''],
       [this.t('ret_handler'), d.handler || ''],
       [this.t('ret_ref'), d.ref_no || ''],
       [this.t('ret_status'), this.retStatusBadge(d.status).replace(/<[^>]+>/g, '')],

@@ -190,6 +190,39 @@ tbody tr:last-child td { border-bottom: none; }
   animation: scaleIn 0.15s ease;
 }
 .modal.modal-lg { max-width: 1250px; width: 92vw; }
+/* 最大化：铺满可视区，正文区独立滚动（表头 sticky 由表格自身保证） */
+.modal.modal-maximized {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+.modal.modal-maximized .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal.modal-maximized #mat-batch-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+/* 内层不再各自滚动，表头相对弹窗正文吸顶 */
+.modal.modal-maximized #mat-batch-table-wrap .table-wrap { overflow: visible; }
+.modal-header-actions { display: flex; align-items: center; gap: 4px; }
+.modal-max-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0 4px;
+  line-height: 1;
+}
+.modal-max-btn:hover { color: var(--text); }
 .modal-header {
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
@@ -442,7 +475,90 @@ body.conn-offline #app {
 /* ========== 分隔线 ========== */
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
 
+/* ========== 物料参考图片（详情卡与档案弹窗共用一套图框） ========== */
+.mat-image-group { grid-column: 1 / -1; }
+.mat-image-field { display: flex; gap: 12px; align-items: flex-start; }
+.mat-image-actions { display: flex; flex-direction: column; gap: 8px; }
+.mat-image-tip { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+
+/* 参考图片整行：标签复用字段标签的字号/颜色，图框统一深底、细边框、圆角 */
+.ref-image { display: flex; flex-direction: column; min-width: 0; }
+.ref-image-label { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; }
+.ref-image-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 160px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-muted);
+  overflow: hidden;
+  cursor: zoom-in;
+  font-family: inherit;
+}
+.ref-image-frame img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; }
+.ref-image-frame.is-empty { cursor: default; }
+.ref-image-frame.is-empty > span { color: var(--text-muted); font-size: 12px; }
+.ref-image-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, .55);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: .5px;
+  opacity: 0;
+  transition: opacity .15s ease;
+  pointer-events: none;
+}
+.ref-image-frame:hover .ref-image-hint { opacity: 1; }
+
+/* 详情卡：基本信息网格之后、库存汇总之前整行铺满 */
+.q-card-image { margin: 0 0 12px; }
+/* 档案弹窗：图框窄一些，与右侧操作按钮并排 */
+.ref-image-frame--md { width: 180px; height: 135px; flex: 0 0 auto; }
+
+/* 图片放大预览 */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(15, 23, 42, .78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.image-lightbox img {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .4);
+}
+.image-lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.image-lightbox-close:hover { background: rgba(255, 255, 255, .28); }
+
 /* ========== 滚动条 ========== */
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }

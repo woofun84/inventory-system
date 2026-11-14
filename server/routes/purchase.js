@@ -170,10 +170,12 @@ function fetchLogs(module, target, limit) {
 }
 
 // 单条采购明细的已到货数量（用于编辑时的数量下限 / 删除保护）
+// 别名必须是数量列登记表里的 received_qty，scaled-db 才会把库里的 1e6 定点还原成件数；
+// 用任意别名（如 r）会拿到 10000000 这类原始定点值，导致与订购数量比较恒不通过。
 function receivedQtyOfLine(lineId) {
-  const row = db.prepare(`SELECT ${RECEIVED_BY_LINE} AS r FROM order_lines ol
+  const row = db.prepare(`SELECT ${RECEIVED_BY_LINE} AS received_qty FROM order_lines ol
     LEFT JOIN purchase_orders po ON ol.po_no = po.po_no WHERE ol.id = ?`).get(lineId);
-  return row ? Number(row.r || 0) : 0;
+  return row ? Number(row.received_qty || 0) : 0;
 }
 
 // ==================== 采购单 ====================
@@ -353,11 +355,14 @@ router.put('/api/purchase/orders/:poNo', requirePerm('purchase', 'edit'), (req, 
         db.prepare(`UPDATE order_lines SET contract_no = ?
           WHERE po_no = ? AND TRIM(COALESCE(contract_no,'')) = ''`).run(b.contract_no, poNo);
       }
+      // 供应商/合同号后补：同步到已生成的入库单、退货单
+      cascadePoRefs(poNo);
     });
     tx();
     res.json({ success: true });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    // 行级校验错误带 code / details，前端据此做行内红框与提示
+    res.status(400).json({ error: e.message, code: e.code, details: e.details });
   }
 });
 
@@ -436,7 +441,11 @@ function syncLines(poNo, items, supplier) {
       const old = byId.get(id);
       const received = receivedQtyOfLine(id);
       if (received > 0 && qty + 0.0001 < received) {
-        throw new Error(`物料 ${old.code} 的订购数量不能小于已到货数量 ${received}`);
+        // 带上行标识，前端按 line_id 定位到具体行做行内提示（不只弹整屏 toast）
+        const err = new Error(`物料 ${old.code} 的订购数量不能小于已到货数量 ${received}`);
+        err.code = 'PO_QTY_BELOW_RECEIVED';
+        err.details = [{ line_id: id, code: old.code, order_qty: qty, received_qty: received }];
+        throw err;
       }
       upd.run({ id, code: r.code, order_qty: qty, order_price: price, remarks: r.remarks || '', contract_no: contractNo });
       keep.add(id);
@@ -453,6 +462,59 @@ function syncLines(poNo, items, supplier) {
     if (received > 0) throw new Error(`明细 ${l.code} 已有到货记录（${received}），不能删除；如需撤销请先更正关联入库单`);
     db.prepare("DELETE FROM order_lines WHERE id = ?").run(l.id);
   });
+}
+
+// 采购单供应商/合同号允许后补：保存时在同一事务内把新值同步到所有引用它的单据
+//  ① 归属该采购单的入库单（含采购退货/零星退货）刷新单头 supplier / contract_no
+//  ② 入库明细按 order_line_id 对齐采购行的 contract_no / po_no
+//  ③ 引用这些入库单的退货单从原入库单回填
+//  ④ 退货明细按 origin_line_id 从原入库行回填
+// 供应商按采购单当前值原样同步（清空也同步，避免留旧值）；合同号仅在采购单有值时覆盖。
+function cascadePoRefs(poNo) {
+  const po = db.prepare('SELECT supplier, contract_no FROM purchase_orders WHERE po_no=?').get(poNo);
+  if (!po) return;
+  const supplier = String(po.supplier || '');
+  const headerContract = String(po.contract_no || '');
+
+  // 归属该采购单的入库单：单头 po_no 命中，或明细行通过 order_line_id 命中
+  const docNos = new Set();
+  db.prepare('SELECT doc_no FROM inbound_docs WHERE po_no=?').all(poNo).forEach(r => docNos.add(r.doc_no));
+  db.prepare(`SELECT DISTINCT i.doc_no FROM inbound i
+      JOIN order_lines ol ON ol.id = i.order_line_id WHERE ol.po_no=?`).all(poNo).forEach(r => docNos.add(r.doc_no));
+
+  // ② 入库明细行
+  db.prepare(`UPDATE inbound SET po_no=?,
+      contract_no=COALESCE((SELECT NULLIF(TRIM(ol.contract_no),'') FROM order_lines ol WHERE ol.id=inbound.order_line_id), contract_no)
+    WHERE order_line_id IN (SELECT id FROM order_lines WHERE po_no=?)`).run(poNo, poNo);
+
+  // ① 入库单头
+  const updHead = db.prepare(`UPDATE inbound_docs SET supplier=?,
+      contract_no=CASE WHEN ?<>'' THEN ? ELSE contract_no END WHERE doc_no=?`);
+  docNos.forEach(no => updHead.run(supplier, headerContract, headerContract, no));
+
+  // ③ 采购退货单：来源原入库单 + 按采购单档位引用的退货单
+  const retDocNos = new Set();
+  docNos.forEach(no => {
+    const origin = db.prepare('SELECT supplier, contract_no FROM inbound_docs WHERE doc_no=?').get(no) || {};
+    db.prepare(`UPDATE inbound_docs SET supplier=?, contract_no=?
+      WHERE origin_doc_no=? AND txn_type IN ('采购退货','零星退货')`)
+      .run(origin.supplier || '', origin.contract_no || '', no);
+    db.prepare(`SELECT doc_no FROM inbound_docs WHERE origin_doc_no=? AND txn_type IN ('采购退货','零星退货')`)
+      .all(no).forEach(r => retDocNos.add(r.doc_no));
+  });
+  db.prepare(`UPDATE inbound_docs SET supplier=?,
+      contract_no=CASE WHEN ?<>'' THEN ? ELSE contract_no END
+    WHERE return_tier='po' AND return_ref_no=? AND txn_type='采购退货'`)
+    .run(supplier, headerContract, headerContract, poNo);
+  db.prepare(`SELECT doc_no FROM inbound_docs WHERE return_tier='po' AND return_ref_no=? AND txn_type='采购退货'`)
+    .all(poNo).forEach(r => retDocNos.add(r.doc_no));
+
+  // ④ 退货明细行
+  const updRetLine = db.prepare(`UPDATE inbound SET
+      po_no=COALESCE(NULLIF((SELECT o.po_no FROM inbound o WHERE o.id=inbound.origin_line_id),''), po_no),
+      contract_no=COALESCE(NULLIF((SELECT o.contract_no FROM inbound o WHERE o.id=inbound.origin_line_id),''), contract_no)
+    WHERE doc_no=? AND origin_line_id>0`);
+  retDocNos.forEach(no => updRetLine.run(no));
 }
 
 // 批量写入采购明细（同一张采购单下同一物料只允许一行）
@@ -496,6 +558,7 @@ router.put('/api/purchase/lines/:id', requirePerm('purchase', 'edit'), (req, res
           contract_no: l.contract_no !== undefined ? l.contract_no : exist.contract_no,
         });
       ensureContract(l.contract_no !== undefined ? l.contract_no : exist.contract_no, '');
+      cascadePoRefs(l.po_no || exist.po_no);
     });
     tx();
     res.json({ success: true });

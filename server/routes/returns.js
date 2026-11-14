@@ -12,15 +12,18 @@ const db = require('../db');
 const { requirePerm } = require('../middleware/auth');
 const {
   getPurchaseReturnOriginOptions,
+  getMiscReturnOriginOptions,
   getPurchaseReturnOriginLines,
   getPurchaseReturnScopeOptions,
   getPurchaseReturnScopeLines,
 } = require('../services/stock');
 const { maskRows } = require('../services/price-mask');
+const { withEn } = require('../services/errors');
 
 const router = express.Router();
 
 const SUB_PURCHASE = '采购退货';
+const SUB_MISC = '零星退货';
 const SUB_STOCK = '领料退库';
 const TXN_STOCK = '领料退库';
 
@@ -29,6 +32,7 @@ function resolveSubType(raw) {
   const v = String(raw || '').trim();
   if (!v) return '';
   if (v === SUB_PURCHASE || v === 'purchase') return SUB_PURCHASE;
+  if (v === SUB_MISC || v === 'misc') return SUB_MISC;
   if (v === SUB_STOCK || v === TXN_STOCK || v === 'stock') return SUB_STOCK;
   return null;
 }
@@ -37,10 +41,12 @@ function resolveSubType(raw) {
 const BASE_SQL = `
 SELECT d.doc_no AS doc_no,
        d.date AS date,
-       '${SUB_PURCHASE}' AS sub_type,
+       d.txn_type AS sub_type,
        'inbound' AS ledger,
        'out' AS direction,
-       COALESCE(d.supplier, '') AS party,
+       CASE WHEN d.txn_type = '${SUB_MISC}'
+         THEN COALESCE((SELECT o.supplier FROM inbound_docs o WHERE o.doc_no = d.origin_doc_no), '')
+         ELSE COALESCE(d.supplier, '') END AS party,
        COALESCE(NULLIF(d.origin_doc_no, ''), NULLIF(d.return_ref_no, ''), NULLIF(d.po_no, ''), NULLIF(d.contract_no, ''), '') AS ref_no,
        COALESCE(d.return_tier, '') AS return_tier,
        COALESCE(d.origin_doc_no, '') AS origin_doc_no,
@@ -58,7 +64,7 @@ SELECT d.doc_no AS doc_no,
        (SELECT COALESCE(SUM(ABS(i.qty)), 0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_qty,
        (SELECT COALESCE(SUM(i.amount), 0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_amount
   FROM inbound_docs d
- WHERE d.txn_type = '${SUB_PURCHASE}'
+ WHERE d.txn_type IN ('${SUB_PURCHASE}', '${SUB_MISC}')
 UNION ALL
 SELECT d.doc_no AS doc_no,
        d.date AS date,
@@ -147,7 +153,7 @@ router.get('/api/returns/docs', requirePerm('returns', 'view'), (req, res) => {
 router.get('/api/returns/docs/:docNo', requirePerm('returns', 'view'), (req, res) => {
   const docNo = req.params.docNo;
 
-  const ib = db.prepare("SELECT * FROM inbound_docs WHERE doc_no = ? AND txn_type = ?").get(docNo, SUB_PURCHASE);
+  const ib = db.prepare("SELECT * FROM inbound_docs WHERE doc_no = ? AND txn_type IN (?, ?)").get(docNo, SUB_PURCHASE, SUB_MISC);
   if (ib) return sendInboundDetail(req, res, ib);
 
   const ob = db.prepare("SELECT * FROM outbound_docs WHERE doc_no = ? AND txn_type = ?").get(docNo, TXN_STOCK);
@@ -186,8 +192,9 @@ function sendInboundDetail(req, res, doc) {
   const status = String(doc.status || '');
 
   // 原入库单（反向关联）：补数量合计/金额合计，与正向关联列表字段一致
+  // supplier 供零星退货展示「来源单位」
   const originDoc = tierInfo.origin_doc_no
-    ? db.prepare(`SELECT d.doc_no, d.date, d.txn_type, d.status,
+    ? db.prepare(`SELECT d.doc_no, d.date, d.txn_type, d.status, d.supplier,
         (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no) AS line_count,
         (SELECT COALESCE(SUM(i.qty),0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_qty,
         (SELECT COALESCE(SUM(i.amount),0) FROM inbound i WHERE i.doc_no = d.doc_no) AS total_amount
@@ -204,10 +211,11 @@ function sendInboundDetail(req, res, doc) {
     ...doc,
     ...tierInfo,
     no_origin: tierInfo.return_tier === 'none',
-    sub_type: SUB_PURCHASE,
+    sub_type: doc.txn_type,
     ledger: 'inbound',
     direction: 'out',
-    party: doc.supplier || '',
+    party: doc.txn_type === SUB_MISC ? (originDoc ? originDoc.supplier || '' : '') : (doc.supplier || ''),
+    source_unit: doc.txn_type === SUB_MISC ? (originDoc ? originDoc.supplier || '' : '') : '',
     ref_no: tierInfo.origin_doc_no || tierInfo.return_ref_no || doc.po_no || doc.contract_no || '',
     is_voided: status === 'voided',
     can_correct: status === 'posted' && !String(doc.corrected_by_doc_no || '').trim(),
@@ -271,6 +279,25 @@ function sendOutboundDetail(req, res, doc) {
 // 档 1：可选原入库单 + 其可退明细
 router.get('/api/returns/purchase/origins', requirePerm('returns', 'view'), (req, res) => {
   res.json(getPurchaseReturnOriginOptions());
+});
+
+// 零星退货：只列零星入库原单，party 即来源单位
+router.get('/api/returns/misc/origins', requirePerm('returns', 'view'), (req, res) => {
+  res.json(getMiscReturnOriginOptions());
+});
+
+router.get('/api/returns/misc/origin-lines', requirePerm('returns', 'view'), (req, res) => {
+  const docNo = String(req.query.docNo || '').trim();
+  if (!docNo) return res.status(400).json(withEn({ error: '缺少原入库单号', code: 'ORIGIN_DOC_REQUIRED' }));
+  const origin = db.prepare('SELECT txn_type FROM inbound_docs WHERE doc_no=?').get(docNo);
+  if (!origin || origin.txn_type !== '零星入库') {
+    return res.status(400).json(withEn({ error: '零星退货只能关联零星入库单', code: 'ORIGIN_DOC_INVALID' }));
+  }
+  try {
+    res.json(maskRows(req, getPurchaseReturnOriginLines(docNo, String(req.query.excludeDocNo || '').trim()), ['price']));
+  } catch (e) {
+    res.status(400).json(withEn({ error: e.message, code: e.code || 'RETURN_SOURCE_FAILED' }));
+  }
 });
 
 router.get('/api/returns/purchase/origin-lines', requirePerm('returns', 'view'), (req, res) => {

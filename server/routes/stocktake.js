@@ -408,8 +408,10 @@ router.put('/api/stocktakes/:no/lines', requirePerm('stocktake', 'create'), (req
         if (!Number.isFinite(cnt)) throw new Error('实盘数量必须是数字');
         if (cnt < 0) throw new Error('实盘数量不能为负数');
         const diff = Math.round((cnt - row.book_qty) * 1000000) / 1000000;
-        if (hasRemarks) updWithRemarks.run(cnt, diff, diff === 0 ? 'matched' : 'pending', remarks, row.id);
-        else updNoRemarks.run(cnt, diff, diff === 0 ? 'matched' : 'pending', row.id);
+        // 已录入即视为「已盘」：相符记 matched，有差异记 counted（不再误标为 pending/未盘）
+        const lineStatus = diff === 0 ? 'matched' : 'counted';
+        if (hasRemarks) updWithRemarks.run(cnt, diff, lineStatus, remarks, row.id);
+        else updNoRemarks.run(cnt, diff, lineStatus, row.id);
       }
       updated++;
     });
@@ -422,6 +424,74 @@ router.put('/api/stocktakes/:no/lines', requirePerm('stocktake', 'create'), (req
     res.json({ success: true, updated });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// 差异更正：对单行差异直接生成库存调整流水（不新建盘点单、不去其它模块建单）
+// body: { count_qty?, reason?, accept_no_basis? }
+//   - draft：更正后该行按「已调整」留痕，book_qty 同步为更正后账面；
+//            后续整单确认按最新账面重算为 0，不会重复生成流水
+//   - confirmed：只追加一条更正流水，不改历史行记录
+router.post('/api/stocktakes/:no/lines/:id/correct', requirePerm('stocktake', 'confirm'), (req, res) => {
+  const st = db.prepare('SELECT * FROM stocktakes WHERE stocktake_no=?').get(req.params.no);
+  if (!st) return res.status(404).json({ error: '盘点单不存在' });
+  if (st.status !== 'draft' && st.status !== 'confirmed') {
+    return res.status(400).json({ error: '只有草稿或已确认的盘点单可以更正差异' });
+  }
+
+  const id = Number(req.params.id);
+  const row = db.prepare(`SELECT l.*, m.name AS material_name FROM stocktake_lines l
+    LEFT JOIN materials m ON l.code = m.code WHERE l.id=? AND l.stocktake_no=?`).get(id, st.stocktake_no);
+  if (!row) return res.status(404).json({ error: '盘点行不存在' });
+  if (row.count_qty === null || row.count_qty === undefined) {
+    return res.status(400).json({ error: '该行尚未录入实盘，无法更正差异' });
+  }
+
+  const body = req.body || {};
+  const hasTarget = body.count_qty !== undefined && body.count_qty !== null && body.count_qty !== '';
+  const target = hasTarget ? Number(body.count_qty) : Number(row.count_qty);
+  if (!Number.isFinite(target) || target < 0) {
+    return res.status(400).json({ error: '实盘数量必须是非负数字' });
+  }
+
+  const acceptNoBasis = body.accept_no_basis === true;
+  if (acceptNoBasis && (!req.user || req.user.role !== 'admin')) {
+    return res.status(403).json({ error: '仅管理员可确认按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
+  }
+
+  const current = getAvailableStock(row.code);
+  const diff = Math.round((target - current) * 1000000) / 1000000;
+  if (diff === 0) {
+    return res.status(400).json({ error: '当前账面与实盘一致，无需更正', code: 'NO_DIFF' });
+  }
+
+  const reason = String(body.reason || '').trim() || '盘点差异更正';
+  const createdBy = req.user?.username || '';
+  try {
+    const tx = db.transaction(() => {
+      costing.postAdjustment({
+        date: st.date, code: row.code, qty: diff,
+        adj_type: diff > 0 ? '盘盈' : '盘亏', reason,
+        remarks: `盘点单 ${st.stocktake_no} 差异更正（行 ${row.id}）`,
+        handler: st.handler || operatorOf(req), stocktake_no: st.stocktake_no, created_by: createdBy
+      }, { acceptNoBasis, triggerDoc: st.stocktake_no });
+      if (st.status === 'draft') {
+        // 行内更正后账面与实盘一致，状态留「已调整」痕迹；整单确认时 diff 归零不重复过账
+        db.prepare("UPDATE stocktake_lines SET count_qty=?, book_qty=?, diff_qty=0, status='adjusted' WHERE id=?")
+          .run(target, target, row.id);
+      }
+    });
+    tx.immediate();
+
+    logStocktake(st.stocktake_no, 'correct', operatorOf(req),
+      { key: 'audit_detail_st_correct', params: { code: row.code, qty: diff } });
+    res.json({ success: true, code: row.code, adjusted_qty: diff });
+  } catch (e) {
+    if (e.code === 'NO_COST_BASIS') {
+      return res.status(400).json(withEn({ error: e.message, code: 'NO_COST_BASIS', details: e.details }));
+    }
+    if (isBusy(e)) return res.status(409).json(busyBody());
+    res.status(e.status || 400).json(withEn({ error: e.message, code: e.code || 'STOCKTAKE_CORRECT_FAILED' }));
   }
 });
 

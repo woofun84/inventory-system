@@ -53,6 +53,7 @@ Object.assign(App, {
       purchase_in: [this.docTypeBadgeClass('采购入库'), 'dash_dir_in'],
       misc_in: [this.docTypeBadgeClass('零星入库'), 'dash_dir_in'],
       purchase_return: [this.docTypeBadgeClass('采购退货'), 'dash_dir_return'],
+      misc_return: [this.docTypeBadgeClass('零星退货'), 'dash_dir_return'],
       normal_out: [this.docTypeBadgeClass('正常出库'), 'dash_dir_out'],
       return_with: [this.docTypeBadgeClass('领料退库'), 'dash_dir_return_in'],
       return_without: [this.docTypeBadgeClass('领料退库'), 'dash_dir_return_in'],
@@ -88,7 +89,7 @@ Object.assign(App, {
         // 业务类型存的是中文，英文界面按现有字典翻译
         const BIZ_KEY = {
           '采购入库': 'dash_comp_purchase_in', '零星入库': 'dash_comp_misc_in',
-          '采购退货': 'dash_comp_purchase_return', '正常出库': 'dash_comp_normal_out',
+          '采购退货': 'dash_comp_purchase_return', '零星退货': 'dash_comp_misc_return', '正常出库': 'dash_comp_normal_out',
           '领料退库': 'dash_dir_return_in',
         };
         // 无价格权限时服务端已删掉 unit_cost/avg_cost/amount 与 total，按字段存在性决定是否渲染价格列

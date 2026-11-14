@@ -2,8 +2,8 @@
  * 设置页运维接口 —— 数据备份 / 恢复 / 清库
  *
  * 接口：
- *   GET  /api/settings/backup/download        生成一致性快照并下载（文件名带时间戳）
- *   POST /api/settings/backup/restore         上传 .db 备份并恢复（先校验、先自动备份）
+ *   GET  /api/settings/backup/download        生成一致性快照（含图片）并下载 .zip
+ *   POST /api/settings/backup/restore         上传 .zip（新）或 .db（旧）备份并恢复
  *   GET  /api/settings/backup/auto            读取自动覆盖式备份的设置与最近状态
  *   PUT  /api/settings/backup/auto            保存自动备份设置（每小时 / 每天 / 每周）
  *   POST /api/settings/backup/auto/run        立即执行一次自动备份（覆盖同一份文件）
@@ -27,6 +27,8 @@ const db = require('../db');
 const audit = require('../services/audit');
 const costing = require('../services/costing');
 const autoBackupSvc = require('../services/auto-backup');
+const backupPackage = require('../services/backup-package');
+const materialImages = require('../services/material-images');
 const { seedGrants } = require('../services/user-permissions');
 const { INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('../config');
 
@@ -77,21 +79,14 @@ function ensureBackupDir() {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
 }
 
-// WAL 模式下的一致性快照：VACUUM INTO 会带上尚未 checkpoint 的已提交数据
-function snapshotTo(file) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  db.prepare('VACUUM INTO ?').run(file);
-}
-
-// 危险操作前自动备份当前库，返回文件名（展示给用户）
-// 同一秒内可能连续触发两次（例如连续恢复），文件名按秒生成会撞车，
-// 而 VACUUM INTO 要求目标文件不存在，这里顺延编号避免失败。
+// 危险操作前自动备份当前库（含物料图片），返回文件名（展示给用户）
+// 同一秒内可能连续触发两次（例如连续恢复），文件名按秒生成会撞车，这里顺延编号避免失败。
 function autoBackup(prefix) {
   ensureBackupDir();
   const base = `${prefix}-${stamp(true)}`;
-  let name = `${base}.db`;
-  for (let i = 1; fs.existsSync(path.join(BACKUP_DIR, name)); i++) name = `${base}-${i}.db`;
-  snapshotTo(path.join(BACKUP_DIR, name));
+  let name = `${base}.zip`;
+  for (let i = 1; fs.existsSync(path.join(BACKUP_DIR, name)); i++) name = `${base}-${i}.zip`;
+  backupPackage.createPackage(path.join(BACKUP_DIR, name));
   return name;
 }
 
@@ -150,6 +145,10 @@ function columnsOf(schema, table) {
 //      仅比列名会把旧备份误判为合法）。
 // 列的非空/默认值不参与判定——它们不影响数据语义，且历史备份可能由不同 SQLite 版本导出。
 // 返回 { zh, en } 描述差异（中英双语一起给出，前端按当前语言展示），一致时返回 null。
+// 旧备份兼容：materials 的图片字段是后加的，旧 .db 里没有这两列，
+// 恢复时按「无图」处理（列取默认空值、图片目录清空），其余表/列仍严格比对。
+const LEGACY_OPTIONAL_COLUMNS = { materials: ['image_path', 'image_updated_at'] };
+
 function compareSchema(curTables, bakTables) {
   // 会话表是运行时状态，不参与结构比对：旧备份没有它时按「空会话」恢复（恢复后需重新登录）
   const skip = t => t === 'user_sessions';
@@ -168,10 +167,14 @@ function compareSchema(curTables, bakTables) {
     const bakCols = columnsOf('bak', t);
     const curNames = new Set(curCols.map(c => c.name));
     const bakNames = new Set(bakCols.map(c => c.name));
-    if (curCols.some(c => !bakNames.has(c.name)) || bakCols.some(c => !curNames.has(c.name))) {
+    const optional = new Set(LEGACY_OPTIONAL_COLUMNS[t] || []);
+    const missingCols = curCols.filter(c => !bakNames.has(c.name) && !optional.has(c.name));
+    const extraCols = bakCols.filter(c => !curNames.has(c.name));
+    if (missingCols.length || extraCols.length) {
       return { zh: `表「${t}」的列与当前版本不一致`, en: `columns of table "${t}" differ from the current version` };
     }
-    const curTypes = curCols.map(c => `${c.name}:${String(c.type || '').toUpperCase()}`).sort().join(',');
+    const curTypes = curCols.filter(c => bakNames.has(c.name))
+      .map(c => `${c.name}:${String(c.type || '').toUpperCase()}`).sort().join(',');
     const bakTypes = bakCols.map(c => `${c.name}:${String(c.type || '').toUpperCase()}`).sort().join(',');
     if (curTypes !== bakTypes) {
       return { zh: `表「${t}」的列类型与当前版本不一致`, en: `column types of table "${t}" differ from the current version` };
@@ -181,13 +184,15 @@ function compareSchema(curTables, bakTables) {
 }
 
 // ==================== 1) 备份下载 ====================
+// 产物是 .zip：inventory.db + uploads/materials/* + manifest.json，
+// 这样恢复时能连同物料图片一起还原。
 router.get('/api/settings/backup/download', requireAdmin, (req, res) => {
   let tmp = '';
   try {
-    tmp = path.join(os.tmpdir(), `inventory-snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
-    snapshotTo(tmp);
-    const name = `inventory-backup-${stamp(false)}.db`;
-    recordOp(req, 'backup', { key: 'audit_detail_backup', params: { file: name } });
+    tmp = path.join(os.tmpdir(), `inventory-backup-${Date.now()}-${Math.random().toString(16).slice(2)}.zip`);
+    const r = backupPackage.createPackage(tmp);
+    const name = `inventory-backup-${stamp(false)}.zip`;
+    recordOp(req, 'backup', { key: 'audit_detail_backup', params: { file: name, images: r.imageCount } });
     res.download(tmp, name, err => {
       fs.unlink(tmp, () => {});
       if (err && !res.headersSent) res.status(500).json({ error: '备份下载失败：' + err.message });
@@ -200,8 +205,11 @@ router.get('/api/settings/backup/download', requireAdmin, (req, res) => {
 
 // ==================== 2) 导入备份恢复 ====================
 // 前端以 application/octet-stream 直传文件内容；短语放 query（请求头不能带中文）
+// 兼容两种输入：
+//   .zip（新格式）：数据库快照 + 物料图片 + manifest，图片与记录一起还原；
+//   .db（旧格式）：只有数据库。旧库没有图片字段，恢复后图片为空并在界面明确提示。
 router.post('/api/settings/backup/restore', requireAdmin,
-  express.raw({ type: 'application/octet-stream', limit: '300mb' }),
+  express.raw({ type: 'application/octet-stream', limit: '512mb' }),
   (req, res) => {
     if (String(req.query.confirm || '') !== CONFIRM_PHRASES.restore) return confirmMismatch(res);
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
@@ -212,16 +220,45 @@ router.post('/api/settings/backup/restore', requireAdmin,
       });
     }
 
-    const tmp = path.join(os.tmpdir(), `inventory-restore-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+    const isZip = backupPackage.isZipBuffer(req.body);
+    const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const tmpInput = path.join(os.tmpdir(), `inventory-restore-${token}.${isZip ? 'zip' : 'db'}`);
+    const workDir = path.join(os.tmpdir(), `inventory-restore-${token}-x`);
     let attached = false;
     let backupName = '';
+    let dbFile = '';
+    let legacyNoImages = false;
+    let imageFiles = null;          // Map<relPath, 临时文件>
+    let referencedImages = [];      // 备份库中实际引用的 image_path
+    let imgDir = '';
+    let oldImgDir = '';
+    let newImgDir = '';
+    let imagesSwapped = false;
+
     try {
-      fs.writeFileSync(tmp, req.body);
+      fs.writeFileSync(tmpInput, req.body);
+      dbFile = tmpInput;
+
+      if (isZip) {
+        fs.mkdirSync(workDir, { recursive: true });
+        try {
+          const pkg = backupPackage.readPackage(tmpInput, workDir);
+          dbFile = pkg.dbFile;
+          imageFiles = new Map(pkg.images.map(i => [i.rel, i.file]));
+        } catch (e) {
+          return res.status(400).json({
+            error: '备份包校验失败：' + e.message,
+            error_en: 'Backup package validation failed: ' + e.message,
+            code: 'INVALID_BACKUP',
+          });
+        }
+      }
+
       // 文件置为只读：ATTACH 后无法被误写（better-sqlite3 未启用 URI 文件名，用文件只读替代 mode=ro）
-      try { fs.chmodSync(tmp, 0o444); } catch (e) { /* Windows 下可能不支持，忽略 */ }
+      try { fs.chmodSync(dbFile, 0o444); } catch (e) { /* Windows 下可能不支持，忽略 */ }
 
       try {
-        db.prepare('ATTACH DATABASE ? AS bak').run(tmp);
+        db.prepare('ATTACH DATABASE ? AS bak').run(dbFile);
         attached = true;
       } catch (e) {
         return res.status(400).json({
@@ -250,8 +287,55 @@ router.post('/api/settings/backup/restore', requireAdmin,
         });
       }
 
-      // 校验通过后才动现库：先自动备份，再在同一事务里清空并按表复制
+      const bakMaterialCols = columnsOf('bak', 'materials').map(c => c.name);
+      legacyNoImages = !bakMaterialCols.includes('image_path');
+      if (!legacyNoImages) {
+        referencedImages = db.prepare("SELECT image_path FROM bak.materials WHERE COALESCE(image_path,'') <> ''")
+          .all().map(r => String(r.image_path));
+      }
+      if (referencedImages.length && !imageFiles) {
+        return res.status(400).json({
+          error: '该 .db 备份引用了物料图片，但文件里不含图片。请改用本系统生成的 .zip 备份恢复，避免「记录在、图片丢了」',
+          error_en: 'This .db backup references material images but does not contain them. Restore from a .zip backup created by this system instead, so records and images stay consistent.',
+          code: 'BACKUP_IMAGES_NOT_INCLUDED',
+        });
+      }
+      if (imageFiles) {
+        const missingImages = referencedImages.filter(p => !imageFiles.has(p));
+        if (missingImages.length) {
+          return res.status(400).json({
+            error: '备份包缺少物料图片：' + missingImages.slice(0, 5).join('、')
+              + (missingImages.length > 5 ? ` 等 ${missingImages.length} 个` : '') + '。已拒绝恢复',
+            error_en: 'The backup package is missing material images: ' + missingImages.slice(0, 5).join(', ')
+              + (missingImages.length > 5 ? ` and ${missingImages.length} in total` : '') + '. Restore rejected.',
+            code: 'BACKUP_IMAGE_MISSING',
+          });
+        }
+      }
+
+      // 校验通过后才动现库：先自动备份（同样含图片），再准备图片目录切换
       backupName = autoBackup('inventory-before-restore');
+
+      // 图片目录先放到临时新目录，随后整体替换；DB 事务失败时能原样换回
+      imgDir = materialImages.DIR;
+      materialImages.ensureDir();
+      oldImgDir = imgDir + '.old-' + token;
+      newImgDir = imgDir + '.new-' + token;
+      fs.mkdirSync(newImgDir, { recursive: true });
+      if (imageFiles) {
+        // 只放回数据库实际引用的文件，避免把包里的孤儿文件也带进目录
+        referencedImages.forEach(rel => {
+          fs.copyFileSync(imageFiles.get(rel), path.join(newImgDir, path.basename(rel)));
+        });
+      }
+      fs.renameSync(imgDir, oldImgDir);
+      try {
+        fs.renameSync(newImgDir, imgDir);
+      } catch (e) {
+        fs.renameSync(oldImgDir, imgDir);
+        throw e;
+      }
+      imagesSwapped = true;
 
       const copyTables = curTables.filter(t => t !== 'sqlite_sequence');
       db.pragma('foreign_keys = OFF');
@@ -277,15 +361,34 @@ router.post('/api/settings/backup/restore', requireAdmin,
           if (broken.length) throw new Error('外键校验失败：' + JSON.stringify(broken.slice(0, 3)));
         });
         tx();
+      } catch (e) {
+        // 数据库复制失败：把图片目录换回恢复前的状态，保证「记录与图片」同时回滚
+        try {
+          fs.renameSync(imgDir, newImgDir);
+          fs.renameSync(oldImgDir, imgDir);
+          imagesSwapped = false;
+        } catch (_) { /* 回滚失败时保留现场，交由运维处理 */ }
+        throw e;
       } finally {
         db.pragma('foreign_keys = ON');
       }
 
-      recordOp(req, 'restore', { key: 'audit_detail_restore', params: { file: backupName } });
-      res.json({ success: true, backupFile: backupName, tables: copyTables.length });
+      // 事务成功后才删除旧图片目录
+      try { fs.rmSync(oldImgDir, { recursive: true, force: true }); } catch (e) {}
+      imagesSwapped = false;
+
+      const restoredImages = referencedImages.length;
+      recordOp(req, 'restore', { key: 'audit_detail_restore', params: { file: backupName, images: restoredImages } });
+      res.json({
+        success: true,
+        backupFile: backupName,
+        tables: copyTables.length,
+        images: restoredImages,
+        legacy: legacyNoImages,        // true：旧 .db 备份，恢复后图片为空
+        packageType: imageFiles ? 'zip' : 'db',
+      });
     } catch (e) {
-      // 备份结构一致但数据不合法（如物料「类别+名称+规格+品牌」重复撞唯一索引）也会走到这里，
-      // 事务已整体回滚，现库不受影响
+      // 事务失败/图片切换失败都会回滚；备份结构一致但数据不合法（唯一约束）也走这里
       const isUnique = /UNIQUE constraint failed/i.test(String(e.message || ''));
       res.status(500).json({
         error: '恢复失败，已回滚，当前数据未受影响：' + e.message
@@ -296,8 +399,17 @@ router.post('/api/settings/backup/restore', requireAdmin,
       });
     } finally {
       if (attached) { try { db.prepare('DETACH DATABASE bak').run(); } catch (e) {} }
-      try { fs.chmodSync(tmp, 0o644); } catch (e) {}
-      fs.unlink(tmp, () => {});
+      if (imagesSwapped) {
+        try {
+          fs.renameSync(imgDir, newImgDir);
+          fs.renameSync(oldImgDir, imgDir);
+        } catch (e) { /* 尽力回滚 */ }
+      }
+      try { fs.rmSync(newImgDir, { recursive: true, force: true }); } catch (e) {}
+      try { fs.chmodSync(tmpInput, 0o644); } catch (e) {}
+      if (dbFile && dbFile !== tmpInput) { try { fs.chmodSync(dbFile, 0o644); } catch (e) {} }
+      fs.unlink(tmpInput, () => {});
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (e) {}
     }
   });
 
@@ -413,6 +525,8 @@ router.post('/api/settings/data/reset', requireAdmin, (req, res) => {
       recordOp(req, 'reset', { key: 'audit_detail_reset', params: { file: backupName } });
     });
     tx();
+    // 物料档案已被清空，参考图片一并清理，避免孤儿文件
+    materialImages.clearImages();
     try { db.exec('VACUUM'); } catch (e) { console.error('重置后 VACUUM 失败:', e.message); }
     res.json({
       success: true,

@@ -16,6 +16,7 @@
 - 金额由数量与单价推导：`amount = ROUND(qty × price / 1e12)`，结果单位为分。数据库中的生成列使用 `CAST(ROUND(qty * price / 1000000000000.0) AS INTEGER)`。
 - 结存均价由结存金额与结存数量推导：`avg_cost = ROUND(balance_amount × 1e12 / balance_qty)`，结果单位为 `1e8` 定点单价。
 - 业务代码读写的是「元 / 个」这类可读数值，`services/scaled-db.js` 在 SQL 层按列名自动完成定点换算。
+- **别名必须命中已登记的定点列名**：换算按结果列名匹配，不解析表达式。`SUM(l.qty) AS r` 这类别名不会被识别，`×1e6` 的原始整数会直接参与比较或返回（曾导致「已到货数量恒为 0」的误判）。聚合列要么沿用 `qty` / `received_qty` / `amount` 等约定名，要么在 JS 侧显式换算。
 
 ## 2. 流水与余额
 
@@ -70,9 +71,11 @@ balance_amount -= amount_out
 
 出库行的 `cost_price` 会由核算结果回写 `outbound` 表，便于单据详情展示与按成本统计。
 
+确认前前端先做两道检查：按 `stock_balance` 汇总本单需求，缺口直接列在确认弹窗并禁用确认；再按当前结存均价重算整单金额，与页面显示金额相差达到 0.005 元时（且当前用户有价格权限）弹出「金额差异确认」，展示重算金额、当前金额与差异，二次确认后才提交。预校验只是提前暴露问题，最终仍以 `BEGIN IMMEDIATE` 事务内的核算结果为准。
+
 ### 4.3 采购退货
 
-采购退货是出库方向，但**按原采购行价冲减**，不重新取移动平均。流水 `qty_out` 为正、`amount_out = ROUND(qty_out × 原单价 / 1e12)`。
+采购退货是出库方向，但**按原采购行价冲减**，不重新取移动平均。流水 `qty_out` 为正、`amount_out = ROUND(qty_out × 原单价 / 1e12)`。零星退货同样按原零星入库行价冲减，不与当前均价挂钩。
 
 ## 5. 成本依据 `cost_basis`
 
@@ -94,6 +97,7 @@ balance_amount -= amount_out
 | --- | --- |
 | 采购入库 / 零星入库 | 入库行单价 |
 | 采购退货 | 原采购行单价 |
+| 零星退货 | 原零星入库行单价，不重新取均价 |
 | 正常出库 | 当前结存均价 `CURRENT_AVG` |
 | 领料退库（有原单） | 原出库行实际计价单价，不写 `cost_basis` |
 | 领料退库（无原单） | 当前均价 → 历史均价 → `NO_BASIS` |
@@ -103,7 +107,7 @@ balance_amount -= amount_out
 
 ## 7. 负库存
 
-- 出库前置校验 `validateOutboundStock`：按批次累计同一物料的出库量，超出可用量即拒绝并返回明细（`requested` / `available` / `shortfall`）。
+- 出库前置校验 `validateOutboundStock`：按批次累计同一物料的出库量，超出可用量即拒绝并返回明细（`requested` / `available` / `shortfall`）。前端确认弹窗会在提交前用同一口径先算一遍，但事务内校验才是最终结论。
 - 校验不再只发生在路由入口：过账 / 更正 / 盘点确认都在 `BEGIN IMMEDIATE` 事务内重新读取状态、可退量与可用量，校验与写流水处于同一临界区，避免两个请求同时通过前置检查。并发写冲突转为 `DB_BUSY`，单据状态被抢先修改返回 `DOC_STATE_CHANGED`，均不产生部分写入。
 - 对「本次操作前可用量已经为负」的物料做豁免：属于历史遗留错账，允许继续出库 / 盘亏修正，避免无法修账；该豁免不会放过把正常库存出成负数的情况。
 - 核算层兜底：`recomputeFrom` 中任一有效流水核算后 `balance_qty < 0`，抛 `INSUFFICIENT_STOCK`，整笔业务（含更正重算）回滚。
@@ -154,6 +158,7 @@ balance_amount -= amount_out
 - 更正重开：原单作废 + 新修订单（`-R1` / `-R2`）重新过账，新旧流水都会参与重算，修订号不占用正常流水序号。
 - 更正后若导致某物料在任一历史时点结存为负，整笔更正回滚并返回 `INSUFFICIENT_STOCK`。
 - 重算会撤销已不成立的未结转差异；已结转差异用负数记录冲回。
+- 盘点确认与行级更正：按「实盘 − 账面」生成 `adjust` 流水；盘盈按当前均价 → 历史均价 → `NO_BASIS` 取价，盘亏按当前均价冲减。已确认盘点单的「更正此差异」只追加一条调整流水，不新建盘点单；账面与实盘一致时返回 `NO_DIFF`。
 
 ## 11. 核对建议
 
@@ -161,3 +166,4 @@ balance_amount -= amount_out
 - 库存金额核对：`stock_balance.stock_amount` 应等于 `amount_in − amount_out` 的累计，且数量为 0 时金额为 0。
 - 成本异常排查：先看 `cost_variances`（尾差）与 `inventory_recalc_logs`（重算 / 尾差留痕），再看对应 `stock_ledger` 行的 `cost_basis`。
 - 单据成本核对：出库单行 `cost_price` 应等于同 `source_line_id` 的最新有效流水 `unit_cost`。
+- 盘点核对：盘点确认与行级更正产生的 `adjust` 流水，其数量差应等于 `count_qty − book_qty`；多次更正按每次的差值累加，不覆盖前一次。

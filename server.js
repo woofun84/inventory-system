@@ -57,6 +57,31 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+// 物料参考图片：文件名由服务端按物料 id 生成，只读静态访问
+// 图片需要直接给 <img> 使用（无法附带 Authorization 头），因此不挂在 /api 鉴权下。
+// 单独一条显式路由：Windows 上文件刚写入时可能被杀软短暂占用，express.static
+// 遇到读取错误会 fall through 到 SPA 兜底并返回 HTML（<img> 变成破图），这里短暂重试。
+const MATERIAL_IMG_DIR = path.join(__dirname, 'uploads', 'materials');
+app.get('/uploads/materials/:name', (req, res, next) => {
+  const name = String(req.params.name || '');
+  if (!/^\d+\.(jpg|png|webp)$/.test(name)) return res.status(404).end();
+  const abs = path.join(MATERIAL_IMG_DIR, name);
+  let tries = 0;
+  const send = () => {
+    res.sendFile(abs, { maxAge: 0, headers: { 'Cache-Control': 'no-cache' } }, err => {
+      if (!err) return;
+      if (res.headersSent) return next(err);
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return res.status(404).end();
+      if (tries++ < 4) return setTimeout(send, 40);
+      next(err);
+    });
+  };
+  send();
+});
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
+
 // 健康检查：前端用它判断「服务器是否还在」，因此不要求登录
 app.get('/api/health', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

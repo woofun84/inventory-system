@@ -3,20 +3,22 @@
  *
  * 设计要点：
  *  1. 频率由管理员在「参数设置」里选择：每小时 / 每天 / 每周（每天、每周可指定具体时刻，每周可指定星期）。
- *  2. 每次执行都覆盖同一份文件 backups/auto-backup-latest.db，只保留最新一份，
+ *  2. 每次执行都覆盖同一份文件 backups/auto-backup-latest.zip，只保留最新一份，
  *     不产生历史备份堆积；危险操作（清库 / 恢复）前的临时备份仍走 settings-ops.js 的时间戳命名。
  *  3. 设置存在 params 表（key = auto_backup），重启后仍然生效；
  *     同时记录 last_run_at（毫秒时间戳），重启后若发现已过期会立即补一次。
- *  4. 快照用 VACUUM INTO 生成到 .tmp 再改名替换，避免写入中途留下半个文件。
+ *  4. 备份包与手动下载一致：数据库快照 + 物料图片 + manifest，先写 .tmp 再改名替换，
+ *     避免写入中途留下半个文件。旧版本留下的 auto-backup-latest.db 不会被自动删除。
  *  5. 定时任务由 server.js 启动时调用 start() 注册，进程内单实例。
  */
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 const audit = require('./audit');
+const backupPackage = require('./backup-package');
 
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, '..', '..', 'backups');
-const FILE_NAME = 'auto-backup-latest.db';
+const FILE_NAME = 'auto-backup-latest.zip';
 const PARAM_KEY = 'auto_backup';
 const TICK_MS = 30 * 1000;
 
@@ -133,7 +135,8 @@ function runNow() {
   const tmp = dest + '.tmp';
   try {
     fs.rmSync(tmp, { force: true });
-    db.prepare('VACUUM INTO ?').run(tmp);
+    // 与手动备份同一打包器：DB 快照 + 物料图片 + manifest
+    backupPackage.createPackage(tmp);
     fs.renameSync(tmp, dest);
     const stat = fs.statSync(dest);
     const at = Date.now();

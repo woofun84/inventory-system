@@ -106,6 +106,8 @@ CREATE TABLE materials (
   min_stock INTEGER DEFAULT 0,
   brand TEXT DEFAULT '',
   status TEXT DEFAULT '',
+  image_path TEXT DEFAULT '',
+  image_updated_at TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -119,6 +121,7 @@ CREATE TABLE suppliers (
   contact TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   remarks TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT DEFAULT (datetime('now'))
 );
 `);

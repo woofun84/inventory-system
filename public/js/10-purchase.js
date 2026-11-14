@@ -32,7 +32,7 @@ Object.assign(App, {
       confirm: this.t('audit_act_confirm'), cancel: this.t('audit_act_cancel'),
       void: this.t('audit_act_void'), load: this.t('audit_act_load'),
     };
-    return m[a] || a;
+    return m[a] || this.auditActionLabel(a);
   },
 
   // 采购单手动状态：后端以中文原值存储，界面按当前语言展示
@@ -76,11 +76,22 @@ Object.assign(App, {
   // 供应商 / 合同 / 物料 下拉与提示数据
   async puLookups() {
     const [suppliers, contracts, materials] = await Promise.all([
-      this.api('/api/suppliers').catch(() => []),
+      this.api('/api/suppliers/options').catch(() => []),
       this.api('/api/purchase/contracts').catch(() => []),
       this.api('/api/materials').catch(() => []),
     ]);
     return { suppliers, contracts, materials };
+  },
+
+  // 供应商下拉：统一取供应商档案（含停用标记）与历史单据里出现的历史值
+  puSupplierOptionsHtml(list) {
+    return (list || []).map(s => {
+      const name = typeof s === 'string' ? s : (s && s.name) || '';
+      if (!name) return '';
+      const tag = (s && s.status === 'disabled') ? this.t('sup_disabled_tag')
+        : (s && s.historical ? this.t('sup_historical_tag') : '');
+      return `<option value="${this.puEsc(name)}"${tag ? ` label="${this.puEsc(tag)}"` : ''}></option>`;
+    }).join('');
   },
 
   // ========== 状态 ==========
@@ -1085,7 +1096,7 @@ Object.assign(App, {
     const po = this._puEditDraft || {};
     const isNew = !this._puEditPo;
     const lk = this._puEditLookups || { suppliers: [], contracts: [] };
-    const supList = (lk.suppliers || []).map(x => `<option value="${this.puEsc(x.name)}"></option>`).join('');
+    const supList = this.puSupplierOptionsHtml(lk.suppliers);
     const cList = (lk.contracts || []).map(x => `<option value="${this.puEsc(x.contract_no)}"></option>`).join('');
     const msOpts = ['', '已关闭', '已取消'].map(v => `<option value="${v}" ${po.manual_status === v ? 'selected' : ''}>${v ? this.puManualLabel(v) : this.t('pu_manual_none')}</option>`).join('');
     box.innerHTML = `<div class="form-grid" style="max-width:none">
@@ -1155,9 +1166,9 @@ Object.assign(App, {
         const recv = Number(l.received_qty || 0);
         const amt = (Number(l.order_qty) || 0) * (Number(l.order_price) || 0);
         return `<tr>
-          <td style="min-width:220px"><select class="pu-line-mat" data-idx="${i}" onchange="App.puEditSet(${i},'code',this.value)">${matOpts(l.code)}</select></td>
-          <td style="min-width:110px"><input type="number" step="0.0001" min="0" value="${l.order_qty || ''}" oninput="App.puEditSet(${i},'order_qty',this.value)"></td>
-          ${vp ? `<td style="min-width:110px"><input type="number" step="0.01" min="0" value="${l.order_price || ''}" oninput="App.puEditSet(${i},'order_price',this.value)"></td>
+          <td style="min-width:220px"><select class="pu-line-mat" data-idx="${i}" onchange="App.puEditSet(${i},'code',this.value)">${matOpts(l.code)}</select><div class="line-error-tip" data-pu-tip="${i}"></div></td>
+          <td style="min-width:110px"><input type="number" class="pu-line-qty" data-idx="${i}" step="0.0001" min="0" value="${l.order_qty || ''}" oninput="App.puEditSet(${i},'order_qty',this.value)"></td>
+          ${vp ? `<td style="min-width:110px"><input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}" oninput="App.puEditSet(${i},'order_price',this.value)"></td>
           <td class="pu-edit-amt" data-amt="${i}">${this.fmtMoney(amt)}</td>` : ''}
           <td style="min-width:130px"><input list="pu_e_clist" value="${this.puEsc(l.contract_no || '')}" oninput="App.puEditSet(${i},'contract_no',this.value)"></td>
           <td style="min-width:140px"><input value="${this.puEsc(l.remarks || '')}" oninput="App.puEditSet(${i},'remarks',this.value)"></td>
@@ -1275,6 +1286,7 @@ Object.assign(App, {
     if (!l) return;
     if (field === 'order_qty' || field === 'order_price') l[field] = parseFloat(val) || 0;
     else l[field] = String(val == null ? '' : val);
+    if (field === 'order_qty') this.puClearLineErrors();
     if (field === 'order_qty' || field === 'order_price') {
       if (this.puEditPriceVisible()) {
         const cell = document.querySelector(`#pu-edit-lines [data-amt="${idx}"]`);
@@ -1282,6 +1294,39 @@ Object.assign(App, {
       }
       this.puEditRefreshSummary();
     }
+  },
+
+  // 行级校验：红框 + 行首提示（与入库编辑页同一套样式），不再只弹整屏 toast
+  puClearLineErrors() {
+    document.querySelectorAll('#pu-edit-lines .line-error-tip.show').forEach(el => {
+      el.classList.remove('show'); el.textContent = '';
+    });
+    document.querySelectorAll('#pu-edit-lines .pu-line-qty.error').forEach(el => el.classList.remove('error'));
+  },
+
+  puShowLineError(idx, msg) {
+    this.puClearLineErrors();
+    const tip = document.querySelector(`#pu-edit-lines [data-pu-tip="${idx}"]`);
+    if (tip) { tip.textContent = msg || ''; tip.classList.add('show'); }
+    const inp = document.querySelector(`#pu-edit-lines .pu-line-qty[data-idx="${idx}"]`);
+    if (inp) {
+      inp.classList.add('error');
+      inp.focus();
+      if (inp.scrollIntoView) inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  },
+
+  // 后端行级错误 → 定位到具体行并给出行号/编码/数量；未命中返回 false 由调用方回退 toast
+  puShowLineErrorFromApi(e) {
+    const d = (e && e.code === 'PO_QTY_BELOW_RECEIVED' && e.details && e.details[0]) || null;
+    if (!d) return false;
+    let idx = (this._puEditLines || []).findIndex(l => Number(l.id) === Number(d.line_id));
+    if (idx < 0) idx = (this._puEditLines || []).findIndex(l => l.code === d.code);
+    if (idx < 0) return false;
+    this.puShowLineError(idx, this.t('pu_qty_below_received_line', {
+      n: idx + 1, code: d.code, qty: this.fmtQty(d.order_qty), received: this.fmtQty(d.received_qty)
+    }));
+    return true;
   },
 
   puEditAddRow() {
@@ -1329,12 +1374,15 @@ Object.assign(App, {
   // 保存草稿：表头 + 明细整单提交
   async puSaveOrderDraft() {
     const head = this.puReadEditForm();
+    this.puClearLineErrors();
     try {
       await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no), 'PUT', Object.assign({}, head, { lines: this.puCollectEditLines() }));
       this.toast(this.t('pu_draft_saved'));
       delete this._puDetail['orders:' + head.po_no];
       await this.puEditOrderPage(head.po_no);
-    } catch (e) { this.toast(e.message, 'error'); }
+    } catch (e) {
+      if (!this.puShowLineErrorFromApi(e)) this.toast(e.message, 'error');
+    }
   },
 
   // 确认采购单：先整单保存，再置为已确认
@@ -1343,7 +1391,7 @@ Object.assign(App, {
     const lines = this.puCollectEditLines();
     if (!lines.length) { this.toast(this.t('pu_no_valid_line'), 'error'); return; }
     this.confirmDialog(this.t('pu_confirm_order'),
-      `${this.t('pu_edit_hint')}\n\n${this.t('pu_line_count')}: ${lines.length}`,
+      `${this.t('pu_confirm_msg')}<br><br>${this.t('pu_line_count')}: ${lines.length}`,
       async () => {
         try {
           await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no), 'PUT', Object.assign({}, head, { lines }));
@@ -1351,7 +1399,9 @@ Object.assign(App, {
           this.toast(this.t('pu_order_confirmed', { n: r.line_count }));
           delete this._puDetail['orders:' + head.po_no];
           await this.puBackToList(head.po_no);
-        } catch (e) { this.toast(e.message, 'error'); }
+        } catch (e) {
+          if (!this.puShowLineErrorFromApi(e)) this.toast(e.message, 'error');
+        }
       }, null, 'primary');
   },
 
@@ -1451,7 +1501,7 @@ Object.assign(App, {
         <select id="pu_l_code" ${isEdit ? 'disabled' : ''}>${matOpts}</select>
         <div class="form-error" id="pu_l_code_error"></div></div>
       <div class="form-group"><label>${this.t('pu_order_qty')} *</label><input id="pu_l_qty" type="number" step="0.0001" min="0" value="${l.order_qty}" oninput="App.clearFieldError('pu_l_qty')"><div class="form-error" id="pu_l_qty_error"></div></div>
-      ${vp ? `<div class="form-group"><label>${this.t('pu_order_price')}</label><input id="pu_l_price" type="number" step="0.01" min="0" value="${l.order_price}"></div>` : ''}
+      ${vp ? `<div class="form-group"><label>${this.t('pu_order_price')}</label><input id="pu_l_price" type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}"></div>` : ''}
       <div class="form-group"><label>${this.t('pu_contract_filter')}</label><input id="pu_l_contract" list="pu_l_c_list" value="${this.puEsc(l.contract_no || '')}"><datalist id="pu_l_c_list">${cList}</datalist></div>
       <div class="form-group" style="grid-column:1/-1"><label>${this.t('pu_remarks')}</label><textarea id="pu_l_remarks" rows="2">${this.puEsc(l.remarks || '')}</textarea></div>
     </div>`;
@@ -1523,7 +1573,7 @@ Object.assign(App, {
     // 合同金额：编辑时看接口是否下发 amount；新建由有权限角色发起
     const showAmount = isEdit ? this.hasField(c, 'amount') : true;
     const { suppliers } = await this.puLookups();
-    const supList = suppliers.map(x => `<option value="${x.name}"></option>`).join('');
+    const supList = this.puSupplierOptionsHtml(suppliers);
     const stOpts = [['active', this.t('pu_status_active')], ['closed', this.t('pu_status_closed_c')]]
       .map(([v, label]) => `<option value="${v}" ${(c.status || 'active') === v ? 'selected' : ''}>${label}</option>`).join('');
     const body = `<div class="form-grid" style="max-width:none">

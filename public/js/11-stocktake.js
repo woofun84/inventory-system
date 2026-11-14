@@ -30,6 +30,7 @@ Object.assign(App, {
     if (!s.lq) s.lq = '';
     if (!s.lim) s.lim = 15;
     if (!s.ex) s.ex = new Set();
+    if (s.onlyUn === undefined) s.onlyUn = false;   // 明细只显示未盘行
     if (!this._stCache) this._stCache = {};
     if (!this._stList) this._stList = [];
     return s;
@@ -263,6 +264,7 @@ Object.assign(App, {
   stLineStatusBadge(status) {
     const map = {
       pending: [this.t('st_line_pending'), 'muted'],
+      counted: [this.t('st_counted'), 'info'],
       matched: [this.t('st_line_matched'), 'success'],
       adjusted: [this.t('st_line_adjusted'), 'info'],
     };
@@ -284,7 +286,7 @@ Object.assign(App, {
   async stOpen(no) {
     if (!no) return;
     const s = this.stState();
-    if (s.sel !== no) { s.dt = 'lines'; s.lq = ''; s.lim = 15; s.ex = new Set(); }
+    if (s.sel !== no) { s.dt = 'lines'; s.lq = ''; s.lim = 15; s.ex = new Set(); s.onlyUn = false; }
     s.sel = no;
     this._stNo = no;
     this._stCache[no] = { loading: true };
@@ -358,19 +360,24 @@ Object.assign(App, {
       ['logs', this.t('pu_tab_logs'), logs.length],
     ];
 
-    // 底部操作条：录入实盘 → 确认 → 删除草稿（高危固定最右）
+    // 顶部动作条：录入实盘 / 只显示未盘 / 批量填 0 与列表同屏可见，不再藏在抽屉底部
     const isDraft = d.status === 'draft';
-    let foot = '';
+    const uncounted = lines.filter(l => l.count_qty === null || l.count_qty === undefined).length;
+    let acts = '';
     if (isDraft && this.can('stocktake', 'create')) {
-      foot += lines.length
-        ? `<button type="button" class="btn btn-outline" data-st="e-doc">${this.t('st_edit_counts')}</button>`
-        : `<button type="button" class="btn btn-primary" data-st="load">${this.t('st_load')}</button>`;
+      acts += lines.length
+        ? `<button type="button" class="btn btn-primary btn-sm" data-st="e-doc">${this.t('st_edit_counts')}</button>`
+        : `<button type="button" class="btn btn-primary btn-sm" data-st="load">${this.t('st_load')}</button>`;
+      if (lines.length) {
+        acts += `<button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.onlyUn}" data-st="only-un">${this.t('st_only_uncounted')}</button>`;
+        acts += `<button type="button" class="btn btn-outline btn-sm" data-st="zero"${uncounted ? '' : ' disabled'}>${this.t('st_bulk_zero')}</button>`;
+      }
     }
     if (isDraft && lines.length && this.can('stocktake', 'confirm')) {
-      foot += `<button type="button" class="btn btn-primary" data-st="confirm">${this.t('st_confirm')}</button>`;
+      acts += `<button type="button" class="btn btn-primary btn-sm" data-st="confirm">${this.t('st_confirm')}</button>`;
     }
     if (isDraft && this.can('stocktake', 'create')) {
-      foot += `<button type="button" class="btn btn-danger" data-st="del">${this.t('st_delete')}</button>`;
+      acts += `<button type="button" class="btn btn-danger btn-sm" data-st="del">${this.t('st_delete')}</button>`;
     }
 
     box.innerHTML = `
@@ -387,9 +394,9 @@ Object.assign(App, {
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.stEsc(m[0])}</dt><dd>${this.stEsc(m[1])}</dd></div>`).join('')}</dl>
+      ${acts ? `<div class="pu-lqtoolbar st-insp-actions">${acts}</div>` : ''}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" data-st="dt" data-id="${k}">${label} ${n}</button>`).join('')}</div>
-      <div class="pu-dpanel" id="st-dpanel"></div>
-      ${foot ? `<div class="pu-insp-foot">${foot}</div>` : ''}`;
+      <div class="pu-dpanel" id="st-dpanel"></div>`;
     this.stRenderDetailPanel();
     this.stUpdatePagerSticky();
   },
@@ -420,6 +427,7 @@ Object.assign(App, {
       return;
     }
     const f = lines.filter(l => {
+      if (s.onlyUn && l.count_qty !== null && l.count_qty !== undefined) return false;
       if (s.lq && !this.puKwMatch([l.code, l.material_name, l.material_spec, l.material_brand, l.remarks].join(' '), s.lq)) return false;
       return true;
     });
@@ -434,7 +442,7 @@ Object.assign(App, {
     }
     html += `<p class="pu-cnt">${this.t('pu_shown_count', { shown, total: f.length })}</p>`;
     if (!f.length) {
-      html += `<div class="pu-empty">${this.t('pu_no_lines')}</div>`;
+      html += `<div class="pu-empty">${s.onlyUn && !s.lq ? this.t('st_all_counted') : this.t('pu_no_lines')}</div>`;
       box.innerHTML = html; return;
     }
     html += `<ul class="pu-lines">` + f.slice(0, shown).map(l => {
@@ -456,6 +464,7 @@ Object.assign(App, {
         ${ex ? `<div class="pu-line-d">
           <div class="pu-mu">${this.t('st_book_qty')} ${this.qtyCell(book)} · ${this.t('st_count_qty')} ${hasCount ? this.qtyCell(cnt) : '–'} · ${this.t('st_diff_qty')} ${diffHtml}</div>
           <div>${this.stLineStatusBadge(l.status)}${l.remarks ? ` · ${this.t('pu_remarks')}：${this.stEsc(l.remarks)}` : ''}</div>
+          ${(this._stDetail && this._stDetail.status === 'confirmed' && hasCount) ? `<div style="margin-top:6px"><button type="button" class="btn btn-outline btn-sm" onclick="App.stCorrectPrompt(${l.id})">${this.t('st_correct_line')}</button></div>` : ''}
         </div>` : ''}
       </li>`;
     }).join('') + '</ul>';
@@ -485,9 +494,14 @@ Object.assign(App, {
     ];
     const st = this.getTableState(tid);
     const sorted = this.sortData(lines, st.sortKey, st.sortDir);
-    const th = cols.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
-    const body = sorted.map(r => '<tr>' + cols.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('') + '</tr>').join('');
-    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('noData')}</td></tr>`}</tbody></table></div>`;
+    const canCorrect = !!(this._stDetail && this._stDetail.status === 'confirmed');
+    const th = cols.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('') + (canCorrect ? '<th></th>' : '');
+    const body = sorted.map(r => '<tr>' + cols.map(c => `<td class="${this.colAlignClass(c[3])}">${c[2](r)}</td>`).join('')
+      + (canCorrect
+        ? `<td class="text-center">${(r.count_qty !== null && r.count_qty !== undefined) ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.stCorrectPrompt(${r.id})">${this.t('st_correct_line')}</button>` : ''}</td>`
+        : '')
+      + '</tr>').join('');
+    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length + (canCorrect ? 1 : 0)}" style="text-align:center;padding:24px;color:var(--text-muted)">${this.t('noData')}</td></tr>`}</tbody></table></div>`;
   },
 
   // 关联单据：盘点确认后生成的库存调整流水（只读，按物料逐条追溯）
@@ -522,8 +536,9 @@ Object.assign(App, {
       add: this.t('audit_act_update'),
       remove: this.t('audit_act_delete'),
       confirm: this.t('audit_act_confirm'),
+      correct: this.t('st_correct_line'),
     };
-    return m[action] || action;
+    return m[action] || this.auditActionLabel(action);
   },
 
   // 调整流水类型：后端以中文原值存储（盘盈/盘亏/其它），这里按当前语言展示
@@ -565,7 +580,7 @@ Object.assign(App, {
       if (!s.sel) return;
       const insp = document.getElementById('st-insp');
       if (!insp || insp.hidden) return;
-      if (e.target.closest('#st-insp, #st-root tr[data-ra], [data-st], #modal-overlay, .pu-ov, .toast')) return;
+      if (e.target.closest('#st-insp, #st-root tr[data-ra], [data-st], #modal-overlay, #confirm-overlay, .pu-ov, .toast')) return;
       this.stCloseInspector();
     }, true);
 
@@ -639,6 +654,8 @@ Object.assign(App, {
       case 'ex': { const k = String(id); if (s.ex.has(k)) s.ex.delete(k); else s.ex.add(k); this.stRenderLinesBody(); return; }
       case 'more': s.lim += 15; this.stRenderLinesBody(); return;
       case 'new': return this.newStocktake();
+      case 'only-un': s.onlyUn = !s.onlyUn; this.stRenderInspector(); return;
+      case 'zero': return this.stBulkZero();
       case 'load': return this.openStocktakeLoadModal();
       case 'e-doc': return this.editStocktake(s.sel);
       case 'confirm': return this.confirmStocktake();
@@ -646,7 +663,28 @@ Object.assign(App, {
     }
   },
 
-  // ========== 新建盘点单：独立页面（01 单据信息 + 底部操作行） ==========
+  // 批量把未盘行的实盘数量填 0（带二次确认，写库后刷新详情）
+  stBulkZero() {
+    const no = this.stState().sel;
+    if (!no) return;
+    const rec = this._stCache[no];
+    const d = rec && rec.d;
+    if (!d) return;
+    const rows = (d.lines || []).filter(l => l.count_qty === null || l.count_qty === undefined);
+    if (!rows.length) { this.toast(this.t('st_all_counted')); return; }
+    this.confirmDialog(this.t('st_bulk_zero'), this.t('st_bulk_zero_hint', { n: rows.length }), async () => {
+      try {
+        await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines', 'PUT',
+          { lines: rows.map(l => ({ id: l.id, count_qty: 0 })) });
+        this.toast(this.t('st_bulk_zero_ok', { n: rows.length }));
+        await this.stOpen(no);
+      } catch (e) {
+        this.toast(e.message, 'error');
+      }
+    }, null, 'primary');
+  },
+
+  // ========== 新建盘点单：弹窗内选范围，创建即载入并直接进入录入态 ==========
   async newStocktake() {
     const date = this.today();
     let no = '';
@@ -655,44 +693,133 @@ Object.assign(App, {
       no = next.stocktake_no;
     } catch (e) { /* 单号预览失败不阻断 */ }
 
-    this.setMain(this.pageWrap('🆕 ' + this.t('st_add'), this.t('st_create_hint'), '',
-      `<div id="st-new-root" class="data-page">
-        <div class="pu-edit-bar">
-          <span class="action-link" onclick="App.backToStocktakeList()">← ${this.t('st_nav_detail')}</span>
-          ${this.stStatusBadge('draft')}
-        </div>
-        <div class="pu-card">
-          <div class="pu-card-title"><span>01</span><div>${this.t('st_sec_info')}<small>${this.t('st_sec_info_hint')}</small></div></div>
-          <div class="form-grid" style="max-width:none">
-            <div class="form-group"><label>${this.t('st_no')}</label><input id="st_f_no" value="${no}" readonly></div>
-            <div class="form-group"><label>${this.t('adj_date')} *</label><input id="st_f_date" type="date" value="${date}" oninput="App.clearFieldError('st_f_date')"><div class="form-error" id="st_f_date_error"></div></div>
-            <div class="form-group"><label>${this.t('st_handler')}</label><input id="st_f_handler" value="${this.stEsc(this.user?.name || this.user?.username || '')}"></div>
-            <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_remark')}</label><textarea id="st_f_remarks" rows="2" placeholder="${this.t('st_remark')}"></textarea></div>
-          </div>
-        </div>
-        <div class="pu-edit-actions">
-          <button class="btn btn-outline" onclick="App.backToStocktakeList()">${this.t('cancel')}</button>
-          <button class="btn btn-primary" onclick="App.createStocktake()">${this.t('st_create_go')}</button>
-        </div>
-      </div>`));
+    this._stNew = { scope: 'all', categories: [], catKeyword: '' };
+    this._stNewCats = (this.params?.categories || []).map(c => c.name).filter(Boolean);
+
+    this.showModal(
+      `<h3>${this.t('st_add')}</h3>`,
+      `<div class="st-load-hint">${this.t('st_create_hint')}</div>
+      <div class="form-grid" style="max-width:none">
+        <div class="form-group"><label>${this.t('st_no')}</label><input value="${this.stEsc(no)}" readonly></div>
+        <div class="form-group"><label>${this.t('adj_date')} *</label><input id="st_f_date" type="date" value="${date}" oninput="App.clearFieldError('st_f_date')"><div class="form-error" id="st_f_date_error"></div></div>
+        <div class="form-group"><label>${this.t('st_handler')}</label><input id="st_f_handler" value="${this.stEsc(this.user?.name || this.user?.username || '')}"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_remark')}</label><input id="st_f_remarks" placeholder="${this.t('st_remark')}"></div>
+      </div>
+      <div class="st-load-tabs" id="st-new-tabs" role="tablist" aria-label="${this.t('st_new_scope')}">
+        <span class="st-load-tab active" role="tab" data-mode="all" onclick="App.switchStNewScope('all')">${this.t('st_load_mode_all')}</span>
+        <span class="st-load-tab" role="tab" data-mode="category" onclick="App.switchStNewScope('category')">${this.t('st_load_mode_category')}</span>
+      </div>
+      <div id="st-new-panel" class="st-load-panel"></div>`,
+      this.t('st_create_go'), () => this.createStocktake(), null, true);
+
+    this.renderStNewPanel();
+  },
+
+  switchStNewScope(mode) {
+    if (!this._stNew) return;
+    this._stNew.scope = mode;
+    document.querySelectorAll('#st-new-tabs .st-load-tab').forEach(el => {
+      el.classList.toggle('active', el.dataset.mode === mode);
+      el.setAttribute('aria-selected', String(el.dataset.mode === mode));
+    });
+    this.renderStNewPanel();
+  },
+
+  renderStNewPanel() {
+    const box = document.getElementById('st-new-panel');
+    const s = this._stNew;
+    if (!box || !s) return;
+    if (s.scope === 'all') {
+      box.innerHTML = `<div class="st-load-hint">${this.t('st_load_mode_all_hint')}</div>
+        <div class="st-load-stat" id="st-new-stat"></div>`;
+      this.refreshStNewStat();
+      return;
+    }
+    box.innerHTML = `<div class="st-load-hint">${this.t('st_load_mode_category_hint')}</div>
+      <input id="st-new-cat-kw" type="text" class="st-load-search" placeholder="${this.t('st_load_cat_filter')}" value="${this.stEsc(s.catKeyword || '')}"
+        oninput="App._stNew.catKeyword=this.value;App.renderStNewCats()">
+      <div class="st-load-cat-list" id="st-new-cat-list"></div>
+      <div class="st-load-stat" id="st-new-stat"></div>`;
+    this.renderStNewCats();
+    this.refreshStNewStat();
+  },
+
+  renderStNewCats() {
+    const box = document.getElementById('st-new-cat-list');
+    const s = this._stNew;
+    if (!box || !s) return;
+    const kw = String(s.catKeyword || '').trim().toLowerCase();
+    const cats = (this._stNewCats || []).filter(c => !kw || String(c).toLowerCase().includes(kw));
+    if (!cats.length) { box.innerHTML = `<div class="pu-empty">${this.t('noData')}</div>`; return; }
+    box.innerHTML = cats.map(c => `<label class="st-load-cat-item"><input type="checkbox" ${s.categories.includes(c) ? 'checked' : ''}
+      onchange="App.toggleStNewCat('${c.replace(/'/g, "\\'")}')"><span>${this.stEsc(c)}</span></label>`).join('');
+  },
+
+  toggleStNewCat(cat) {
+    const s = this._stNew;
+    if (!s) return;
+    const i = s.categories.indexOf(cat);
+    if (i >= 0) s.categories.splice(i, 1); else s.categories.push(cat);
+    this.refreshStNewStat();
+  },
+
+  async refreshStNewStat() {
+    const s = this._stNew;
+    if (!s) return;
+    let url = '';
+    if (s.scope === 'all') url = '/api/stocktakes/candidates?scope=all';
+    else if (s.scope === 'category') {
+      if (!s.categories.length) {
+        const el = document.getElementById('st-new-stat'); if (el) el.textContent = '';
+        return;
+      }
+      url = '/api/stocktakes/candidates?scope=category&category=' + encodeURIComponent(s.categories.join(','));
+    } else return;
+    const seq = (this._stNewSeq = (this._stNewSeq || 0) + 1);
+    try {
+      const list = await this.api(url);
+      if (seq !== this._stNewSeq) return; // 丢弃过期响应，避免类别勾选后数字回跳
+      const el = document.getElementById('st-new-stat');
+      if (el) el.textContent = this.t('st_load_stat', { n: Array.isArray(list) ? list.length : 0 });
+    } catch (e) { /* 统计失败不阻断建单 */ }
   },
 
   async createStocktake() {
     if (!this.validateForm({ st_f_date: [{ rule: 'required' }] })) return;
+    const s = this._stNew || { scope: 'all', categories: [] };
+    if (s.scope === 'category' && !s.categories.length) {
+      this.toast(this.t('st_load_need_category'), 'error');
+      return;
+    }
     const body = {
       date: document.getElementById('st_f_date').value,
       handler: document.getElementById('st_f_handler').value.trim(),
       remarks: document.getElementById('st_f_remarks').value.trim(),
+      category_filter: s.scope === 'category' ? s.categories.join(',') : '',
     };
+
+    let created;
     try {
-      const r = await this.api('/api/stocktakes', 'POST', body);
-      this.toast(this.t('st_created'));
-      // 建单后进入详情并弹出「载入清单」窗口，由用户选择三种载入方式之一
-      await this.openStocktake(r.stocktake_no);
-      this.openStocktakeLoadModal();
+      created = await this.api('/api/stocktakes', 'POST', body);
+    } catch (e) {
+      this.toast(e.message, 'error');
+      return;
+    }
+
+    // 建单后立即载入清单，直接进入实盘录入（不再二次弹「载入清单」）
+    const loadBody = { scope: s.scope };
+    if (s.scope === 'category') loadBody.categories = s.categories.slice();
+    let loaded = 0;
+    try {
+      const r = await this.api('/api/stocktakes/' + encodeURIComponent(created.stocktake_no) + '/load', 'POST', loadBody);
+      loaded = r.loaded_count || 0;
     } catch (e) {
       this.toast(e.message, 'error');
     }
+
+    this.closeModal();
+    this.toast(loaded ? this.t('st_create_loaded', { n: loaded }) : this.t('st_created'));
+    await this.editStocktake(created.stocktake_no);
   },
 
   // ========== 录入实盘 / 编辑草稿：独立页面（01 单据信息 + 02 盘点明细 + 底部操作行） ==========
@@ -705,13 +832,7 @@ Object.assign(App, {
     this._stNo = no;
     this._stDetail = d;
     this._stCache[no] = { d };
-    this._stEditLines = (d.lines || []).map(l => ({
-      id: l.id, code: l.code, material_name: l.material_name, material_spec: l.material_spec,
-      material_brand: l.material_brand, material_unit: l.material_unit,
-      book_qty: Number(l.book_qty) || 0,
-      count_qty: (l.count_qty === null || l.count_qty === undefined) ? '' : l.count_qty,
-      status: l.status, remarks: l.remarks || '',
-    }));
+    this._stEditLines = this.stMapEditLines(d);
 
     this.setMain(this.pageWrap('✏️ ' + this.t('st_edit_title'),
       `${d.stocktake_no} · ${this.t('st_scope')} ${this.stScopeLabel(d)}`, '',
@@ -738,6 +859,17 @@ Object.assign(App, {
       </div>`));
 
     this.renderStocktakeEdit();
+  },
+
+  // 详情 → 编辑页行模型（保存草稿后原地重建时复用，保持同一口径）
+  stMapEditLines(d) {
+    return ((d && d.lines) || []).map(l => ({
+      id: l.id, code: l.code, material_name: l.material_name, material_spec: l.material_spec,
+      material_brand: l.material_brand, material_unit: l.material_unit,
+      book_qty: Number(l.book_qty) || 0,
+      count_qty: (l.count_qty === null || l.count_qty === undefined) ? '' : l.count_qty,
+      status: l.status, remarks: l.remarks || '',
+    }));
   },
 
   renderStocktakeEdit() {
@@ -796,7 +928,7 @@ Object.assign(App, {
         <td class="pu-edit-amt">${this.qtyCell(l.book_qty)}</td>
         <td class="text-right">${cntCell}</td>
         <td class="pu-edit-amt" id="st-diff-${l.id}">${this.stDiffCell(diff)}</td>
-        <td class="text-center">${this.stLineStatusBadge(l.status)}</td>
+        <td class="text-center" id="st-lstatus-${l.id}">${this.stLineStatusBadge(l.status)}</td>
         <td>${this.stEsc(l.remarks || '')}</td>
         <td class="text-center">${isDraft ? `<button type="button" class="pu-edit-del" onclick="App.removeStocktakeLine(${l.id}, '${this.stEsc(l.code).replace(/'/g, "\\'")}')">${this.t('st_remove_line')}</button>` : ''}</td>
       </tr>`;
@@ -811,7 +943,7 @@ Object.assign(App, {
     return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
   },
 
-  // 实盘输入即时重算差异（只更新当前行的差异单元格，不重建页面，避免打断输入法）
+  // 实盘输入即时重算差异 + 行状态（只更新当前行的差异/状态单元格，不重建页面，避免打断输入法）
   stEditCountInput(id, el) {
     const l = (this._stEditLines || []).find(x => Number(x.id) === Number(id));
     if (!l) return;
@@ -819,6 +951,13 @@ Object.assign(App, {
     l.count_qty = raw === '' ? '' : (parseFloat(raw) || 0);
     const cell = document.getElementById('st-diff-' + id);
     if (cell) cell.innerHTML = this.stDiffCell(raw === '' ? null : Math.round((Number(l.count_qty) - l.book_qty) * 10000) / 10000);
+    // 行状态即时反馈：非空 → 已录入但未保存；清空 → 回到保存前的状态
+    const stCell = document.getElementById('st-lstatus-' + id);
+    if (stCell) {
+      stCell.innerHTML = raw === ''
+        ? this.stLineStatusBadge(l.status)
+        : `<span class="badge badge-warning">${this.t('st_line_unsaved')}</span>`;
+    }
   },
 
   // 返回列表页并打开该单详情（从编辑页 / 弹窗返回）
@@ -853,16 +992,14 @@ Object.assign(App, {
 
   // ========== 保存实盘 ==========
 
-  // 收集编辑页的实盘输入；返回 null 表示没有任何输入
+  // 收集编辑页的实盘输入：留空表示「未盘」，一并提交以便清空已录数据
   stCollectCounts() {
     const inputs = Array.from(document.querySelectorAll('.st-count-input'));
     const lines = [];
     inputs.forEach(inp => {
       const raw = String(inp.value || '').trim();
-      if (raw === '') return;
       const n = parseFloat(raw);
-      if (isNaN(n)) return;
-      lines.push({ id: Number(inp.dataset.id), count_qty: n });
+      lines.push({ id: Number(inp.dataset.id), count_qty: (raw === '' || isNaN(n)) ? null : n });
     });
     return lines;
   },
@@ -870,12 +1007,19 @@ Object.assign(App, {
   async saveStocktakeCounts() {
     const no = this._stNo;
     if (!no) return;
+    if (!document.querySelector('.st-count-input')) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
     const lines = this.stCollectCounts();
-    if (lines.length === 0) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
     try {
       await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines', 'PUT', { lines });
+      // 留在当前编辑页：重新拉详情并以最新状态原地重绘（不跳回列表）
+      try {
+        const d = await this.api('/api/stocktakes/' + encodeURIComponent(no));
+        this._stDetail = d;
+        this._stCache[no] = { d };
+        this._stEditLines = this.stMapEditLines(d);
+        this.renderStocktakeEdit();
+      } catch (e) { /* 刷新失败时保留已保存提示 */ }
       this.toast(this.t('st_save_ok'));
-      await this.openStocktake(no);
     } catch (e) {
       this.toast(e.message, 'error');
     }
@@ -1310,18 +1454,162 @@ Object.assign(App, {
       });
   },
 
-  // ========== 确认盘点 ==========
+  // ========== 确认盘点（弹窗内嵌差异小表，可直接改实盘 / 一键更正单行） ==========
 
   async confirmStocktake() {
     const no = this._stNo;
     if (!no) return;
-    const d = this._stDetail;
-    const s = d?.summary || {};
+    let d = this._stDetail;
+    if (!d || d.stocktake_no !== no) {
+      try {
+        d = await this.api('/api/stocktakes/' + encodeURIComponent(no));
+        this._stDetail = d;
+        this._stCache[no] = { d };
+      } catch (e) { this.toast(e.message, 'error'); return; }
+    }
+    const s = d.summary || {};
+    const diffs = (d.lines || []).filter(l => l.count_qty !== null && l.count_qty !== undefined
+      && Math.round((Number(l.count_qty) - Number(l.book_qty)) * 10000) / 10000 !== 0);
 
-    const self = this;
-    this.confirmDialog(this.t('st_confirm'),
-      `${this.t('st_confirm_hint')}\n\n${this.t('st_counted')}: ${s.counted_count || 0} · ${this.t('st_diff')}: ${s.diff_count || 0}`,
-      () => self.doConfirmStocktake(no, false), null, 'primary');
+    const rows = diffs.map(l => `<tr data-line="${l.id}">
+        <td>${this.stEsc(l.code)}</td>
+        <td class="text-right">${this.qtyCell(Number(l.book_qty) || 0)}</td>
+        <td class="text-right"><input class="st-cf-count" type="number" step="0.01" data-id="${l.id}" data-book="${l.book_qty}" value="${this.stEsc(l.count_qty)}" oninput="App.stCfDiffInput(${l.id}, this)"></td>
+        <td class="text-right" id="st-cf-diff-${l.id}">${this.stDiffCell(Number(l.diff_qty) || 0)}</td>
+        <td class="text-center"><button type="button" class="btn btn-outline btn-sm" onclick="App.stCorrectFromConfirm(${l.id}, this)">${this.t('st_correct_line')}</button></td>
+      </tr>`).join('');
+
+    const table = diffs.length
+      ? `<div class="table-wrap"><table class="st-cf-table"><thead><tr>
+          <th>${this.t('mat_code')}</th>
+          <th class="text-right">${this.t('st_book_qty')}</th>
+          <th class="text-right">${this.t('st_count_qty')}</th>
+          <th class="text-right">${this.t('st_diff_qty')}</th>
+          <th></th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="pu-empty">${this.t('st_confirm_diff_empty')}</div>`;
+
+    this.showModal(
+      `<h3>${this.t('st_confirm')}</h3>`,
+      `<div class="st-load-hint">${this.t('st_confirm_hint')}</div>
+      <div style="font-size:13px;margin-bottom:8px">${this.t('st_counted')}: ${s.counted_count || 0} · ${this.t('st_diff')}: ${s.diff_count || 0}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">${this.t('st_confirm_diff_title')}</div>
+      ${table}`,
+      this.t('st_confirm'), () => this.stConfirmWithDiffs(no), null, true);
+  },
+
+  // 弹窗内实盘输入：即时重算该行差异
+  stCfDiffInput(id, el) {
+    const raw = String(el.value || '').trim();
+    const book = parseFloat(el.dataset.book) || 0;
+    const cell = document.getElementById('st-cf-diff-' + id);
+    if (!cell) return;
+    if (raw === '') { cell.innerHTML = '<span class="pu-mu">–</span>'; return; }
+    const n = parseFloat(raw);
+    cell.innerHTML = this.stDiffCell(isNaN(n) ? null : Math.round((n - book) * 10000) / 10000);
+  },
+
+  // 先保存弹窗里改过的实盘，再按现有确认流程提交
+  async stConfirmWithDiffs(no) {
+    const lines = [];
+    document.querySelectorAll('.st-cf-count').forEach(inp => {
+      const raw = String(inp.value || '').trim();
+      const n = parseFloat(raw);
+      if (raw === '' || isNaN(n)) return;
+      lines.push({ id: Number(inp.dataset.id), count_qty: n });
+    });
+    if (lines.length) {
+      try {
+        await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines', 'PUT', { lines });
+        const d = await this.api('/api/stocktakes/' + encodeURIComponent(no));
+        this._stDetail = d;
+        this._stCache[no] = { d };
+      } catch (e) {
+        this.toast(e.message, 'error');
+        return;
+      }
+    }
+    this.closeModal();
+    this.doConfirmStocktake(no, false);
+  },
+
+  // 确认弹窗内「更正此差异」：按该行当前输入值直接生成这一行的调整，不必整单确认
+  async stCorrectFromConfirm(lineId, btn) {
+    const no = this._stNo;
+    if (!no) return;
+    const inp = document.querySelector(`.st-cf-count[data-id="${lineId}"]`);
+    const raw = inp ? String(inp.value || '').trim() : '';
+    const count = raw === '' ? undefined : parseFloat(raw);
+    if (count !== undefined && (isNaN(count) || count < 0)) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines/' + lineId + '/correct', 'POST',
+        count === undefined ? {} : { count_qty: count });
+      this.toast(this.t('st_correct_ok', { qty: this.fmtQty(r.adjusted_qty) }));
+      this.closeModal();
+      await this.openStocktake(no);
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      this.stHandleCorrectError(no, lineId, count, e);
+    }
+  },
+
+  // 已确认单据：在明细表里对单行差异做更正（弹窗填更正后实盘 + 原因）
+  stCorrectPrompt(lineId) {
+    const no = this._stNo;
+    const d = this._stDetail;
+    if (!no || !d) return;
+    const l = (d.lines || []).find(x => Number(x.id) === Number(lineId));
+    if (!l) return;
+    this.showModal(
+      `<h3>${this.t('st_correct_line')}</h3>`,
+      `<div class="st-load-hint">${this.t('st_correct_hint')}</div>
+      <div class="form-grid" style="max-width:none">
+        <div class="form-group"><label>${this.t('mat_code')}</label><input value="${this.stEsc(l.code)}" readonly></div>
+        <div class="form-group"><label>${this.t('st_book_qty')}</label><input value="${this.fmtQty(l.book_qty)}" readonly></div>
+        <div class="form-group"><label>${this.t('st_count_qty')} *</label><input id="st-cf-target" type="number" step="0.01" value="${this.stEsc(l.count_qty)}"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_correct_reason')}</label><input id="st-cf-reason" value=""></div>
+      </div>`,
+      this.t('st_correct_line'), () => this.stApplyCorrect(no, l, null), null, false);
+  },
+
+  async stApplyCorrect(no, line, btn) {
+    const el = document.getElementById('st-cf-target');
+    const reasonEl = document.getElementById('st-cf-reason');
+    const n = el ? parseFloat(el.value) : NaN;
+    if (isNaN(n) || n < 0) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
+    if (btn) btn.disabled = true;
+    const body = { count_qty: n };
+    if (reasonEl && reasonEl.value.trim()) body.reason = reasonEl.value.trim();
+    try {
+      const r = await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines/' + line.id + '/correct', 'POST', body);
+      this.closeModal();
+      this.toast(this.t('st_correct_ok', { qty: this.fmtQty(r.adjusted_qty) }));
+      await this.stOpen(no);
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      this.stHandleCorrectError(no, line.id, n, e);
+    }
+  },
+
+  // 更正失败分流：0 成本入账需管理员确认；无差异直接提示
+  stHandleCorrectError(no, lineId, count, e) {
+    if (e.code === 'NO_COST_BASIS') {
+      this.confirmDialog(this.t('cost_basis_none'), this.t('cost_basis_none_tip'), async () => {
+        try {
+          const body = { accept_no_basis: true };
+          if (count !== undefined && count !== null) body.count_qty = count;
+          const r = await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines/' + lineId + '/correct', 'POST', body);
+          this.toast(this.t('st_correct_ok', { qty: this.fmtQty(r.adjusted_qty) }));
+          this.closeModal();
+          await this.openStocktake(no);
+        } catch (err) { this.toast(err.message, 'error'); }
+      }, null, 'primary');
+      return;
+    }
+    if (e.code === 'NO_DIFF') { this.toast(this.t('st_correct_no_diff')); return; }
+    if (e.code === 'NO_BASIS_FORBIDDEN') { this.toast(this.t('cost_basis_none_forbidden'), 'error'); return; }
+    this.toast(e.message, 'error');
   },
 
   // 真正调用确认接口；force=true 表示用户已知晓盘点期间库存变动并继续

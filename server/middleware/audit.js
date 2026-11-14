@@ -47,7 +47,7 @@ function pickTarget(segs, body) {
 // 单据类型 → 审计归口模块
 // 采购退货（入库账本）/ 领料退库（出库账本）统一记为 returns，
 // 其余单据类型保持 inbound / outbound；历史审计记录不回溯改写。
-const RETURN_TXN_TYPES = new Set(['采购退货', '领料退库']);
+const RETURN_TXN_TYPES = new Set(['采购退货', '零星退货', '领料退库']);
 const DOC_TABLES = { 'inbound-docs': 'inbound_docs', 'outbound-docs': 'outbound_docs' };
 
 function docTxnType(res0, segs, body) {
@@ -82,8 +82,12 @@ function auditMiddleware(req, res, next) {
   if (req.path === '/api/audit-logs') return next();
   // 退出登录只是撤销会话，不属于业务写操作
   if (req.path === '/api/auth/logout') return next();
+  // 物料批量新增由路由逐条写审计（一条物料一条 create），这里跳过避免重复
+  if (req.path === '/api/materials/batch') return next();
   res.on('finish', () => {
     try {
+      // 路由已写过更精确的审计（如物料编码变更：旧码 → 新码），这里不再重复记一条
+      if (req.skipGenericAudit) return;
       const segs = req.path.split('/').filter(Boolean); // ['api','materials','CB-0001']
       // 更正确认由路由自行写审计（含原/新数量快照），避免重复记录
       if (segs[segs.length - 1] === 'confirm-correction') return;
@@ -106,7 +110,7 @@ function auditMiddleware(req, res, next) {
         role: u.role || '',
         module,
         action,
-        target: pickTarget(segs, body),
+        target: req.auditTarget || pickTarget(segs, body),
         method: req.method,
         path: req.originalUrl.split('?')[0],
         ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),

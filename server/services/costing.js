@@ -112,7 +112,9 @@ function insertLedger(row) {
  * 差额本身由数量归零时的残留金额产生，但残留的成因不同，分开统计才看得懂。
  */
 function varianceReason(row) {
-  if (row.source_type === 'inbound') return row.business_type === '采购退货' ? 'purchase_return' : 'inbound';
+  if (row.source_type === 'inbound') {
+    return ['采购退货', '零星退货'].includes(row.business_type) ? 'purchase_return' : 'inbound';
+  }
   if (row.source_type === 'outbound') return row.business_type === RETURN_OUT ? 'return_in' : 'outbound';
   if (row.source_type === 'adjust') return 'adjust';
   if (row.source_type === 'opening') return 'opening';
@@ -440,6 +442,8 @@ function postInboundDoc(doc, lines, anchor = null) {
   const byCode = new Map();
   for (const l of lines) {
     const qtyInt = toQtyInt(l.qty);
+    // 0 数量行不生成流水（入库单确认时已剔除，这里再做一层防御）
+    if (qtyInt === 0n) continue;
     const priceInt = toPriceInt(l.price);
     const absQty = qtyInt < 0n ? -qtyInt : qtyInt;
     const amount = qtyMulPriceToAmount(absQty, priceInt);

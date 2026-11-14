@@ -30,6 +30,12 @@ const { isBusy, busyBody, businessError, withEn, stockBody, bizBody } = require(
 const RETURN_TIERS = ['inbound', 'po', 'contract', 'none'];
 const NO_ORIGIN_ROLES = ['admin', 'manager'];
 
+const INBOUND_RETURN_TYPES = ['采购退货', '零星退货'];
+
+function isInboundReturnDoc(docLike) {
+  return !!docLike && INBOUND_RETURN_TYPES.includes(docLike.txn_type);
+}
+
 function isPurchaseReturnDoc(docLike) {
   return docLike && docLike.txn_type === '采购退货';
 }
@@ -48,8 +54,11 @@ function routeFail(code, message) {
 
 // 校验单据头的档位字段是否完整、互斥、权限合规
 function validateReturnTierHeader(docLike, user) {
-  if (!isPurchaseReturnDoc(docLike)) return '';
+  if (!isInboundReturnDoc(docLike)) return '';
   const tier = normalizeReturnTier(docLike.return_tier);
+  if (docLike.txn_type === '零星退货' && tier !== 'inbound') {
+    throw routeFail('RETURN_TIER_REQUIRED', '零星退货必须关联原零星入库单');
+  }
   if (!tier) throw routeFail('RETURN_TIER_REQUIRED', '采购退货必须选择关联档位（原入库单/采购单/合同/无原单）');
   if (tier === 'inbound') {
     if (!String(docLike.origin_doc_no || '').trim()) {
@@ -77,11 +86,26 @@ function validateReturnTierHeader(docLike, user) {
 
 // 创建时整理采购退货单头：校验档位、继承供应商/采购单/合同
 function prepareReturnHeader(body, txnType, user) {
-  if (!isPurchaseReturnDoc({ txn_type: txnType })) {
+  if (!isInboundReturnDoc({ txn_type: txnType })) {
     return {
       return_tier: '', origin_doc_no: '', return_ref_no: '', return_reason: '',
       supplier: body.supplier || '', po_no: body.po_no || '', contract_no: body.contract_no || ''
     };
+  }
+  if (txnType === '零星退货') {
+    const header = {
+      return_tier: 'inbound',
+      origin_doc_no: String(body.origin_doc_no || '').trim(),
+      return_ref_no: '',
+      return_reason: String(body.return_reason || '').trim(),
+    };
+    validateReturnTierHeader({ txn_type: txnType, ...header }, user);
+    const origin = loadPurchaseReturnOrigin(header.origin_doc_no);
+    if (origin.txn_type !== '零星入库') {
+      throw routeFail('ORIGIN_DOC_INVALID', '零星退货只能关联零星入库单');
+    }
+    // 零星入库没有供应商：不继承、不写入 supplier
+    return { ...header, supplier: '', po_no: '', contract_no: '' };
   }
   const header = {
     return_tier: normalizeReturnTier(body.return_tier),
@@ -90,7 +114,7 @@ function prepareReturnHeader(body, txnType, user) {
     return_reason: String(body.return_reason || '').trim(),
     supplier: String(body.supplier || '').trim(),
   };
-  validateReturnTierHeader({ txn_type: '采购退货', ...header }, user);
+  validateReturnTierHeader({ txn_type: txnType, ...header }, user);
   let supplier = header.supplier;
   let poNo = body.po_no || '';
   let contractNo = body.contract_no || '';
@@ -113,14 +137,29 @@ function prepareReturnHeader(body, txnType, user) {
 function resolveReturnLine(docLike, l, sources, defaults) {
   const srcId = Number(l.origin_line_id) || 0;
   const src = sources && srcId ? sources.get(String(srcId)) : null;
+  // 非退货单（采购入库/零星入库）：采购单号/合同号以行级提交为准。
+  // 同一张采购单的明细可能分属不同合同，行级来源由前端按采购行带入；
+  // 只有行级未提交时才回落到单头，不能反过来用单头覆盖行级（否则从采购单收货时合同号会被清空）。
+  if (!isInboundReturnDoc(docLike)) {
+    const poNo = l.po_no !== undefined ? String(l.po_no || '') : (defaults.po_no || '');
+    const contractNo = l.contract_no !== undefined ? String(l.contract_no || '') : (defaults.contract_no || '');
+    const explicit = Number(l.order_line_id) || 0;
+    return {
+      origin_line_id: 0,
+      price: sign.normalizePrice(l.price),
+      po_no: poNo,
+      contract_no: contractNo,
+      order_line_id: explicit > 0 ? explicit : resolveOrderLineId(poNo, l.code, contractNo),
+    };
+  }
   // 采购退货落库时用保守核销：只在「采购单 + 物料（合同为空或一致）」唯一命中时回填，
   // 多条候选保持 0，避免把退货错记到别的采购明细行上。
   const resolveLine = (poNo, code, contractNo) => {
     // 采购入库：前端在「采购明细行」下拉里显式选中的行优先，
     // 避免同一合同下同物料跨多张采购单时被自动解析到别的行。
     const explicit = Number(l.order_line_id) || 0;
-    if (docLike.txn_type !== '采购退货' && explicit > 0) return explicit;
-    return docLike.txn_type === '采购退货'
+    if (!isInboundReturnDoc(docLike) && explicit > 0) return explicit;
+    return isInboundReturnDoc(docLike)
       ? resolveUniqueOrderLineId(poNo, code, contractNo)
       : resolveOrderLineId(poNo, code, contractNo);
   };
@@ -151,6 +190,19 @@ function resolveReturnLine(docLike, l, sources, defaults) {
   };
 }
 
+// 非退货单：单头合同号为空时，若全部明细同属一个合同则回填单头，
+// 这样从采购单收货（单头只带采购单号）后，详情页「合同号」也能显示；
+// 采购单跨多合同时保持为空，合同归属以明细行为准。
+function inferHeaderContractNo(current, txnType, lines) {
+  if (isInboundReturnDoc({ txn_type: txnType })) return current || '';
+  if (String(current || '').trim()) return current;
+  const set = new Set((lines || [])
+    .filter(l => l && l.code)
+    .map(l => String(l.contract_no || '').trim())
+    .filter(Boolean));
+  return set.size === 1 ? [...set][0] : (current || '');
+}
+
 const router = express.Router();
 
 // ==================== 入库单据（草稿/确认/作废 状态流转） ====================
@@ -162,7 +214,8 @@ const router = express.Router();
 
 // 生成入库单据号（采购入库 GRN / 采购退货 RET，规则见 services/docno.js，前缀可在参数设置中修改）
 function genInboundDocNo(date, txnType) {
-  return docno.genDocNo(txnType === '采购退货' ? 'ret' : 'grn', date);
+  const type = txnType === '采购退货' ? 'ret' : (txnType === '零星退货' ? 'rts' : 'grn');
+  return docno.genDocNo(type, date);
 }
 
 // 记录单据操作日志
@@ -275,9 +328,9 @@ function overReceiptLineParams(overs) {
 //  1. 原单由系统置为作废（status='voided'，明细行同样置 voided），不参与任何计算；
 //  2. 有明细 → 新单直接过账生效，继承原单日期/类型/供应商/采购单/合同/明细；
 //     一行不剩 → 只作废原单，不生成新单（整单不要了）；
-//  3. 原单已确认的采购退货单自动改指向新单（头 origin_doc_no + 行 origin_line_id）；
+//  3. 原单已确认的采购退货/零星退货单自动改指向新单（头 origin_doc_no + 行 origin_line_id）；
 //  4. 不产生红冲单、不产生差额调整单，也不提供任何强制放行入口。
-const CORRECTION_SOURCE_TYPES = ['采购入库', '零星入库', '采购退货'];
+const CORRECTION_SOURCE_TYPES = ['采购入库', '零星入库', '采购退货', '零星退货'];
 
 function isCorrectionDraft(docLike) {
   return !!docLike && docLike.status === 'draft' && String(docLike.corrects_doc_no || '').trim() !== '';
@@ -432,7 +485,7 @@ function hiddenPricePool(docNo) {
 }
 
 function hiddenLinePrice(docLike, l, resolved, pool) {
-  const isReturn = docLike.txn_type === '采购退货';
+  const isReturn = isInboundReturnDoc(docLike);
   const tier = isReturn ? normalizeReturnTier(docLike.return_tier) : '';
   // 关联档退货：单价随原入库行，resolveReturnLine 已从来源行取到
   if (isReturn && tier !== 'none' && Number(resolved.origin_line_id) > 0) {
@@ -498,7 +551,7 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
   const body = req.body;
   const date = body.date || time.todayLocal();
   const txnType = body.txn_type || '采购入库';
-  if (!['采购入库', '采购退货', '零星入库'].includes(txnType)) {
+  if (!['采购入库', '采购退货', '零星入库', '零星退货'].includes(txnType)) {
     return res.status(400).json({ error: '入库类型不合法', code: 'INVALID_TXN_TYPE' });
   }
   // 单号在事务内生成，避免多实例并发建单时撞号
@@ -514,6 +567,8 @@ router.post('/api/inbound-docs', requirePerm('inbound', 'create'), (req, res) =>
 
     // 采购退货：先校验三档单头并继承供应商/原单号
     const hdr = prepareReturnHeader(body, txnType, req.user);
+    // 采购入库/零星入库：明细同属一个合同时回填单头合同号（多合同保持为空）
+    hdr.contract_no = inferHeaderContractNo(hdr.contract_no, txnType, Array.isArray(body.lines) ? body.lines : []);
 
     // 单头 + 明细同一事务：明细校验失败时回滚单头，避免留下空草稿
     const createdTx = db.transaction(() => {
@@ -608,7 +663,7 @@ router.get('/api/inbound-docs/:docNo', requirePerm('inbound', 'view'), (req, res
       COALESCE(SUM(i.qty), 0) AS total_qty,
       COALESCE(SUM(i.amount), 0) AS total_amount
     FROM inbound_docs d LEFT JOIN inbound i ON i.doc_no = d.doc_no
-    WHERE d.txn_type = '采购退货' AND d.doc_no <> '' AND (
+    WHERE d.txn_type IN ('采购退货','零星退货') AND d.doc_no <> '' AND (
       d.origin_doc_no = ?
       OR EXISTS (SELECT 1 FROM inbound r WHERE r.doc_no = d.doc_no
         AND r.origin_line_id IN (SELECT id FROM inbound WHERE doc_no = ?))
@@ -621,13 +676,20 @@ router.get('/api/inbound-docs/:docNo', requirePerm('inbound', 'view'), (req, res
     return d !== 0 ? d : docno.compareDocNo(b.doc_no, a.doc_no);
   });
 
+  // 零星退货不落库供应商：退回对象只读取自原零星入库单的来源单位
+  let sourceUnit = '';
+  if (doc.txn_type === '零星退货' && doc.origin_doc_no) {
+    const origin = db.prepare('SELECT supplier FROM inbound_docs WHERE doc_no=?').get(doc.origin_doc_no);
+    sourceUnit = origin ? String(origin.supplier || '') : '';
+  }
+
   // 无价格权限：明细单价/金额、合计金额、关联退货金额整组不下发（数量类保留）
   if (!req.canViewPrice) {
     lines.forEach(l => { delete l.price; delete l.amount; });
     delete summary.total_amount;
     relatedReturns.forEach(r => { delete r.total_amount; });
   }
-  res.json({ ...doc, lines, logs, summary, correction: correctionBlock(doc), related_returns: relatedReturns });
+  res.json({ ...doc, source_unit: sourceUnit, lines, logs, summary, correction: correctionBlock(doc), related_returns: relatedReturns });
 });
 
 // 保存入库单据明细行（草稿态可操作）
@@ -650,7 +712,7 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
         requireSource: false,
         allowOver: req.body.over_receipt_confirm === true,
       });
-      const isReturn = isPurchaseReturnDoc(doc);
+      const isReturn = isInboundReturnDoc(doc);
       const returnTier = isReturn ? normalizeReturnTier(doc.return_tier) : '';
       const tx = db.transaction(() => {
         db.prepare("DELETE FROM inbound WHERE doc_no=?").run(docNo);
@@ -709,7 +771,10 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
 
     // 采购入库：来源归属 + 超收（草稿也校验；无来源的存量草稿允许继续保存）
     const effPoNoCheck = req.body.po_no !== undefined ? req.body.po_no : doc.po_no;
-    const effContractNoCheck = req.body.contract_no !== undefined ? req.body.contract_no : doc.contract_no;
+    // 单头合同号：明细同属一个合同时回填（从采购单收货时合同号不再被清空）
+    const effContractNoCheck = inferHeaderContractNo(
+      req.body.contract_no !== undefined ? req.body.contract_no : doc.contract_no,
+      doc.txn_type, validLines);
     const overReceipt = validatePurchaseInboundScope(
       { ...doc, po_no: effPoNoCheck, contract_no: effContractNoCheck },
       lines,
@@ -727,9 +792,12 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
         VALUES (@date, @grn_no, @doc_no, @code, @qty, @price, @supplier, @handler, @remarks, @po_no, @contract_no, @txn_type, 'draft', @order_line_id, @origin_line_id)`);
       // 明细行核销用「本次提交后的」采购单/合同号（头部字段紧随其后更新）
       const effPoNo = req.body.po_no !== undefined ? req.body.po_no : doc.po_no;
-      const effContractNo = req.body.contract_no !== undefined ? req.body.contract_no : doc.contract_no;
+      const effContractNo = effContractNoCheck;
       // 明细行供应商用本次提交值，避免先写旧单据头导致列表/明细显示不同步
-      const effSupplier = req.body.supplier !== undefined ? req.body.supplier : doc.supplier;
+      // 零星退货不写供应商：明细行同样强制为空，来源单位只在读取时从原单派生
+      const effSupplier = doc.txn_type === '零星退货'
+        ? ''
+        : (req.body.supplier !== undefined ? req.body.supplier : doc.supplier);
       validLines.forEach(l => {
         const qty = sign.normalizeQty(doc.txn_type, l.qty);
         // 采购退货关联档：单价/来源/核销行继承原入库行；无原单档才允许手填
@@ -750,10 +818,11 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
       });
       // 更新单据头的部分字段（允许跟着明细一起改）
       const updateFields = {};
-      if (req.body.supplier !== undefined) updateFields.supplier = req.body.supplier;
+      if (req.body.supplier !== undefined && doc.txn_type !== '零星退货') updateFields.supplier = req.body.supplier;
+      if (doc.txn_type === '零星退货') updateFields.supplier = '';
       if (req.body.handler !== undefined) updateFields.handler = req.body.handler;
-      if (req.body.po_no !== undefined && !isPurchaseReturnDoc(doc)) updateFields.po_no = req.body.po_no;
-      if (req.body.contract_no !== undefined && !isPurchaseReturnDoc(doc)) updateFields.contract_no = req.body.contract_no;
+      if (req.body.po_no !== undefined && !isInboundReturnDoc(doc)) updateFields.po_no = req.body.po_no;
+      if (req.body.contract_no !== undefined && !isInboundReturnDoc(doc)) updateFields.contract_no = effContractNoCheck;
       if (req.body.remarks !== undefined) updateFields.remarks = req.body.remarks;
       if (req.body.date !== undefined) updateFields.date = req.body.date;
       // 无原单档允许在草稿里补/改原因（必填在保存与确认时都会校验）
@@ -776,7 +845,7 @@ router.put('/api/inbound-docs/:docNo/lines', requirePerm('inbound', 'edit'), (re
   } catch (e) {
     const body = { error: e.message, code: e.code || 'INBOUND_LINES_SAVE_FAILED' };
     if (e.details) body.details = e.details;
-    res.status(e.status || 400).json(body);
+    res.status(e.status || 400).json(withEn(body));
   }
 });
 
@@ -805,14 +874,24 @@ router.post('/api/inbound-docs/:docNo/confirm', requirePerm('inbound', 'edit'), 
     // BEGIN IMMEDIATE：状态守卫、超收/可退量校验、库存校验与写流水在同一临界区
     const tx = db.transaction(() => {
       // 事务内重读明细，避免读到过期的草稿行
-      const lines = db.prepare("SELECT * FROM inbound WHERE doc_no=?").all(docNo);
-      if (lines.length === 0) throw businessError('NO_LINES', '单据没有明细行，无法确认');
+      const allLines = db.prepare("SELECT * FROM inbound WHERE doc_no=?").all(docNo);
+      if (allLines.length === 0) throw businessError('NO_LINES', '单据没有明细行，无法确认');
+      // 数量为 0 的行不生成流水：确认时剔除并删除草稿行（与「留空或 0 的行不会生成流水」文案一致）
+      const zeroLines = allLines.filter(l => Math.abs(Number(l.qty) || 0) < 1e-9);
+      const lines = allLines.filter(l => Math.abs(Number(l.qty) || 0) >= 1e-9);
+      if (lines.length === 0) {
+        throw businessError('NO_QTY_LINES', '单据没有有效明细（数量为 0 的行不会过账），请填写数量或删除空行');
+      }
+      if (zeroLines.length) {
+        const del = db.prepare('DELETE FROM inbound WHERE id=?');
+        zeroLines.forEach(l => del.run(l.id));
+      }
       // 采购入库：来源归属 + 超收（确认强制要求来源；超收需前端二次确认后显式放行）
       overReceipt = validatePurchaseInboundScope(doc, lines, {
         requireSource: true,
         allowOver: req.body.over_receipt_confirm === true,
       });
-      if (isPurchaseReturnDoc(doc) && normalizeReturnTier(doc.return_tier) !== 'none') {
+      if (isInboundReturnDoc(doc) && normalizeReturnTier(doc.return_tier) !== 'none') {
         const sources = validatePurchaseReturnLines(doc, lines);
         // 关联档单价必须等于原入库行单价，防止绕过前端改写成本
         lines.forEach(l => {
@@ -919,7 +998,7 @@ router.post('/api/inbound-docs/:docNo/correction', requirePerm('inbound', 'corre
 
   const prefill = correctionLines(orig);
   const operator = req.user?.name || req.user?.username || '';
-  const isReturn = isPurchaseReturnDoc(orig);
+  const isReturn = isInboundReturnDoc(orig);
 
   try {
     const tx = db.transaction(() => {
@@ -1012,18 +1091,18 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
   }
 
   // 更正采购退货：新数量必须落在原入库行的剩余可退额度内（把本单自身排除在外）
-  if (isPurchaseReturnDoc(orig) && draftLines.length > 0) {
+  if (isInboundReturnDoc(orig) && draftLines.length > 0) {
     try {
       validatePurchaseReturnLines(orig, draftLines, orig.doc_no);
     } catch (e) {
-      return res.status(e.status || 400).json({ error: e.message, code: e.code || 'RETURN_QTY_EXCEEDED', details: e.details });
+      return res.status(e.status || 400).json(withEn({ error: e.message, code: e.code || 'RETURN_QTY_EXCEEDED', details: e.details }));
     }
   }
 
   const origLines = postedOrigLines.filter(l => sign.absQty(l.qty) > 0);
   const newByKey = new Map(draftLines.map(l => [correctionLineKey(l), l]));
   const downstreamReturns = db.prepare(`SELECT doc_no, status FROM inbound_docs
-    WHERE txn_type='采购退货' AND origin_doc_no=?`).all(orig.doc_no);
+    WHERE txn_type IN ('采购退货','零星退货') AND origin_doc_no=?`).all(orig.doc_no);
 
   // 整单作废时不允许存在任何下游退货单：作废单不能被下游选作原单
   if (draftLines.length === 0 && downstreamReturns.length > 0) {
@@ -1038,7 +1117,7 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
   // 冲突 1：已确认退货量 > 新单对应行数量 → 拒绝，提示具体退货单
   const returnStatement = db.prepare(`SELECT DISTINCT d.doc_no FROM inbound r
     JOIN inbound_docs d ON d.doc_no = r.doc_no
-    WHERE r.origin_line_id = ? AND r.txn_type = '采购退货' AND d.status = 'posted'`);
+    WHERE r.origin_line_id = ? AND r.txn_type IN ('采购退货','零星退货') AND d.status = 'posted'`);
   const conflicts = [];
   origLines.forEach(ol => {
     const returned = getPurchaseReturnedQtyByLine(ol.id);
@@ -1118,7 +1197,7 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
             allowOver: req.body.over_receipt_confirm === true,
           });
         }
-        if (isPurchaseReturnDoc(orig)) {
+        if (isInboundReturnDoc(orig)) {
           validatePurchaseReturnLines(orig, draftLines, orig.doc_no);
         }
         origLines.forEach(ol => {
@@ -1146,10 +1225,10 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requirePerm('inbound'
       let retargeted = 0;
       if (reopen) {
         retargeted = db.prepare(`UPDATE inbound_docs SET origin_doc_no=?
-          WHERE txn_type='采购退货' AND origin_doc_no=?`).run(docNo, orig.doc_no).changes;
+          WHERE txn_type IN ('采购退货','零星退货') AND origin_doc_no=?`).run(docNo, orig.doc_no).changes;
         if (origLineIds.length > 0) {
           const returnLines = db.prepare(`SELECT id, origin_line_id FROM inbound
-            WHERE txn_type='采购退货' AND origin_line_id IN (${inPlaceholders(origLineIds)})`).all(...origLineIds);
+            WHERE txn_type IN ('采购退货','零星退货') AND origin_line_id IN (${inPlaceholders(origLineIds)})`).all(...origLineIds);
           const origById = new Map(origLines.map(l => [l.id, l]));
           const updLine = db.prepare("UPDATE inbound SET origin_line_id=? WHERE id=?");
           returnLines.forEach(r => {

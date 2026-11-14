@@ -221,7 +221,14 @@ Object.assign(App, {
 
   qStockTable() {
     const data = this._stockData;
-    if (!data) return;
+    if (!data) {
+      // 数据未就绪时给出明确占位，避免翻页/切页时静默无响应
+      const scroll = document.getElementById('q_stock_scroll');
+      if (scroll && !scroll.innerHTML.trim()) {
+        scroll.innerHTML = `<div class="empty-state"><p>${this.t('q_loading')}</p></div>`;
+      }
+      return;
+    }
     const tid = 'stock';
     const { st, sorted, vp, totalValue, alerts } = this.qStockRows();
     const pageData = this.paginate(sorted, st.page, st.pageSize);
@@ -736,7 +743,18 @@ Object.assign(App, {
       ] : []),
     ];
     const io = this.qCardMonth();
-    return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
+    const imgUrl = this.materialImageUrl(m);
+    // 列表不出图；详情卡在基本信息之后整行展示参考图片，无图则不渲染该行
+    const imageRow = imgUrl
+      ? `<div class="ref-image q-card-image">
+          <span class="ref-image-label">${this.t('mat_image')}</span>
+          <button type="button" class="ref-image-frame" title="${this.t('mat_image_enlarge')}" onclick="App.openImageLightbox(this.querySelector('img').src)">
+            <img src="${imgUrl}" alt="${esc(m.name)}">
+            <span class="ref-image-hint">${this.t('mat_image_hover')}</span>
+          </button>
+        </div>`
+      : '';
+    return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${imageRow}
       <dl class="pu-insp-meta q-card-meta q-card-stock">${stats.map(k => `<div><dt>${k[0]}</dt><dd class="q-num">${k[1]}</dd></div>`).join('')}</dl>
       <div class="q-card-month">${this.t('q_month_in_qty')} <strong style="color:var(--success)">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong style="color:var(--warning)">−${io.out}</strong></div>`;
   },
@@ -758,7 +776,7 @@ Object.assign(App, {
       return `<div class="table-wrap"><table class="q-flow" style="width:100%;font-size:12px"><thead><tr><th>${this.t('q_col_time')}</th><th>${this.t('ledger_doc')}</th><th class="text-center">${this.t('q_col_biz')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('q_col_balance')}</th></tr></thead><tbody>${body}</tbody></table></div>
         <button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('stock','flow')">${this.t('q_view_all')}</button>`;
     }
-    const biz = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘盈', 'ledger_adj_gain'], ['盘亏', 'ledger_adj_loss'], ['其它', 'ledger_adj_other'], ['期初结存', 'ledger_opening_flow']]
+    const biz = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['零星退货', 'in_misc_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘盈', 'ledger_adj_gain'], ['盘亏', 'ledger_adj_loss'], ['其它', 'ledger_adj_other'], ['期初结存', 'ledger_opening_flow']]
       .map(o => `<option value="${o[0]}">${this.t(o[1])}</option>`).join('');
     return `<div class="pu-toolbar" style="margin:0 0 10px;padding:0">
         <div class="pu-filter-inner">
@@ -792,7 +810,7 @@ Object.assign(App, {
   },
 
   qDocTypeLabel(type) {
-    const map = { '采购入库': 'in_purchase', '零星入库': 'in_other', '采购退货': 'in_return', '正常出库': 'out_normal', '领料退库': 'out_return', '盘点单': 'q_doc_stocktake' };
+    const map = { '采购入库': 'in_purchase', '零星入库': 'in_other', '采购退货': 'in_return', '零星退货': 'in_misc_return', '正常出库': 'out_normal', '领料退库': 'out_return', '盘点单': 'q_doc_stocktake' };
     return map[type] ? this.t(map[type]) : this.docEsc(type || '');
   },
 
@@ -805,6 +823,7 @@ Object.assign(App, {
     const s = String(no || '');
     if (s.startsWith('ST-')) return 'stocktake';
     if (s.startsWith('GIN-')) return 'outbound';
+    if (s.startsWith('RTS-')) return 'returns';
     return 'inbound';
   },
 
@@ -842,7 +861,7 @@ Object.assign(App, {
     if (!detail) return '';
     const esc = v => this.docEsc(v == null ? '' : v);
     const srcOf = x => {
-      if (x && (x.txn_type === '采购退货' || x.txn_type === '领料退库')) return 'returns';
+      if (x && (x.txn_type === '采购退货' || x.txn_type === '零星退货' || x.txn_type === '领料退库')) return 'returns';
       return this.qDocSourceOf(x && x.doc_no);
     };
     const items = [];
@@ -978,20 +997,22 @@ Object.assign(App, {
 
   // 退货/退库单据单独走 returns；单据查询行自带 source；领用人只产生出库单；其余按单号前缀定位模块
   qCardDocSrc(no, row) {
+    // 零星退货单在查询接口里 source 仍是 inbound，按独立前缀优先路由到退货模块
+    if (String(no || '').startsWith('RTS-')) return 'returns';
     if (row && row.source) return row.source;
     let bt = (row && row.business_type) || '';
     if (!bt && this.qBoard === 'stock') {
       const r = (this._qCardRows || []).find(x => x.doc_no === no);
       bt = (r && r.business_type) || '';
     }
-    if (bt === '采购退货' || bt === '领料退库') return 'returns';
+    if (bt === '采购退货' || bt === '零星退货' || bt === '领料退库') return 'returns';
     if (this.qBoard === 'receivers') return 'outbound';
     return this.qDocSourceOf(no);
   },
 
   // ========== 板块 3：单据查询 ==========
   qBoardDocs(panel) {
-    const types = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘点单', 'q_doc_stocktake']]
+    const types = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['零星退货', 'in_misc_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘点单', 'q_doc_stocktake']]
       .map(o => `<option value="${o[0]}">${this.t(o[1])}</option>`).join('');
     panel.innerHTML = `<div id="q-docs">
       <div class="pu-toolbar">
@@ -1079,7 +1100,7 @@ Object.assign(App, {
     ], rows.length);
     const cols = [
       { key: 'doc_no', label: this.t('ledger_doc') },
-      { key: 'doc_type', label: this.t('q_doc_type') },
+      { key: 'doc_type', label: this.t('q_doc_type'), value: r => this.qDocTypeLabel(r.doc_type) },
       { key: 'date', label: this.t('ledger_date'), value: r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at) },
       { key: 'party', label: this.t('q_doc_party') }
     ];
@@ -1215,7 +1236,7 @@ Object.assign(App, {
 
   qDocKindOf(source, d) {
     const type = this.qDocTypeOf(source, d);
-    if (type === '采购退货' || type === '领料退库') return 'returns';
+    if (type === '采购退货' || type === '零星退货' || type === '领料退库') return 'returns';
     return source === 'stocktake' ? 'stocktake' : source;
   },
 
@@ -1227,7 +1248,7 @@ Object.assign(App, {
     if (this._qDocsCard && this._qDocsCard.key === no && !insp.hidden) return;
     const st = {
       key: no,
-      source: source || this.qDocSourceOf(no),
+      source: this.qDocSourceOf(no) === 'returns' ? 'returns' : (source || this.qDocSourceOf(no)),
       tab: 'info',
       expanded: false,
       docNo: '', docExpanded: false,
@@ -1334,7 +1355,7 @@ Object.assign(App, {
       : `<tr><td colspan="${isSt ? 5 : (vp ? 5 : 3)}" class="text-center">${this.t('q_no_data')}</td></tr>`;
     const more = opts.maxLines && lines.length > opts.maxLines
       ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">${this.t('q_flow_more').replace('{n}', lines.length - opts.maxLines)}</div>` : '';
-    const kind = opts.kind || ((type === '采购退货' || type === '领料退库') ? 'returns' : (isSt ? 'stocktake' : source));
+    const kind = opts.kind || ((type === '采购退货' || type === '零星退货' || type === '领料退库') ? 'returns' : (isSt ? 'stocktake' : source));
     // 分段渲染：单据查询 / 领用人详情卡按页签取用，其余调用方不传 section 时保持整卡输出
     if (opts.section === 'meta') {
       return `<dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>`;
@@ -1507,7 +1528,7 @@ Object.assign(App, {
           `<td class="text-right">${r.doc_count}</td>`,
           `<td class="text-right">${r.material_kinds}</td>`,
           `<td class="text-right">${r.out_qty}</td>`,
-          `<td class="text-right">${r.returned_qty || ''}</td>`,
+          `<td class="text-right">${r.returned_qty == null ? '' : r.returned_qty}</td>`,
           `<td class="text-right"><strong>${r.net_qty}</strong></td>`,
         ];
         if (vp) cells.push(`<td class="text-right">${this.fmtMoney(r.amount || 0)}</td>`);
@@ -1706,7 +1727,8 @@ Object.assign(App, {
     // 无价格权限时 dashboard 不下发 total_value / category_values / 趋势金额
     const vp = 'total_value' in dash;
     const onHand = stock.reduce((s, m) => s + Number(m.on_hand || 0), 0);
-    const lowList = stock.filter(m => m.stock_status && m.stock_status !== '正常');
+    const lowList = stock.filter(m => m.stock_status && m.stock_status !== '正常'
+      && !(Number(m.on_hand) === 0 && Number(m.min_stock) === 0));
     // 4 个指标卡：库存金额/总量、物料种类、低库存、本月出入库金额（无价格权限时改用笔数）
     const kpis = [];
     kpis.push(vp
@@ -1849,7 +1871,7 @@ Object.assign(App, {
     const kpis = [[this.t('q_an_st_count'), d.summary.count]];
     if (vp) {
       kpis.push([this.t('q_an_st_amount'), this.fmtMoney(d.summary.stock_value)]);
-      kpis.push([this.t('q_an_st_share'), d.summary.share + '%']);
+      kpis.push([this.t('q_an_st_share'), Number(d.summary.share || 0).toFixed(2) + '%']);
     } else {
       kpis.push([this.t('q_an_st_qty'), d.rows.reduce((s, r) => s + Number(r.on_hand || 0), 0)]);
     }
@@ -1964,7 +1986,7 @@ Object.assign(App, {
       const s = d.summary[k];
       const amountRows = vp ? `
           <dt>${this.t('q_an_out_amount')}</dt><dd>${this.fmtMoney(s.out_amount)}</dd>
-          <dt>${this.t('q_an_share')}</dt><dd>${(s.share || 0) + '%'}</dd>
+          <dt>${this.t('q_an_share')}</dt><dd>${Number(s.share || 0).toFixed(2)}%</dd>
           <dt>${this.t('q_an_stock_amount')}</dt><dd>${this.fmtMoney(s.stock_value)}</dd>` : '';
       return `<button type="button" aria-pressed="${this._qAnAbc.cls === k}" onclick="App.qAnAbcClass('${k}')">
         <h4>${this.qAnClassBadge(k)} ${this.t('q_an_class_' + k.toLowerCase())}</h4>
@@ -1992,8 +2014,8 @@ Object.assign(App, {
         <td>${esc(r.code)}</td>
         <td title="${esc(r.name + (r.spec ? ' · ' + r.spec : ''))}"><span class="q-h-clip q-h-w-name">${esc(r.name)}${r.spec ? ' · ' + esc(r.spec) : ''}</span></td>
         ${vp ? `<td class="text-right">${this.fmtMoney(r.out_amount)}</td>` : ''}
-        ${vp ? `<td class="text-right">${(r.share * 100).toFixed(2)}%</td>` : ''}
-        ${vp ? `<td class="text-right">${(r.cum_share * 100).toFixed(2)}%</td>` : ''}
+        ${vp ? `<td class="text-right">${(Number(r.share || 0) * 100).toFixed(2)}%</td>` : ''}
+        ${vp ? `<td class="text-right">${(Number(r.cum_share || 0) * 100).toFixed(2)}%</td>` : ''}
         <td class="text-center">${this.qAnClassBadge(r.abc)}</td>
         <td class="text-right">${r.on_hand}</td>
         ${vp ? `<td class="text-right">${this.fmtMoney(r.stock_value)}</td>` : ''}
@@ -2137,6 +2159,7 @@ Object.assign(App, {
       '采购入库': ['↑', 'in_purchase'],
       '零星入库': ['↑', 'in_other'],
       '采购退货': ['↓', 'in_return'],
+      '零星退货': ['↓', 'in_misc_return'],
       '正常出库': ['↓', 'out_normal'],
       '领料退库': ['↑', 'out_return'],
       '盘盈': ['+', 'ledger_adj_gain'],

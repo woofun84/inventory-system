@@ -39,7 +39,17 @@ Object.assign(App, {
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
       const startIdx = (st.page - 1) * st.pageSize;
-      tbody = pageData.map((s, i) => `<tr><td class="text-center">${startIdx + i + 1}</td><td><strong>${s.name}</strong></td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td class="text-center">${this.rowActions('suppliers', `App.editSupplier(${s.id})`, `App.deleteSupplier(${s.id})`)}</td></tr>`).join('');
+      tbody = pageData.map((s, i) => {
+        const disabled = s.status === 'disabled';
+        const nameCell = `<strong>${s.name}</strong>${disabled ? ` <span class="badge badge-muted">${this.t('sup_status_disabled')}</span>` : ''}`;
+        const acts = [
+          this.can('suppliers', 'edit') ? `<span class="action-link" onclick="App.editSupplier(${s.id})">${this.t('edit')}</span>` : '',
+          disabled
+            ? (this.can('suppliers', 'edit') ? `<span class="action-link" onclick="App.enableSupplier(${s.id})">${this.t('sup_enable')}</span>` : '')
+            : (this.can('suppliers', 'delete') ? `<span class="action-link danger" onclick="App.deleteSupplier(${s.id})">${this.t('sup_disable')}</span>` : ''),
+        ].join('');
+        return `<tr><td class="text-center">${startIdx + i + 1}</td><td>${nameCell}</td><td>${s.contact || ''}</td><td>${s.phone || ''}</td><td>${s.remarks || ''}</td><td class="text-center">${acts}</td></tr>`;
+      }).join('');
     }
     document.getElementById('suppliers-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('suppliers-pager').innerHTML = this.renderPager(tid, sorted.length);
@@ -55,7 +65,15 @@ Object.assign(App, {
     });
   },
 
-  async deleteSupplier(id) { this.confirmDialog(this.t('cf_delete_supplier'), '', async () => { try { await this.api('/api/suppliers/' + id, 'DELETE'); this.toast(this.t('deleted')); this.renderSuppliers(); } catch (e) { this.toast(e.message, 'error'); } }); },
+  async deleteSupplier(id) { this.confirmDialog(this.t('cf_delete_supplier'), '', async () => { try { await this.api('/api/suppliers/' + id, 'DELETE'); this.toast(this.t('sup_status_disabled')); this.renderSuppliers(); } catch (e) { this.toast(e.message, 'error'); } }); },
+
+  async enableSupplier(id) {
+    try {
+      await this.api('/api/suppliers/' + id + '/enable', 'POST', {});
+      this.toast(this.t('sup_enable'));
+      this.renderSuppliers();
+    } catch (e) { this.toast(e.message, 'error'); }
+  },
 
   onSuppliersFilter() {
     const st = this.getTableState('suppliers');
@@ -81,6 +99,10 @@ Object.assign(App, {
         { key: 'units', title: this.t('set_units'), fields: ['name'], headers: [this.t('set_unit_name')] },
         { key: 'destinations', title: this.t('set_destinations'), fields: ['name'], headers: [this.t('set_dest_name')] }
       ];
+      if (data.destinationsEmpty) {
+        sections[2].hint = this.t('set_dest_unset_hint');
+        sections[2].count = 0;
+      }
       let html = '<div class="set-grid">';
       sections.forEach((s, i) => { html += this.renderParamCard(i + 1, s, data[s.key] || []); });
       html += '</div>';
@@ -107,7 +129,9 @@ Object.assign(App, {
     const rowsHtml = items.length
       ? items.map(item => {
         const cells = s.fields.map(f => '<td>' + this.docEsc(item[f] || '') + '</td>').join('');
-        const del = canDelete ? '<td class="text-center"><span class="action-link danger" onclick="App.deleteParam(\'' + s.key + '\',' + item.id + ')">' + this.t('delete') + '</span></td>' : '<td></td>';
+        const del = item.builtin
+          ? '<td class="text-center"></td>'
+          : canDelete ? '<td class="text-center"><span class="action-link danger" onclick="App.deleteParam(\'' + s.key + '\',' + item.id + ')">' + this.t('delete') + '</span></td>' : '<td></td>';
         return '<tr>' + cells + del + '</tr>';
       }).join('')
       : `<tr><td colspan="${s.headers.length + 1}" class="set-empty">${this.t('noData')}</td></tr>`;
@@ -118,7 +142,8 @@ Object.assign(App, {
       addRow = '<div class="set-add">' + inputs + '<button class="btn btn-primary btn-sm" onclick="App.addParam(\'' + s.key + '\')">+ ' + this.t('add') + '</button></div>';
     }
     return `<div class="pu-card">
-      <div class="pu-card-title"><span>${String(n).padStart(2, '0')}</span><div>${s.title}<small>${items.length}</small></div></div>
+      <div class="pu-card-title"><span>${String(n).padStart(2, '0')}</span><div>${s.title}<small>${s.count != null ? s.count : items.length}</small></div></div>
+      ${s.hint ? `<p class="set-note" style="margin:0 0 8px">${s.hint}</p>` : ''}
       <div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>
       ${addRow}</div>`;
   },
@@ -135,7 +160,7 @@ Object.assign(App, {
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_restore_title')}</b><p>${this.t('set_restore_desc')}</p></div>
         <div class="set-op-actions">
-          <input type="file" id="set_restore_file" accept=".db" class="set-file">
+          <input type="file" id="set_restore_file" accept=".zip,.db" class="set-file">
           <button class="btn btn-danger-outline" onclick="App.confirmRestore()">${this.t('set_restore_btn')}</button>
         </div>
       </div>
@@ -290,7 +315,7 @@ Object.assign(App, {
   renderDocNoRules(rules) {
     const canEdit = this.can('settings', 'edit');
     const labels = {
-      grn: this.t('in_purchase'), ret: this.t('in_return'),
+      grn: this.t('in_purchase'), ret: this.t('in_return'), rts: this.t('in_misc_return'),
       gin: this.t('out_normal'), git: this.t('out_return'),
       st: this.t('st_title'),
       po: this.t('pu_tab_orders')
@@ -319,20 +344,40 @@ Object.assign(App, {
     </div>`;
   },
 
-  docNoTypeKeys() { return ['grn', 'ret', 'gin', 'git', 'st', 'po']; },
+  docNoTypeKeys() { return ['grn', 'ret', 'rts', 'gin', 'git', 'st', 'po']; },
 
-  // 实时预览（纯前端拼接，不查库）
+  // 实时预览：取「当天真实下一号」（同前缀同日最大号 +1），规则改动时防抖刷新
   previewDocNo() {
+    const box = document.getElementById('docno_preview');
+    if (!box) return;
+    if (this._docNoPrevTimer) clearTimeout(this._docNoPrevTimer);
+    this._docNoPrevTimer = setTimeout(() => this.fetchDocNoPreview(), 200);
+  },
+
+  async fetchDocNoPreview() {
     const box = document.getElementById('docno_preview');
     if (!box) return;
     const date = String(box.dataset.date || '').replace(/-/g, '');
     const padEl = document.getElementById('docno_pad');
     let pad = parseInt(padEl && padEl.value, 10);
     if (!pad || pad < 1) pad = 1; if (pad > 8) pad = 8;
-    box.innerHTML = this.docNoTypeKeys().map(k => {
+    const prefixes = {};
+    this.docNoTypeKeys().forEach(k => {
       const el = document.getElementById('docno_' + k);
-      const prefix = String((el && el.value) || '').trim().toUpperCase() || '?';
-      return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted);font-family:monospace">${prefix}-${date}-${'1'.padStart(pad, '0')}</span>`;
+      prefixes[k] = String((el && el.value) || '').trim().toUpperCase();
+    });
+
+    let previews = {};
+    try {
+      const r = await this.api('/api/params/docno/preview', 'POST', { prefixes, pad, date });
+      previews = r.previews || {};
+    } catch (_) { /* 预览失败只影响预览，不阻塞设置页 */ }
+
+    const target = document.getElementById('docno_preview');
+    if (!target) return;
+    target.innerHTML = this.docNoTypeKeys().map(k => {
+      const text = previews[k] || `${prefixes[k] || '?'}-${date}-${'?'.repeat(pad)}`;
+      return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted);font-family:monospace">${this.docEsc(text)}</span>`;
     }).join('');
   },
 
@@ -367,7 +412,7 @@ Object.assign(App, {
       const blob = await res.blob();
       const cd = res.headers.get('Content-Disposition') || '';
       const m = /filename="?([^";]+)"?/i.exec(cd);
-      const name = m ? m[1] : 'inventory-backup.db';
+      const name = m ? m[1] : 'inventory-backup.zip';
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name;
@@ -420,8 +465,10 @@ Object.assign(App, {
       if (res.status === 401) { await this.handleUnauthorized(res); return; }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((this.lang === 'en' && data.error_en) ? data.error_en : (data.error || this.t('requestFailed')));
+      // 旧 .db 备份不含图片：恢复后图片为空，界面必须明确提示，不能让人误以为图片丢了
+      const okKey = data.legacy ? 'set_restore_ok_legacy' : 'set_restore_ok';
       this.showModal(`<h3>${this.t('set_restore_ok_title')}</h3>`,
-        `<p class="set-note" style="margin:0">${this.t('set_restore_ok', { name: data.backupFile || '' })}</p>`,
+        `<p class="set-note" style="margin:0">${this.t(okKey, { name: data.backupFile || '', images: data.images || 0 })}</p>`,
         this.t('close'), () => { this.closeModal(); location.reload(); });
     } catch (e) { this.toast(e.message, 'error'); }
   },

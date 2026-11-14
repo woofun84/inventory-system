@@ -285,10 +285,10 @@ function getStockSummary(opts = {}) {
     // 数量为 0 时金额必须是 0、均价显示 0（不返回 NaN / 空）
     const avgPrice = bal && bal.stock_qty !== 0 ? bal.avg_cost : 0;
 
-    // 库存状态
+    // 库存状态：未设置安全库存（0）且无库存的物料不构成补货/缺货预警
     let stockStatus;
     if (m.status === '停用') stockStatus = '停用';
-    else if (onHand <= 0) stockStatus = '缺货';
+    else if (onHand <= 0) stockStatus = Number(m.min_stock) > 0 ? '缺货' : '正常';
     else if (onHand <= m.min_stock) stockStatus = '补货';
     else stockStatus = '正常';
 
@@ -526,6 +526,8 @@ function getPurchaseScopeLines(scope, opts) {
 // 档 2 po/contract：按采购单/合同跨多张入库单合并退货，行 origin_line_id 仍指向具体入库行
 // 档 3 none    ：无原单（仅 admin/manager），单价手填、原因必填
 const PURCHASE_RETURN_TYPE = '采购退货';
+const MISC_RETURN_TYPE = '零星退货';
+const INBOUND_RETURN_TYPES = [PURCHASE_RETURN_TYPE, MISC_RETURN_TYPE];
 const RETURN_SOURCE_TYPES = ['采购入库', '零星入库'];
 const RETURN_TIER_VALUES = ['inbound', 'po', 'contract', 'none'];
 const RETURN_SOURCE_STATUSES = ['posted'];
@@ -537,8 +539,8 @@ const CONFIRMED_DOC_STATUS_SQL = "d.status = 'posted'";
 function getPurchaseReturnedQtyByLine(lineId, excludeDocNo) {
   let sql = `SELECT COALESCE(SUM(ABS(r.qty)),0) AS qty FROM inbound r
     JOIN inbound_docs d ON d.doc_no = r.doc_no
-    WHERE r.txn_type = ? AND r.origin_line_id = ? AND ${CONFIRMED_DOC_STATUS_SQL}`;
-  const args = [PURCHASE_RETURN_TYPE, Number(lineId) || 0];
+    WHERE r.txn_type IN (?,?) AND r.origin_line_id = ? AND ${CONFIRMED_DOC_STATUS_SQL}`;
+  const args = [PURCHASE_RETURN_TYPE, MISC_RETURN_TYPE, Number(lineId) || 0];
   if (excludeDocNo) { sql += ' AND r.doc_no <> ?'; args.push(excludeDocNo); }
   return Number(db.prepare(sql).get(...args).qty || 0);
 }
@@ -653,12 +655,22 @@ function getPurchaseReturnScopeOptions() {
   return { po, contract };
 }
 
-// 档 1 下拉候选：已过账的采购入库、零星入库
+// 档 1 下拉候选：采购退货只列采购入库
 function getPurchaseReturnOriginOptions() {
   return db.prepare(`SELECT doc_no, date, txn_type, supplier,
       (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no AND i.qty > 0) AS line_count
     FROM inbound_docs d
-    WHERE txn_type IN ('采购入库','零星入库')
+    WHERE txn_type = '采购入库'
+      AND status = 'posted'
+    ORDER BY date DESC, created_at DESC`).all();
+}
+
+// 档 1 下拉候选：零星退货只列零星入库，supplier 即原单的来源单位
+function getMiscReturnOriginOptions() {
+  return db.prepare(`SELECT doc_no, date, txn_type, supplier AS source_unit,
+      (SELECT COUNT(*) FROM inbound i WHERE i.doc_no = d.doc_no AND i.qty > 0) AS line_count
+    FROM inbound_docs d
+    WHERE txn_type = '零星入库'
       AND status = 'posted'
     ORDER BY date DESC, created_at DESC`).all();
 }
@@ -679,7 +691,7 @@ function collectPurchaseReturnSources(docLike, excludeDocNo) {
 // 返回 Map<origin_line_id, source line>，供调用方继承原行单价/采购明细核销号
 function validatePurchaseReturnLines(docLike, lines, excludeDocNo) {
   const tier = String(docLike.return_tier || '');
-  if (docLike.txn_type !== PURCHASE_RETURN_TYPE || tier === 'none' || !tier) return new Map();
+  if (!INBOUND_RETURN_TYPES.includes(docLike.txn_type) || tier === 'none' || !tier) return new Map();
   const sources = collectPurchaseReturnSources(docLike, excludeDocNo);
   const seen = new Map();
 
@@ -731,6 +743,8 @@ module.exports = {
   RECEIVED_BY_LINE,
   // 采购退货三档（第五批）
   PURCHASE_RETURN_TYPE,
+  MISC_RETURN_TYPE,
+  INBOUND_RETURN_TYPES,
   RETURN_SOURCE_TYPES,
   RETURN_TIER_VALUES,
   getPurchaseReturnedQtyByLine,
@@ -741,6 +755,7 @@ module.exports = {
   getPurchaseReturnScopeLines,
   getPurchaseReturnScopeOptions,
   getPurchaseReturnOriginOptions,
+  getMiscReturnOriginOptions,
   collectPurchaseReturnSources,
   validatePurchaseReturnLines,
 };

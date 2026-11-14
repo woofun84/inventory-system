@@ -55,7 +55,7 @@ Object.assign(App, {
       if (res.status === 401) {
         const d = await res.json().catch(() => ({}));
         if (d.code === 'SESSION_KICKED') this.handleKicked();
-        else this.logout();
+        else { this.saveSessionDraft(); this.gotoLogin('expired'); }
         return;
       }
       this.connMarkOnline();

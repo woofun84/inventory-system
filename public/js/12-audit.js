@@ -96,7 +96,7 @@
     // 部分枚举以中文原值入库（单据类型、存货状态等），英文界面需翻译；
     // 只在精确匹配时替换，用户自由文本（备注、供应商名）不受影响。
     auditEnumAlias: {
-      '采购入库': 'purchase_in', '零星入库': 'misc_in', '采购退货': 'purchase_return',
+      '采购入库': 'purchase_in', '零星入库': 'misc_in', '采购退货': 'purchase_return', '零星退货': 'misc_return',
       '正常出库': 'normal_out', '领料退库': 'return_in', '盘点单': 'stocktake',
       '盘盈': 'gain', '盘亏': 'loss', '其它': 'other', '期初结存': 'opening',
       '正常': 'normal', '补货': 'restock', '缺货': 'out_of_stock', '停用': 'disabled',
@@ -110,15 +110,64 @@
       return label === k ? null : label;
     },
 
+    // 对象的可读名称：新日志按「参数：类别-名称 / 参数：单号规则-采购入库」写入，
+    // 这里按语言翻译；同时兼容历史日志里的内部键名（preview/categories 等）。
+    auditTargetLabel(v) {
+      const s = String(v == null ? '' : v);
+      if (!s) return '';
+      const m = s.match(/^参数：(类别|单位|领用去向|单号规则)(?:-(.+))?$/);
+      if (m) {
+        const key = {
+          '类别': 'audit_target_categories', '单位': 'audit_target_units',
+          '领用去向': 'audit_target_destinations', '单号规则': 'audit_target_docno_rules',
+        }[m[1]];
+        let base = this.t(key);
+        if (!m[2]) return base;
+        const value = m[1] === '单号规则'
+          ? m[2].split('、').map(x => this.auditEnumLabel(x) || x).join(this.auditListSep())
+          : m[2];
+        return base + ' - ' + value;
+      }
+      const legacy = {
+        preview: 'audit_target_docno_preview', categories: 'audit_target_categories',
+        units: 'audit_target_units', destinations: 'audit_target_destinations', 'doc-no-rules': 'audit_target_docno_rules',
+      };
+      return legacy[s] ? this.t(legacy[s]) : s;
+    },
+
+    // 分隔符随语言变化：中文顿号/逗号，英文逗号/分号
+    auditListSep() { return this.lang === 'zh' ? '、' : ', '; },
+    auditPairSep() { return this.lang === 'zh' ? '，' : '; '; },
+    auditKvJoin(k, v) { return this.auditFieldLabel(k) + (this.lang === 'zh' ? '：' : ': ') + v; },
+
     auditPlainValue(v) {
       if (v == null) return '';
       if (typeof v === 'boolean') return this.t(v ? 'audit_val_yes' : 'audit_val_no');
-      if (Array.isArray(v)) return v.map(x => this.auditPlainValue(x)).join('、');
+      if (Array.isArray(v)) return v.map(x => this.auditPlainValue(x)).filter(Boolean).join(this.auditListSep());
       if (typeof v === 'object') {
-        return Object.keys(v).map(k => this.auditFieldLabel(k) + ' ' + this.auditPlainValue(v[k])).join('、');
+        return Object.keys(v).map(k => this.auditKvJoin(k, this.auditPlainValue(v[k]))).filter(Boolean).join(this.auditListSep());
       }
-      const mapped = this.auditEnumLabel(v);
-      return mapped == null ? String(v) : mapped;
+      const s = String(v);
+      // 中间件 summarize 的占位写法：数组写成「[n 项]」、对象写成「{…}」
+      const cnt = s.match(/^\[(\d+)\s*项\]$/);
+      if (cnt) return this.t('audit_val_items', { n: cnt[1] });
+      if (s === '{…}') return this.t('audit_val_nested');
+      const mapped = this.auditEnumLabel(s);
+      return mapped == null ? s : mapped;
+    },
+
+    // JSON 摘要对象 → 单行可读文本（模块操作日志与系统日志详情共用）
+    auditFieldsText(obj) {
+      const pairs = [];
+      Object.keys(obj || {}).forEach(k => {
+        const v = obj[k];
+        if (v === '' || v == null) return;
+        if (Array.isArray(v) && !v.length) return;
+        if (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length) return;
+        const text = this.auditPlainValue(v);
+        if (text) pairs.push(this.auditKvJoin(k, text));
+      });
+      return pairs.join(this.auditPairSep());
     },
 
     // 无 payload 时按模块 + 动作拼摘要（覆盖历史上 detail 为空的记录）
@@ -132,13 +181,14 @@
         if (r.action === 'create' || r.action === 'update') return t('audit_sum_settings');
       }
       const label = this.auditDocLabel(r.module) || this.auditModuleLabel(r.module);
-      const docPart = r.target ? ' ' + r.target : '';
+      const target = this.auditTargetLabel(r.target);
+      const docPart = target ? ' ' + target : '';
       const key = {
         create: 'audit_sum_create', update: 'audit_sum_update', delete: 'audit_sum_delete',
         confirm: 'audit_sum_confirm', void: 'audit_sum_void', load: 'audit_sum_load',
       }[r.action];
-      if (key) return t(key, { label, docPart, doc: r.target || '', orig: r.target || '', new: '' });
-      return [this.auditActionLabel(r.action), label, r.target].filter(Boolean).join(' ');
+      if (key) return t(key, { label, docPart, doc: target, orig: target, new: '' });
+      return [this.auditActionLabel(r.action), label, target].filter(Boolean).join(' ');
     },
 
     // 有 payload 时按动作类型挑选真实字段拼摘要
@@ -161,6 +211,9 @@
       }[a] || 'audit_sum_update';
       const withDoc = doc => t(actKey, { label, docPart: doc ? ' ' + doc : '' });
 
+      if (m === 'materials' && this._auditScalar(o.old_code)) {
+        return t('audit_sum_mat_code', { old: this._auditScalar(o.old_code), new: this._auditScalar(o.code) || r.target || '' });
+      }
       if (m === 'materials') {
         const code = this._auditScalar(o.code) || r.target || '';
         const name = this._auditScalar(o.name);
@@ -223,12 +276,12 @@
       if (typeof v === 'number') return escHtml(String(v));
       if (typeof v === 'string') {
         const mapped = this.auditEnumLabel(v);
-        return `<span class="audit-val">${escHtml(mapped == null ? v : mapped)}</span>`;
+        return `<span class="audit-val">${escHtml(mapped == null ? this.auditPlainValue(v) : mapped)}</span>`;
       }
       if (Array.isArray(v)) {
         if (!v.length) return nil;
         if (v.every(x => x == null || typeof x !== 'object')) {
-          return escHtml(v.map(x => this.auditPlainValue(x)).join('、'));
+          return escHtml(v.map(x => this.auditPlainValue(x)).filter(Boolean).join(this.auditListSep()));
         }
         return v.map((x, i) => `<div class="audit-sub"><div class="audit-sub-h">#${i + 1}</div>${this.auditFieldsHtml(x)}</div>`).join('');
       }
@@ -237,11 +290,11 @@
         if (!ks.length) return nil;
         const allObj = ks.every(k => v[k] && typeof v[k] === 'object' && !Array.isArray(v[k]));
         if (allObj) {
-          return ks.map(k => `<div class="audit-sub"><div class="audit-sub-h">${escHtml(k)}</div>${this.auditFieldsHtml(v[k])}</div>`).join('');
+          return ks.map(k => `<div class="audit-sub"><div class="audit-sub-h">${escHtml(this.auditFieldLabel(k))}</div>${this.auditFieldsHtml(v[k])}</div>`).join('');
         }
         const allScalar = ks.every(k => v[k] == null || typeof v[k] !== 'object');
         if (allScalar) {
-          return escHtml(ks.map(k => `${k} ${this.auditPlainValue(v[k])}`).join('、'));
+          return escHtml(ks.map(k => this.auditKvJoin(k, this.auditPlainValue(v[k]))).filter(Boolean).join(this.auditListSep()));
         }
         return this.auditFieldsHtml(v);
       }
@@ -267,7 +320,7 @@
         [this.t('audit_col_user'), who],
         [this.t('audit_col_module'), this.auditModuleLabel(r.module)],
         [this.t('audit_col_action'), this.auditActionLabel(r.action)],
-        [this.t('audit_col_target'), r.target || '—'],
+        [this.t('audit_col_target'), this.auditTargetLabel(r.target) || '—'],
         [this.t('audit_col_result'), ok ? this.t('audit_ok') : this.t('audit_fail') + ' ' + (r.status || '')],
         [this.t('audit_col_ip'), r.ip || '—'],
       ];
@@ -410,7 +463,7 @@
             <td><strong>${escHtml(r.username || '-')}</strong>${r.name ? `<div style="color:var(--text-muted);font-size:12px">${escHtml(r.name)} · ${escHtml(roleCell)}</div>` : ''}</td>
             <td>${escHtml(this.auditModuleLabel(r.module))}</td>
             <td>${escHtml(this.auditActionLabel(r.action))}</td>
-            <td>${escHtml(r.target || '')}</td>
+            <td>${escHtml(this.auditTargetLabel(r.target) || '')}</td>
             <td>${detailCell}</td>
             <td class="text-center">${resultCell}</td>
             <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${escHtml(r.ip || '')}</td>

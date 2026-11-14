@@ -65,6 +65,22 @@ function initSchema() {
     seeded_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
 
+  // ==================== 物料参考图片字段 ====================
+  // 图片文件存 uploads/materials/，库里只记相对路径与更新时间。
+  // materials 由 init-db.js 建表，这里对已有库做一次幂等的补列（新库建表语句已包含）。
+  const materialCols = db.prepare('PRAGMA table_info(materials)').all().map(c => c.name);
+  if (materialCols.length) {
+    if (!materialCols.includes('image_path')) db.exec("ALTER TABLE materials ADD COLUMN image_path TEXT DEFAULT ''");
+    if (!materialCols.includes('image_updated_at')) db.exec("ALTER TABLE materials ADD COLUMN image_updated_at TEXT DEFAULT ''");
+  }
+
+  // ==================== 供应商停用标记 ====================
+  // suppliers 由 init-db.js 建表；对已有库幂等补列（新库建表语句已包含）。
+  const supplierCols = db.prepare('PRAGMA table_info(suppliers)').all().map(c => c.name);
+  if (supplierCols.length && !supplierCols.includes('status')) {
+    db.exec("ALTER TABLE suppliers ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+  }
+
   // ==================== 物料档案唯一性约束 ====================
   // 唯一键：类别 + 名称 + 规格 + 品牌。比较时 trim 并忽略大小写，空值按空串（COALESCE）。
   // 建索引前先检测重复组：有冲突直接阻断启动并列出记录，不静默跳过、不自动合并。

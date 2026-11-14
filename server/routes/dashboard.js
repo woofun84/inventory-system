@@ -54,7 +54,7 @@ router.get('/api/dashboard', requirePerm('dashboard', 'view'), (req, res) => {
   for (const r of breakdownRaw) {
     let key = null;
     if (r.side === 'in') {
-      key = ({ '采购入库': 'purchase_in', '零星入库': 'misc_in', '采购退货': 'purchase_return' })[r.txn_type] || null;
+      key = ({ '采购入库': 'purchase_in', '零星入库': 'misc_in', '采购退货': 'purchase_return', '零星退货': 'misc_return' })[r.txn_type] || null;
     } else if (r.txn_type === '正常出库') {
       key = 'normal_out';
     } else if (r.txn_type === '领料退库') {
@@ -68,7 +68,7 @@ router.get('/api/dashboard', requirePerm('dashboard', 'view'), (req, res) => {
     compAgg[key].qty += r.qty * sign;
     compAgg[key].amount += r.amount * sign;
   }
-  const compKeys = ['purchase_in', 'misc_in', 'purchase_return', 'normal_out', 'return_with', 'return_without'];
+  const compKeys = ['purchase_in', 'misc_in', 'purchase_return', 'misc_return', 'normal_out', 'return_with', 'return_without'];
   const monthBreakdown = compKeys.map(k => {
     const v = compAgg[k] || { doc_count: 0, qty: 0, amount: 0 };
     return {

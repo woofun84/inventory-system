@@ -78,7 +78,7 @@
   var qs = new URLSearchParams(location.search);
   var reason = qs.get('reason') || '';
   var next = qs.get('next') || '';
-  if (!/^#[a-z]+$/.test(next)) next = ''; // 只接受站内页面 hash，杜绝开放跳转
+  if (!/^#[a-z]+(\?[^#\s]*)?$/.test(next)) next = ''; // 只接受站内页面 hash（可带查询参数），杜绝开放跳转
   if (reason === 'kicked') {
     var kickBox = document.getElementById('login-notice');
     kickBox.textContent = t.kicked;

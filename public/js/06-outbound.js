@@ -984,7 +984,7 @@ Object.assign(App, {
       'over-receipt': this.t('ibd_log_over'),
       delete: this.t('audit_act_delete')
     };
-    return m[a] || a;
+    return m[a] || this.auditActionLabel(a);
   },
 
   // 操作日志：与入库/采购统一渲染（ol.pu-log；动作 · 操作人 · 时间 + 详情 + 空态）
@@ -1291,7 +1291,7 @@ Object.assign(App, {
           const delBtn = `<button type="button" class="pu-edit-del" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</button>`;
           return `<tr>
             <td style="min-width:220px">${codeCell}</td>
-            <td style="min-width:100px">${qtyInput}</td>
+            <td style="min-width:100px">${qtyInput}<div class="line-error-tip" data-ob-qty-tip="${i}"></div></td>
             <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
             ${vp ? `<td class="pu-edit-amt" style="color:var(--text-muted)" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt" style="color:var(--text-muted)" data-line-amount="${i}">${refAmountText}</td>` : ''}
             <td style="min-width:140px">${remarksInput}</td>
@@ -1339,6 +1339,7 @@ Object.assign(App, {
     if (box) box.innerHTML = filterHtml + `<div class="table-wrap"><table class="pu-edit-lines"><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>` + sumHtml;
     const cnt = document.getElementById('ob-edit-line-count');
     if (cnt) cnt.textContent = lines.length ? ' · ' + lines.length : '';
+    this.obRefreshQtyHints();
   },
 
   // 参考单价：草稿态按来源估算；已过账单据显示实际成本
@@ -1472,7 +1473,27 @@ Object.assign(App, {
         amtCell.textContent = l.code ? this.fmtMoney((Number(l.qty) || 0) * this.obRefPriceAt(idx)) : '-';
       }
       this.refreshOutboundEditTotals();
+      this.obRefreshQtyHints();
     }
+  },
+
+  // 行内库存提示：按编码汇总本单数量，超量行红框 + 行内文案
+  obRefreshQtyHints() {
+    if (this._obIsReturn || !this._obEditLines) return;
+    const stock = this._outboundStockMap || {};
+    const sums = {};
+    this._obEditLines.forEach(l => { if (l.code) sums[l.code] = (sums[l.code] || 0) + (Number(l.qty) || 0); });
+    this._obEditLines.forEach((l, i) => {
+      const el = document.querySelector(`#ob-edit-lines .ob-edit-qty[data-idx="${i}"]`);
+      const tip = document.querySelector(`#ob-edit-lines [data-ob-qty-tip="${i}"]`);
+      const avail = l.code && stock[l.code] !== undefined && stock[l.code] !== null ? Number(stock[l.code]) : null;
+      const over = avail !== null && sums[l.code] > avail + 1e-6;
+      if (el) el.classList.toggle('error', over);
+      if (tip) {
+        tip.textContent = over ? this.t('obd_qty_over_stock', { n: avail }) : '';
+        tip.classList.toggle('show', over);
+      }
+    });
   },
 
   refreshOutboundEditTotals() {
@@ -1730,8 +1751,109 @@ Object.assign(App, {
     }
   },
 
+  // ===== 出库确认：库存预校验 + 成本重算差异 =====
+  // 确认前重新拉库存：避免编辑期间库存变化导致“点了确认才报错”
+  async obConfirmStockData() {
+    let stockMap = this._outboundStockMap || {};
+    let avgMap = this._outboundAvgMap || {};
+    try {
+      const rows = await this.api('/api/stock-summary');
+      stockMap = Object.fromEntries(rows.map(s => [s.code, s.on_hand]));
+      avgMap = Object.fromEntries(rows.map(s => [s.code, Number(s.avg_price) || 0]));
+      this._outboundStockMap = stockMap;
+      this._outboundAvgMap = avgMap;
+      if (this._obPriceVisibleByStock === null || this._obPriceVisibleByStock === undefined) {
+        this._obPriceVisibleByStock = rows.length > 0 ? this.hasField(rows[0], 'avg_price') : null;
+      }
+    } catch (e) {}
+    return { stockMap, avgMap };
+  },
+
+  obConfirmPriceVisible() {
+    return (this._obPriceVisibleByStock === null || this._obPriceVisibleByStock === undefined)
+      ? this.canViewPrice() : this._obPriceVisibleByStock;
+  },
+
+  // 逐行库存与成本汇总：普通出库按最新结存均价重算；退库按原行成本
+  obBuildConfirmSummary(lines, stockMap, avgMap, displayedAmount, isReturn) {
+    const needStock = !isReturn;
+    const sums = {};
+    (lines || []).forEach(l => { if (l.code) sums[l.code] = (sums[l.code] || 0) + (Number(l.qty) || 0); });
+    const shortages = [];
+    if (needStock) {
+      Object.keys(sums).forEach(code => {
+        const avail = stockMap && stockMap[code] !== undefined && stockMap[code] !== null ? Number(stockMap[code]) : null;
+        if (avail !== null && sums[code] > avail + 1e-6) shortages.push({ code, need: sums[code], avail });
+      });
+    }
+    const shortCodes = new Set(shortages.map(s => s.code));
+    const rows = (lines || []).filter(l => l.code).map(l => {
+      const avail = needStock && stockMap && stockMap[l.code] !== undefined && stockMap[l.code] !== null
+        ? Number(stockMap[l.code]) : null;
+      return { code: l.code, name: l.name || '', qty: Number(l.qty) || 0, avail, over: shortCodes.has(l.code) };
+    });
+    let recalc = 0;
+    (lines || []).forEach(l => {
+      if (!l.code) return;
+      const qty = Number(l.qty) || 0;
+      let price = 0;
+      if (isReturn) {
+        price = Number(l.cost_price) || 0;
+        if (!price && l.origin_line_id && this._obReturnableMap && this._obReturnableMap[String(l.origin_line_id)]) {
+          price = Number(this._obReturnableMap[String(l.origin_line_id)].cost_price) || 0;
+        }
+        if (!price && avgMap && avgMap[l.code] !== undefined) price = Number(avgMap[l.code]) || 0;
+      } else {
+        price = avgMap && avgMap[l.code] !== undefined ? Number(avgMap[l.code]) || 0 : 0;
+      }
+      recalc += qty * price;
+    });
+    const displayed = Number(displayedAmount) || 0;
+    return { rows, shortages, recalc, displayed, diff: recalc - displayed, needStock, isReturn };
+  },
+
+  obConfirmCostHtml(sum) {
+    const t = k => this.t(k);
+    return `<div class="ob-confirm-cost">`
+      + `<div><span>${t('ob_confirm_recalc')}</span><b>${this.fmtMoney(sum.recalc)}</b></div>`
+      + `<div><span>${t('ob_confirm_current')}</span><b>${this.fmtMoney(sum.displayed)}</b></div>`
+      + `<div class="${Math.abs(sum.diff) >= 0.005 ? 'ob-confirm-diff' : ''}"><span>${t('ob_confirm_diff')}</span><b>${sum.diff > 0 ? '+' : ''}${this.fmtMoney(sum.diff)}</b></div>`
+      + `</div>`;
+  },
+
+  obConfirmHtml(sum) {
+    const t = k => this.t(k);
+    const qtyTotal = sum.rows.reduce((s, r) => s + r.qty, 0);
+    let html = `<div class="ob-confirm-meta">${t(sum.isReturn ? 'obd_confirm_return_hint' : 'obd_confirm_hint')}</div>`
+      + `<div class="ob-confirm-meta">${t('obd_line_count', { n: sum.rows.length })} · ${t('out_total_qty')}: ${this.fmtQty(qtyTotal)}</div>`;
+    if (sum.needStock) {
+      html += `<table class="ob-confirm-lines"><thead><tr><th>${t('pu_material')}</th><th class="text-right">${t('out_qty')}</th><th class="text-right">${t('ob_confirm_avail')}</th></tr></thead><tbody>`
+        + sum.rows.map(r => `<tr class="${r.over ? 'ob-confirm-short' : ''}"><td>${this.ibEsc(r.code)}${r.name ? ' · ' + this.ibEsc(r.name) : ''}</td><td class="text-right">${this.fmtQty(r.qty)}</td><td class="text-right">${r.avail === null ? '-' : this.fmtQty(r.avail)}</td></tr>`).join('')
+        + `</tbody></table>`;
+      if (sum.shortages.length) html += `<div class="ob-confirm-warn">${t('ob_confirm_stock_short')}</div>`;
+    }
+    if (this.obConfirmPriceVisible()) html += this.obConfirmCostHtml(sum);
+    return html;
+  },
+
+  // 差异非 0 时二次确认；库存不足时确认按钮禁用
+  obShowConfirm(sum, doPost) {
+    const blocked = sum.shortages.length > 0;
+    const vp = this.obConfirmPriceVisible();
+    this.confirmDialog(this.t(sum.isReturn ? 'obd_confirm_return' : 'obd_confirm'), this.obConfirmHtml(sum), () => {
+      if (blocked) return;
+      if (vp && Math.abs(sum.diff) >= 0.005) {
+        this.confirmDialog(this.t('ob_confirm_diff_again'),
+          `${this.t('ob_confirm_diff_tip')}${this.obConfirmCostHtml(sum)}`,
+          () => doPost(), null, 'primary');
+      } else {
+        doPost();
+      }
+    }, null, 'primary', { okDisabled: blocked, okTitle: blocked ? this.t('ob_confirm_stock_short') : '' });
+  },
+
   // ========== 确认出库（从编辑页面） ==========
-  confirmOutboundDocFromEdit() {
+  async confirmOutboundDocFromEdit() {
     const docNo = this._obDocNo;
     const isReturn = !!this._obIsReturn;
 
@@ -1754,55 +1876,62 @@ Object.assign(App, {
       return;
     }
 
-    this.confirmDialog(this.t(isReturn ? 'obd_confirm_return' : 'obd_confirm'),
-      `${this.t(isReturn ? 'obd_confirm_return_hint' : 'obd_confirm_hint')}\n\n${this.t('obd_line_count', { n: lines.length })} | ${this.t('out_total_qty')}: ${lines.reduce((s, l) => s + (Number(l.qty) || 0), 0)}`,
-      async () => {
-        const body = {
-          lines: lines.map(l => ({
-            code: l.code,
-            qty: parseFloat(l.qty) || 0,
-            remarks: l.remarks || '',
-            origin_line_id: l.origin_line_id || 0
-          })),
-          origin_doc_no: this._obIsReturn ? this._obOriginDocNo : undefined,
-          return_reason: this._obNoOrigin ? (document.getElementById('ob_e_return_reason')?.value || '') : undefined,
-          date: document.getElementById('ob_e_date')?.value,
-          destination: document.getElementById('ob_e_destination')?.value,
-          receiver: document.getElementById('ob_e_receiver')?.value,
-          handler: document.getElementById('ob_e_handler')?.value,
-          remarks: document.getElementById('ob_e_remarks')?.value
-        };
+    // 当前页面展示的参考金额（刷新库存前取，用于和重算结果比较）
+    const displayed = (this._obEditLines || []).reduce(
+      (s, l, i) => s + (l.code ? (Number(l.qty) || 0) * this.obRefPriceAt(i) : 0), 0);
+    const fresh = await this.obConfirmStockData();
+    this.renderOutboundEditTable();
+    const sum = this.obBuildConfirmSummary(lines, fresh.stockMap, fresh.avgMap, displayed, isReturn);
+
+    const body = {
+      lines: lines.map(l => ({
+        code: l.code,
+        qty: parseFloat(l.qty) || 0,
+        remarks: l.remarks || '',
+        origin_line_id: l.origin_line_id || 0
+      })),
+      origin_doc_no: this._obIsReturn ? this._obOriginDocNo : undefined,
+      return_reason: this._obNoOrigin ? (document.getElementById('ob_e_return_reason')?.value || '') : undefined,
+      date: document.getElementById('ob_e_date')?.value,
+      destination: document.getElementById('ob_e_destination')?.value,
+      receiver: document.getElementById('ob_e_receiver')?.value,
+      handler: document.getElementById('ob_e_handler')?.value,
+      remarks: document.getElementById('ob_e_remarks')?.value
+    };
+
+    this.obShowConfirm(sum, async () => {
+      try {
+        await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/lines', 'PUT', body);
         try {
-          await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/lines', 'PUT', body);
-          try {
-            const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
-            this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
-            await this.openOutboundDoc(docNo);
-          } catch (e) {
-            if (e.code === 'INSUFFICIENT_STOCK') {
-              this.handleOutboundDocStockError(e, docNo);
-            } else if (e.code === 'NO_COST_BASIS') {
-              // 该物料从未有过正库存：0 成本入账需管理员显式确认
-              const codes = (e.details || []).map(d => d.code).join('、');
-              this.confirmDialog(this.t('cost_basis_none'),
-                `${this.t('cost_basis_none_tip')}\n\n${codes}`,
-                async () => {
-                  try {
-                    const r2 = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', { accept_no_basis: true });
-                    this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r2.line_count }));
-                    await this.openOutboundDoc(docNo);
-                  } catch (e2) {
-                    this.toast(e2.code === 'NO_BASIS_FORBIDDEN' ? this.t('cost_basis_none_forbidden') : e2.message, 'error');
-                  }
-                }, null, 'primary');
-            } else {
-              this.toast(e.message, 'error');
-            }
-          }
+          const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
+          this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
+          // 领料退库是从退货模块发起的，确认后回到退货模块自己的单据，不要跳到出库管理
+          if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
         } catch (e) {
-          this.toast(e.message, 'error');
+          if (e.code === 'INSUFFICIENT_STOCK') {
+            this.handleOutboundDocStockError(e, docNo);
+          } else if (e.code === 'NO_COST_BASIS') {
+            // 该物料从未有过正库存：0 成本入账需管理员显式确认
+            const codes = (e.details || []).map(d => d.code).join('、');
+            this.confirmDialog(this.t('cost_basis_none'),
+              `${this.t('cost_basis_none_tip')}\n\n${codes}`,
+              async () => {
+                try {
+                  const r2 = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', { accept_no_basis: true });
+                  this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r2.line_count }));
+                  if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
+                } catch (e2) {
+                  this.toast(e2.code === 'NO_BASIS_FORBIDDEN' ? this.t('cost_basis_none_forbidden') : e2.message, 'error');
+                }
+              }, null, 'primary');
+          } else {
+            this.toast(e.message, 'error');
+          }
         }
-      }, null, 'primary');
+      } catch (e) {
+        this.toast(e.message, 'error');
+      }
+    });
   },
 
   // ========== 更正重开（出库 / 退库） ==========
@@ -1894,7 +2023,7 @@ Object.assign(App, {
   },
 
   // 确认出库（从详情页面，草稿已有明细行）
-  confirmOutboundDoc() {
+  async confirmOutboundDoc() {
     const docNo = this._obDocNo;
     const d = this._obDetail;
     const isReturn = d?.txn_type === '领料退库';
@@ -1912,21 +2041,28 @@ Object.assign(App, {
       return;
     }
 
-    this.confirmDialog(this.t(isReturn ? 'obd_confirm_return' : 'obd_confirm'),
-      `${this.t(isReturn ? 'obd_confirm_return_hint' : 'obd_confirm_hint')}\n\n${this.t('obd_line_count', { n: lines.length })} | ${this.t('out_total_qty')}: ${lines.reduce((s, l) => s + Number(l.qty || 0), 0)}`,
-      async () => {
-        try {
-          const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
-          this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
-          await this.openOutboundDoc(docNo);
-        } catch (e) {
-          if (e.code === 'INSUFFICIENT_STOCK') {
-            this.handleOutboundDocStockError(e, docNo);
-          } else {
-            this.toast(e.message, 'error');
-          }
+    const stored = lines.reduce((s, l) => s + (Number(l.cost_amount) || 0), 0);
+    const fresh = await this.obConfirmStockData();
+    const refAmount = lines.reduce((s, l) => {
+      const qty = Number(l.qty) || 0;
+      const price = isReturn ? (Number(l.cost_price) || 0) : (fresh.avgMap[l.code] || 0);
+      return s + qty * price;
+    }, 0);
+    const sum = this.obBuildConfirmSummary(lines, fresh.stockMap, fresh.avgMap, stored > 0 ? stored : refAmount, isReturn);
+
+    this.obShowConfirm(sum, async () => {
+      try {
+        const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
+        this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
+        if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
+      } catch (e) {
+        if (e.code === 'INSUFFICIENT_STOCK') {
+          this.handleOutboundDocStockError(e, docNo);
+        } else {
+          this.toast(e.message, 'error');
         }
-      }, null, 'primary');
+      }
+    });
   },
 
   // 出库库存不足：负库存硬拦，直接提示错误，不提供强制放行
