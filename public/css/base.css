@@ -1,0 +1,373 @@
+/* ==========================================
+   基础层 —— CSS 变量、reset、主框架、侧边栏、右侧主内容
+   ========================================== */
+
+/* ==========================================
+   库存管理系统 — 全局样式
+   布局：CSS Grid 自适应全屏
+   ========================================== */
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #dbeafe;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --info: #0891b2;
+  --bg: #f0f2f5;
+  --card-bg: #ffffff;
+  --text: #1f2937;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1);
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --sidebar-active-bg: #2563eb;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover-bg: #334155;
+  /* 侧边栏前景色：独立于页面正文色，避免亮色主题下深底浅字失效 */
+  --sidebar-fg: #e2e8f0;
+  --sidebar-fg-muted: #94a3b8;
+  --sidebar-section-fg: #94a3b8;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --sidebar-w: 200px;
+
+  /* ===== 语义状态色（底色 / 前景 / 描边） ===== */
+  --success-bg: #dcfce7;
+  --success-fg: #15803d;
+  --warning-bg: #fef3c7;
+  --warning-fg: #b45309;
+  --warning-border: #fcd34d;
+  --danger-bg: #fee2e2;
+  --danger-fg: #b91c1c;
+  --danger-border: #fca5a5;
+  --info-bg: #e0f2fe;
+  --info-fg: #0369a1;
+  --info-border: #7dd3fc;
+  --neutral-bg: #f1f5f9;
+  --neutral-fg: #64748b;
+  --neutral-border: #e2e8f0;
+
+  /* 主色弱底 */
+  --primary-bg: #eff6ff;
+  --danger-ring: rgba(220,38,38,0.12);
+
+  /* 基础弱底色与卡片表面色 */
+  --bg-muted: #f1f5f9;
+  --surface: #ffffff;
+
+  /* ===== 滚动条：跟随主题，仅内容溢出时出现（overflow:auto） ===== */
+  --scrollbar-size: 10px;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+
+  /* ===== 表格 ===== */
+  --table-head-bg: #f1f5f9;
+  --table-head-fg: #475569;
+  --table-head-border: #dbe2ea;
+  --table-border: #edf1f5;
+  --table-row-alt: #fafbfd;
+  --table-row-hover: #eff6ff;
+  --table-row-selected: var(--primary-light);
+  --table-cell-fg: #334155;
+
+  /* ===== 图表 ===== */
+  --chart-1: #3b82f6;
+  --chart-2: #f59e0b;
+  --chart-3: #16a34a;
+  --chart-4: #dc2626;
+  --chart-5: #0891b2;
+  --chart-6: #8b5cf6;
+  --chart-7: #ec4899;
+  --chart-8: #14b8a6;
+  --chart-9: #f97316;
+  --chart-10: #6366f1;
+  --chart-text: #6b7280;
+  --chart-grid: rgba(229,231,235,0.5);
+
+  /* ===== Toast：固定深色底 + 白字，不随主题反转 ===== */
+  --toast-success-bg: #15803d;
+  --toast-error-bg: #b91c1c;
+  --toast-warning-bg: #b45309;
+  --toast-info-bg: #0369a1;
+  --toast-fg: #ffffff;
+
+  /* ===== 流向（入库 / 出库） ===== */
+  --flow-in: #16a34a;
+  --flow-out: #f59e0b;
+
+  /* ===== 数值语义 ===== */
+  --num-pos: #15803d;
+  --num-neg: #b91c1c;
+  --num-zero: #b45309;
+  --num-warn: #b45309;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+
+/* ========== 全屏主框架 ========== */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ========== 主布局：Grid 自适应 ========== */
+.layout {
+  display: grid !important;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ========== 侧边栏 ========== */
+/* 侧边栏为纵向 flex 列：标题 / 可滚动导航 / 底部用户块，避免依赖写死高度 */
+.sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-header {
+  flex: 0 0 auto;
+  background: var(--sidebar-bg);
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  min-width: 0;
+  overflow: hidden;
+}
+.sidebar-header h1 {
+  font-size: 16px;
+  color: #fff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sidebar-header h1 span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-header .subtitle {
+  font-size: 11px;
+  color: var(--sidebar-text);
+  margin-top: 4px;
+  padding-left: 26px;
+}
+
+/* 左侧导航 */
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 10px;
+  background: var(--sidebar-bg);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-user {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--border);
+  min-height: 48px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sidebar-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-user-role {
+  font-size: 11px;
+  color: var(--sidebar-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-section-label {
+  padding: 14px 10px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--sidebar-section-fg);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-section-label:first-child { padding-top: 2px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  margin-bottom: 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--sidebar-text);
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-item:hover {
+  background: var(--sidebar-hover-bg);
+  color: #fff;
+}
+.nav-item.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
+  font-weight: 600;
+}
+.nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ========== 右侧主内容 ========== */
+.main {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 顶部标题栏 — 固定不滚动 */
+.page-header,
+.page-header-row {
+  flex-shrink: 0;
+  padding: 16px 24px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-header { justify-content: flex-start; }
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.page-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 页头左侧：移动端 ☰ 与标题同一组，避免 space-between 把标题挤到中间 */
+.page-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.page-heading-text { min-width: 0; }
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 移动端抽屉遮罩（仅在窄屏媒体查询内启用） */
+.sidebar-overlay { display: none; }
+
+/* 主内容独立滚动 */
+.page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 20px 24px;
+}
+
+/* ========== 数据页面布局：工具栏固定顶部 + 表格独立滚动 + 分页固定底部 ========== */
+.data-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.data-toolbar {
+  flex-shrink: 0;
+  padding: 0 0 10px 0;
+}
+.data-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 6px;
+}
+.data-pager {
+  flex-shrink: 0;
+  padding-top: 8px;
+}
+
