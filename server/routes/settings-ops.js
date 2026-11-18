@@ -11,7 +11,7 @@
  *   POST /api/settings/data/reset             全清并重建默认管理员
  *
  * 安全约定：
- *  1. 以上接口都要求管理员角色，非管理员一律 403（不仅靠前端隐藏按钮）
+ *  1. 以上接口都要求 settings:ops 授权（admin 默认持有，可单独委派），无授权一律 403（不仅靠前端隐藏按钮）
  *  2. 清库与恢复必须带固定确认短语，短语不符直接拒绝
  *  3. 清库与恢复前先把当前库快照到 backups/，响应返回备份文件名
  *  4. 审计：本文件路由自行写审计（含备份文件名），middleware/audit.js 跳过 /api/settings/*
@@ -30,6 +30,7 @@ const autoBackupSvc = require('../services/auto-backup');
 const backupPackage = require('../services/backup-package');
 const materialImages = require('../services/material-images');
 const { seedGrants } = require('../services/user-permissions');
+const { hasGrant } = require('../permissions');
 const { INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('../config');
 
 const router = express.Router();
@@ -92,8 +93,8 @@ function autoBackup(prefix) {
 
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: '未登录' });
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: '仅管理员可执行该操作', code: 'FORBIDDEN' });
+  if (!hasGrant(req.grants, 'settings', 'ops')) {
+    return res.status(403).json({ error: '无运维操作权限（需设置-运维授权）', code: 'FORBIDDEN' });
   }
   next();
 }

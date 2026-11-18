@@ -17,6 +17,9 @@
 //     不叠加 inbound / outbound 权限。
 //   stocktake — view/manage/delete/correct/post（无整单作废）
 //   purchase — view/manage/delete/modify/post（采购单无更正、作废；modify 只管已确认单的再次编辑）
+//   settings 另有 ops（运维：备份/恢复/清库/重置/成本结转）；returns 另有 no_origin（无原单退货）；
+//   outbound/stocktake 另有 no_basis（零成本依据确认）。这三个动作只由 admin 默认持有，
+//   管理员可在用户管理单独勾选委派，原角色白名单判断统一改为 grant 判断（默认行为不变）。
 //   物料、供应商、参数、用户等其他模块维持 view/create/edit/delete 不变。
 //   audit 的 delete 用于清空全部系统日志，默认只给管理员。
 // 说明：独立的「库存调整」模块已取消，调整流水由盘点确认自动生成，
@@ -74,15 +77,15 @@ const MODULES = ['dashboard', 'inbound', 'outbound', 'returns', 'materials', 'pr
 const MODULE_ACTIONS = {
   dashboard: ['view'],
   inbound: ['view', 'manage', 'delete', 'correct', 'void', 'post'],
-  outbound: ['view', 'manage', 'delete', 'correct', 'void', 'post'],
-  returns: ['view', 'manage', 'delete', 'correct', 'void', 'post'],
+  outbound: ['view', 'manage', 'delete', 'correct', 'void', 'post', 'no_basis'],
+  returns: ['view', 'manage', 'delete', 'correct', 'void', 'post', 'no_origin'],
   materials: ['view', 'create', 'edit', 'delete'],
   price: ['view', 'edit'],
   suppliers: ['view', 'create', 'edit', 'delete'],
   purchase: ['view', 'manage', 'delete', 'modify', 'post'],
   query: ['view'],
-  stocktake: ['view', 'manage', 'delete', 'correct', 'post'],
-  settings: ['view', 'create', 'edit', 'delete'],
+  stocktake: ['view', 'manage', 'delete', 'correct', 'post', 'no_basis'],
+  settings: ['view', 'create', 'edit', 'delete', 'ops'],
   users: ['view', 'create', 'edit', 'delete'],
   audit: ['view', 'delete'],
 };

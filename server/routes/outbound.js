@@ -612,8 +612,8 @@ router.post('/api/outbound-docs/:docNo/confirm', requireDocAction('post'), (req,
 
   // 无成本依据（该物料从未有过正库存）：须管理员显式确认后带 accept_no_basis 重提
   const acceptNoBasis = req.body && req.body.accept_no_basis === true;
-  if (acceptNoBasis && (!req.user || req.user.role !== 'admin')) {
-    return res.status(403).json({ error: '仅管理员可确认按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
+  if (acceptNoBasis && !hasGrant(req.grants, 'outbound', 'no_basis')) {
+    return res.status(403).json({ error: '需 outbound:no_basis 授权方可按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
   }
 
   const operator = req.user?.name || req.user?.username || '';

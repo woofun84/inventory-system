@@ -35,10 +35,11 @@ const App = {
   },
 
   // 角色标签：字典缺失时回落原始值，避免界面出现 role_xxx 这类原始 key
+  // 回落值来自数据（role 字段），插入 innerHTML 前必须转义
   roleLabel(role) {
     const k = 'role_' + String(role || '');
     const v = this.t(k);
-    return v === k ? String(role || '') : v;
+    return v === k ? this.docEsc(String(role || '')) : v;
   },
 
   // 物料参考图地址：库内存相对路径 materials/<id>.<ext>，加更新时间做缓存失效
@@ -236,7 +237,10 @@ const App = {
 
   // 权限检查：can(模块, 操作)
   can(module, action) {
-    if (!this.user || !this.user.grants) return false;
+    if (!this.user) return false;
+    // admin 兜底：与后端 priceGranted 一致，即使授权表未展开也不会让管理员丢失 UI
+    if (this.user.role === 'admin') return true;
+    if (!this.user.grants) return false;
     const g = this.user.grants[module];
     return Array.isArray(g) && g.includes(action);
   },
@@ -462,9 +466,14 @@ const App = {
     }
     if (hash === 'query') { this.qPendingCode = code; this.qNav = true; }
     this.currentPage = hash;
-    // 权限拦截：无 view 权限的页面不允许访问
-    if (!this.can(hash, 'view') && hash !== 'dashboard') {
-      this.currentPage = 'dashboard';
+    // 权限拦截：无 view 权限的页面不允许访问（含 dashboard 本身）
+    if (!this.can(hash, 'view')) {
+      // 回退到第一个有 view 权限的页面；都没有则保持当前页，不渲染无权内容
+      const fallback = this.pageKeys.find(k => this.can(k, 'view'));
+      if (fallback && fallback !== hash) {
+        this.currentPage = fallback;
+        history.replaceState(null, '', '#' + fallback);
+      }
       this.toast(this.t('no_perm_msg'), 'error');
     }
     this.onPageEnter(this.currentPage);

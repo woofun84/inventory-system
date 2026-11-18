@@ -6,6 +6,7 @@ const db = require('../db');
 const costing = require('../services/costing');
 const { requirePerm } = require('../middleware/auth');
 const { hasGrant } = require('../permissions');
+const { grantsForUser } = require('../services/user-permissions');
 const { kwClause } = require('../utils/search');
 const {
   getAvailableStock,
@@ -28,9 +29,8 @@ const { isBusy, busyBody, businessError, withEn, stockBody, bizBody } = require(
 
 // ==================== 采购退货三档（2026-11 第五批） ====================
 // 档 1 inbound  关联原入库单；档 2 po/contract 关联采购单/合同；
-// 档 3 none 无原单（仅 admin/manager，供应商/单价/原因必填）。
+// 档 3 none 无原单（需 returns:no_origin 授权，admin 默认持有，供应商/单价/原因必填）。
 const RETURN_TIERS = ['inbound', 'po', 'contract', 'none'];
-const NO_ORIGIN_ROLES = ['admin', 'manager'];
 
 const INBOUND_RETURN_TYPES = ['采购退货', '零星退货'];
 
@@ -175,8 +175,8 @@ function validateReturnTierHeader(docLike, user) {
       throw routeFail('RETURN_REF_REQUIRED', '关联采购单/合同档必须选择原采购单号或合同号');
     }
   } else {
-    if (!NO_ORIGIN_ROLES.includes(user?.role)) {
-      const e = routeFail('RETURN_TIER_FORBIDDEN', '无原单退货仅管理员或主管可用');
+    if (!user || !hasGrant(grantsForUser(user), 'returns', 'no_origin')) {
+      const e = routeFail('RETURN_TIER_FORBIDDEN', '无原单退货需 returns:no_origin 授权');
       e.status = 403;
       throw e;
     }

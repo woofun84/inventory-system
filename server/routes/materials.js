@@ -44,12 +44,15 @@ function materialDupPayload(m, dup) {
   };
 }
 
-function openingLockedPayload(m) {
+function openingLockedPayload(m, canViewPrice) {
+  // 期初单价属价格信息：仅有 price:edit 无 price:view 的用户不得从报错细节里读到单价
+  const details = { code: m.code, opening_qty: m.opening_qty };
+  if (canViewPrice) details.opening_price = m.opening_price;
   return {
     code: 'MATERIAL_OPENING_LOCKED',
     error: '该物料已有出入库流水，期初数量与期初单价不可修改。期初业务日期固定为 1970-01-01，必须排在成本回放最前，事后改会倒挂历史成本',
     error_en: 'This material already has stock movements, so opening quantity and price cannot be changed. The opening entry is dated 1970-01-01 and must stay first in cost replay; editing it later would distort historical cost.',
-    details: { code: m.code, opening_qty: m.opening_qty, opening_price: m.opening_price },
+    details,
   };
 }
 
@@ -507,7 +510,7 @@ router.put('/api/materials/:code', requirePerm('materials', 'edit'), requirePric
       if (openingChanged && hasNonOpeningLedger(oldCode)) {
         const e = new Error('MATERIAL_OPENING_LOCKED');
         e.status = 409;
-        e.body = openingLockedPayload({ code: oldCode, opening_qty: cur.opening_qty, opening_price: cur.opening_price });
+        e.body = openingLockedPayload({ code: oldCode, opening_qty: cur.opening_qty, opening_price: cur.opening_price }, req.canViewPrice);
         throw e;
       }
       if (codeChanged) {

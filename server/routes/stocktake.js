@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('../db');
 const costing = require('../services/costing');
 const { requirePerm } = require('../middleware/auth');
+const { hasGrant } = require('../permissions');
 const { kwClause } = require('../utils/search');
 const {
   genStocktakeNo,
@@ -459,8 +460,8 @@ router.post('/api/stocktakes/:no/lines/:id/correct', requirePerm('stocktake', 'c
   }
 
   const acceptNoBasis = body.accept_no_basis === true;
-  if (acceptNoBasis && (!req.user || req.user.role !== 'admin')) {
-    return res.status(403).json({ error: '仅管理员可确认按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
+  if (acceptNoBasis && !hasGrant(req.grants, 'stocktake', 'no_basis')) {
+    return res.status(403).json({ error: '需 stocktake:no_basis 授权方可按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
   }
 
   const operator = operatorOf(req);
@@ -613,8 +614,8 @@ router.post('/api/stocktakes/:no/confirm', requirePerm('stocktake', 'post'), (re
 
   // 盘盈在结存为 0 且该物料从未有过正库存时没有成本依据，须管理员显式确认
   const acceptNoBasis = body.accept_no_basis === true;
-  if (acceptNoBasis && (!req.user || req.user.role !== 'admin')) {
-    return res.status(403).json({ error: '仅管理员可确认按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
+  if (acceptNoBasis && !hasGrant(req.grants, 'stocktake', 'no_basis')) {
+    return res.status(403).json({ error: '需 stocktake:no_basis 授权方可按 0 成本入账', code: 'NO_BASIS_FORBIDDEN' });
   }
 
   // 盘点期间库存变动检测（建单快照 vs 确认时账面）

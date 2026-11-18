@@ -46,6 +46,7 @@ Object.assign(App, {
   },
 
   async editUser(id) {
+    if (!this.can('users', 'edit')) { this.toast(this.t('no_perm_msg'), 'error'); return; }
     let u = { username: '', name: '', role: 'operator', status: 'active', grants: null };
     if (id) { u = this._usersData.find(d => d.id === id) || u; }
     let catalog;
@@ -66,6 +67,13 @@ Object.assign(App, {
         role: document.getElementById('u_role').value,
         status: document.getElementById('u_status').value,
       };
+      // 前端拦截把自己降级/停用：与后端 users.js:68-71 一致，避免点了才被拒
+      if (id && Number(id) === Number(this.user.id)) {
+        if (body.role !== 'admin' || body.status === 'disabled') {
+          this.toast(this.t('user_self_demote_blocked'), 'error');
+          return;
+        }
+      }
       if (!id) body.permissions = this.collectUserPerms();
       else if (body.role !== 'admin') body.permissions = this.collectUserPerms();
       const pwd = document.getElementById('u_password').value;
@@ -128,6 +136,8 @@ Object.assign(App, {
   },
 
   deleteUser(id) {
+    if (!this.can('users', 'delete')) { this.toast(this.t('no_perm_msg'), 'error'); return; }
+    if (Number(id) === Number(this.user.id)) { this.toast(this.t('user_self_delete_blocked'), 'error'); return; }
     this.confirmDialog(this.t('cf_delete_user'), this.t('cf_delete_user_msg'), async () => {
       try { await this.api('/api/users/' + id, 'DELETE'); this.toast(this.t('deleted')); this.renderUsers(); }
       catch (e) { this.toast(e.message, 'error'); }
