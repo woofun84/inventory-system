@@ -47,8 +47,8 @@
 (function() {
   var lang = localStorage.getItem('lang') || 'zh';
   var i18n = {
-    zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', hint: '初始管理员账号:admin，密码:admin123', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录' },
-    en: { title: 'Inventory Management System', sub: 'In/Out Tracking', user: 'Username', pass: 'Password', btn: 'Log In', hint: 'Initial administrator account: admin, password: admin123', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.' }
+    zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录' },
+    en: { title: 'Inventory Management System', sub: 'In/Out Tracking', user: 'Username', pass: 'Password', btn: 'Log In', hint: 'The initial administrator account is configured at deployment. Contact your system administrator for credentials.', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.' }
   };
   var t = i18n[lang] || i18n.zh;
   document.title = t.title;

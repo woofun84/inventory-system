@@ -308,14 +308,21 @@ tbody tr:last-child td { border-bottom: none; }
 
 
 /* ========== Toast ========== */
-.toast {
+.toast-stack {
   position: fixed;
   top: 20px;
   right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+.toast {
   padding: 12px 22px;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
-  z-index: 2000;
   font-size: 14px;
   font-weight: 500;
   animation: slideIn 0.2s ease;

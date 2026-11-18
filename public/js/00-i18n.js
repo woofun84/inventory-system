@@ -230,7 +230,7 @@ const I18N = {
     audit_act_cost_variance_settle: '成本差异结转',
     audit_act_auto_backup: '自动备份', audit_act_auto_backup_settings: '自动备份设置',
     st_normal: '正常', st_restock: '补货', st_out: '缺货', st_arrived: '已到货', st_not_arrived: '未到货', st_partial: '部分到货', st_no_detail: '无明细',
-    cf_delete_material: '确定删除物料', cf_delete_material_msg: '删除后不可恢复；已有单据或流水引用时会列出剩余内容并阻止删除。', cf_delete_supplier: '停用这个供应商？（下拉仍会显示，并标注「停用」）', cf_delete_param: '确定删除？', cf_warning: '⚠', page: '页', records: '条', pageSize: '每页', noData: '暂无数据', all: '全部',
+    cf_delete_material: '确定删除物料', cf_delete_material_msg: '删除后不可恢复；已有单据或流水引用时会列出剩余内容并阻止删除。', cf_delete_supplier: '停用这个供应商？（下拉仍会显示，并标注「停用」）', cf_delete_param: '确定删除？', cf_warning: '⚠', cf_info: 'ⓘ', page: '页', records: '条', pageSize: '每页', noData: '暂无数据', all: '全部',
     field_required: '此项为必填', field_number: '请输入有效数字', field_positive: '不能小于0',
     quick_filter_ph: '输入关键字筛选，空格分隔多个...',
     // 新增项
@@ -971,7 +971,7 @@ const I18N = {
     audit_act_cost_variance_settle: 'Settle Cost Variance',
     audit_act_auto_backup: 'Automatic Backup', audit_act_auto_backup_settings: 'Automatic Backup Settings',
     st_normal: 'Normal', st_restock: 'Restock', st_out: 'Out of Stock', st_arrived: 'Arrived', st_not_arrived: 'Not Arrived', st_partial: 'Partial', st_no_detail: 'No Lines',
-    cf_delete_material: 'Delete material', cf_delete_material_msg: 'This cannot be undone. If documents or movements still reference it, the remaining items are listed and deletion is blocked.', cf_delete_supplier: 'Disable this supplier? (Still listed in dropdowns with a Disabled tag)', cf_delete_param: 'Are you sure to delete?', cf_warning: '⚠', page: 'Page', records: 'records', pageSize: 'Per page', noData: 'No data', all: 'All',
+    cf_delete_material: 'Delete material', cf_delete_material_msg: 'This cannot be undone. If documents or movements still reference it, the remaining items are listed and deletion is blocked.', cf_delete_supplier: 'Disable this supplier? (Still listed in dropdowns with a Disabled tag)', cf_delete_param: 'Are you sure to delete?', cf_warning: '⚠', cf_info: 'ⓘ', page: 'Page', records: 'records', pageSize: 'Per page', noData: 'No data', all: 'All',
     field_required: 'This field is required', field_number: 'Please enter a valid number', field_positive: 'Cannot be negative',
     quick_filter_ph: 'Type keywords to filter, space separated...',
     // New items

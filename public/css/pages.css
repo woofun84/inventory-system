@@ -7,10 +7,14 @@
    响应式 — 平板和手机
    ========================================== */
 
-@media (max-width: 768px) {
+/* —— 侧边栏折叠为抽屉 ——
+   断点从 768px 提到 1024px：768–1024px 区间若仍常驻侧栏（约 200px），
+   主区被压到 ~620px，物料档案等宽表会被截断且提前触发横滚。
+   在 1024px 及以下改为抽屉后主区全宽，表格可用宽度显著改善。
+   注意：这里只折叠侧栏；内边距、指标卡、图表等仍按各自断点（768/480）生效。 */
+@media (max-width: 1024px) {
   :root { --sidebar-w: 0px; }
 
-  /* —— 侧边栏改为抽屉：默认收起，点页头 ☰ 展开 —— */
   .sidebar {
     position: fixed;
     top: 0;
@@ -38,7 +42,9 @@
   body.nav-open .sidebar-overlay { display: block; }
 
   .nav-toggle { display: inline-flex; }
+}
 
+@media (max-width: 768px) {
   .page-header,
   .page-header-row { padding: 12px; }
   .page-body { padding: 12px; }
@@ -195,6 +201,8 @@
   margin-bottom: 12px;
   text-align: center;
 }
+.confirm-icon--warn { color: var(--danger); }
+.confirm-icon--info { color: var(--info); }
 .confirm-title {
   font-size: 16px;
   font-weight: 700;

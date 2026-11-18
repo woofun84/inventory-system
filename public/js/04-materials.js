@@ -304,7 +304,7 @@ Object.assign(App, {
 
   matBatchBody() {
     return `<div style="margin-bottom:10px;color:var(--text-muted);font-size:12px">${this.t('mat_batch_hint')}</div>
-      <div id="mat-batch-summary" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid var(--danger);border-radius:6px;background:rgba(220,53,69,.08);color:var(--danger);font-size:13px"></div>
+      <div id="mat-batch-summary" class="ui-note ui-note--danger" style="display:none"></div>
       <div id="mat-batch-table-wrap">${this.matBatchTableHtml()}</div>
       <div style="margin-top:10px"><button type="button" class="btn btn-outline btn-sm" onclick="App.matBatchAddRow()">+ ${this.t('mat_batch_add_row')}</button></div>`;
   },

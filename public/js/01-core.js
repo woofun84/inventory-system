@@ -718,10 +718,16 @@ const App = {
   },
 
   toast(msg, type = 'success') {
+    let stack = document.getElementById('toast-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.className = 'toast-stack'; stack.id = 'toast-stack';
+      document.body.appendChild(stack);
+    }
     const el = document.createElement('div');
     el.className = `toast toast-${type}`; el.textContent = msg;
-    document.body.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
+    stack.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => { el.remove(); if (stack && !stack.children.length) stack.remove(); }, 300); }, 2500);
   },
 
   confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger', opts = {}) {
@@ -729,8 +735,11 @@ const App = {
     if (document.getElementById('confirm-overlay')) return;
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
-    const okCls = intent === 'primary' ? 'btn-primary' : 'btn-danger';
-    overlay.innerHTML = `<div class="confirm-box"><div class="confirm-icon">${this.t('cf_warning')}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
+    const isPrimary = intent === 'primary';
+    const okCls = isPrimary ? 'btn-primary' : 'btn-danger';
+    const icon = isPrimary ? this.t('cf_info') : this.t('cf_warning');
+    const iconCls = isPrimary ? 'confirm-icon confirm-icon--info' : 'confirm-icon confirm-icon--warn';
+    overlay.innerHTML = `<div class="confirm-box"><div class="${iconCls}">${icon}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
     if (opts && opts.okDisabled) {
       const okBtn = document.getElementById('cf-ok');
