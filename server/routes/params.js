@@ -59,17 +59,30 @@ router.post('/api/params/:type', requirePerm('settings', 'create'), (req, res) =
 
 // 删除前查引用：类别/单位被物料档案按名称文本引用，去向被出库单按名称文本引用。
 // 都是纯文本字段（无外键），若不拦截会留下孤儿值，筛选下拉里消失但历史数据仍在。
-// 返回被引用数量，供后端拒绝并提示先转移，避免数据口径不一致。
+// 一个字典项可能被多张表引用（如去向同时写在出库单表头 outbound_docs 和明细 outbound），
+// 因此每项配置为 {table,col} 数组，任一命中即拒绝删除。
 const REF_CHECK = {
-  categories: { table: 'materials', col: 'category' },
-  units: { table: 'materials', col: 'unit' },
-  destinations: { table: 'outbound', col: 'destination' },
+  categories: [{ table: 'materials', col: 'category' }],
+  units: [{ table: 'materials', col: 'unit' }],
+  // 领用去向：明细表 outbound 与单据头表 outbound_docs 都存去向名称，两处都要查。
+  // 只查明细时，若某单据被清空明细只剩表头，删去向会漏检并留下孤儿文本。
+  destinations: [
+    { table: 'outbound', col: 'destination' },
+    { table: 'outbound_docs', col: 'destination' },
+  ],
 };
 
 function referenceCount(type, name) {
-  const ref = REF_CHECK[type];
-  if (!ref || !name) return 0;
-  return db.prepare(`SELECT COUNT(*) n FROM ${ref.table} WHERE ${ref.col}=?`).get(name).n;
+  const refs = REF_CHECK[type];
+  if (!refs || !name) return 0;
+  let total = 0;
+  for (const ref of refs) {
+    // 老库可能没有新表，跳过不存在的表避免启动/删除报错
+    const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(ref.table);
+    if (!exists) continue;
+    total += db.prepare(`SELECT COUNT(*) n FROM ${ref.table} WHERE ${ref.col}=?`).get(name).n;
+  }
+  return total;
 }
 
 router.delete('/api/params/:type/:id', requirePerm('settings', 'delete'), (req, res) => {
