@@ -9,8 +9,7 @@ const docno = require('../services/docno');
 
 const router = express.Router();
 
-// 领用去向默认常用项：现已落库为真实记录（见 db.js 的 destinations_seeded 补种），
-// 保留此常量仅为文档说明用途，接口始终读真实表，不再返回不可删除的虚拟内置项。
+// 领用去向不预设：destinations 表初始为空，全部由用户自行增删；接口始终读真实表。
 const PARAM_LABELS = { categories: '类别', units: '单位', destinations: '领用去向' };
 
 // --- 参数 ---
