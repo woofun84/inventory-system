@@ -5,8 +5,9 @@
  *  1. 频率由管理员在「参数设置」里选择：每小时 / 每天 / 每周（每天、每周可指定具体时刻，每周可指定星期）。
  *  2. 每次执行都覆盖同一份文件 backups/auto-backup-latest.zip，只保留最新一份，
  *     不产生历史备份堆积；危险操作（清库 / 恢复）前的临时备份仍走 settings-ops.js 的时间戳命名。
- *  3. 设置存在 params 表（key = auto_backup），重启后仍然生效；
- *     同时记录 last_run_at（毫秒时间戳），重启后若发现已过期会立即补一次。
+ *  3. 配置存在 params 表（key = auto_backup），运行状态（last_run_at/last_error）单独存
+ *    key = auto_backup_state，避免每次备份都覆写配置；读时兼容旧版本把状态混在配置里的格式。
+ *    重启后若发现已过期会立即补一次。
  *  4. 备份包与手动下载一致：数据库快照 + 物料图片 + manifest，先写 .tmp 再改名替换，
  *     避免写入中途留下半个文件。旧版本留下的 auto-backup-latest.db 不会被自动删除。
  *  5. 定时任务由 server.js 启动时调用 start() 注册，进程内单实例。
@@ -20,6 +21,7 @@ const backupPackage = require('./backup-package');
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, '..', '..', 'backups');
 const FILE_NAME = 'auto-backup-latest.zip';
 const PARAM_KEY = 'auto_backup';
+const STATE_KEY = 'auto_backup_state';
 const TICK_MS = 30 * 1000;
 
 const MODES = ['hourly', 'daily', 'weekly'];
@@ -46,28 +48,47 @@ function clampInt(v, min, max, fallback) {
   return n;
 }
 
-// 读取设置：任何字段非法都回落默认值，配置损坏不影响系统启动
+// 读取设置：配置为 auto_backup，运行状态为 auto_backup_state；
+// 兼容旧版本把 last_run_at/last_error 混在配置里的格式（独立 key 缺字段时取配置里的旧值）。
+// 任何字段非法都回落默认值，配置损坏不影响系统启动。
 function read() {
   let saved = {};
+  let state = {};
   try {
     const row = db.prepare('SELECT value FROM params WHERE key=?').get(PARAM_KEY);
     if (row && row.value) saved = JSON.parse(row.value) || {};
   } catch (e) { /* 配置损坏时用默认值 */ }
+  try {
+    const row = db.prepare('SELECT value FROM params WHERE key=?').get(STATE_KEY);
+    if (row && row.value) state = JSON.parse(row.value) || {};
+  } catch (e) { /* 状态损坏时用默认值 */ }
+  const lastRun = state.last_run_at !== undefined ? state.last_run_at : saved.last_run_at;
+  const lastErr = state.last_error !== undefined ? state.last_error : saved.last_error;
   return {
     enabled: !!saved.enabled,
     mode: MODES.includes(saved.mode) ? saved.mode : DEFAULTS.mode,
     hour: clampInt(saved.hour, 0, 23, DEFAULTS.hour),
     minute: clampInt(saved.minute, 0, 59, DEFAULTS.minute),
     weekday: WEEKDAYS.includes(Number(saved.weekday)) ? Number(saved.weekday) : DEFAULTS.weekday,
-    last_run_at: clampInt(saved.last_run_at, 0, Number.MAX_SAFE_INTEGER, 0),
-    last_error: typeof saved.last_error === 'string' ? saved.last_error : '',
+    last_run_at: clampInt(lastRun, 0, Number.MAX_SAFE_INTEGER, 0),
+    last_error: typeof lastErr === 'string' ? lastErr : '',
   };
 }
 
+const upsertParam = db.prepare(`INSERT INTO params (key, value) VALUES (?, ?)
+                                ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+
+// 写入时拆分：运行态只写 auto_backup_state，配置只写 auto_backup（不再被运行态频繁覆写）
 function write(next) {
   const s = { ...read(), ...next };
-  db.prepare(`INSERT INTO params (key, value) VALUES (?, ?)
-              ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(PARAM_KEY, JSON.stringify(s));
+  const cfg = {
+    enabled: s.enabled, mode: s.mode, hour: s.hour, minute: s.minute, weekday: s.weekday,
+  };
+  const state = { last_run_at: s.last_run_at, last_error: s.last_error };
+  db.transaction(() => {
+    upsertParam.run(PARAM_KEY, JSON.stringify(cfg));
+    upsertParam.run(STATE_KEY, JSON.stringify(state));
+  })();
   return s;
 }
 

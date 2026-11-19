@@ -517,6 +517,15 @@ router.post('/api/settings/data/clear-business', requireAdmin, (req, res) => {
 // ==================== 4) 全清（重置） ====================
 router.post('/api/settings/data/reset', requireAdmin, (req, res) => {
   if ((req.body || {}).confirm !== CONFIRM_PHRASES.reset) return confirmMismatch(res);
+  // 全库重置不可逆：除固定短语外，必须再校验当前管理员密码，防止他人趁会话未锁执行
+  const pwd = (req.body || {}).password;
+  if (!pwd || typeof pwd !== 'string') {
+    return res.status(400).json({ error: '请输入当前账号密码以确认重置', code: 'PASSWORD_REQUIRED' });
+  }
+  const me = db.prepare('SELECT password_hash FROM users WHERE id=?').get(req.user.id);
+  if (!me || !bcrypt.compareSync(pwd, me.password_hash)) {
+    return res.status(403).json({ error: '密码不正确，重置已取消', code: 'PASSWORD_MISMATCH' });
+  }
   let backupName = '';
   try {
     backupName = autoBackup('inventory-before-reset');

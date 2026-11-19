@@ -12,6 +12,8 @@
  *     注：库存调整（原 ADJ）已并入盘点，无独立单号。
  *  3. 序号取「同前缀同日期已有编号的最大号 +1」，不用 COUNT，
  *     删掉中间号后也不会与既有单号重复。
+ *  4. dateStyle 控制日期段格式：full=YYYYMMDD（默认，历史行为不变）/ month=YYYYMM。
+ *     默认 full，老库无需迁移；切换只影响之后生成的新单号，历史单号不动。
  */
 const db = require('../db');
 
@@ -28,6 +30,16 @@ const DEFAULT_PREFIXES = {
 
 // 默认序号位数
 const DEFAULT_PAD = 4;
+
+// 日期段格式：full=YYYYMMDD / month=YYYYMM，默认 full 保持历史行为
+const DATE_STYLES = ['full', 'month'];
+const DEFAULT_DATE_STYLE = 'full';
+
+// 按格式把 'YYYY-MM-DD'（或其前缀串）转换为单号里的日期段
+function dateSegment(date, style) {
+  const d = String(date || '').slice(0, 10).replace(/-/g, '');
+  return style === 'month' ? d.slice(0, 6) : d;
+}
 
 // 每种单据类型的展示名与「查重用到的表 + 单号列」
 const TYPES = {
@@ -63,12 +75,15 @@ function getRules() {
   const p = Number(saved.pad);
   const pad = (Number.isInteger(p) && p >= 1 && p <= 8) ? p : DEFAULT_PAD;
 
-  return { prefixes, pad };
+  const dateStyle = DATE_STYLES.includes(saved.dateStyle) ? saved.dateStyle : DEFAULT_DATE_STYLE;
+
+  return { prefixes, pad, dateStyle };
 }
 
 // 校验一组编号规则，返回错误信息（null 表示通过）
-function validateRules(prefixes, pad) {
+function validateRules(prefixes, pad, dateStyle) {
   if (!prefixes || typeof prefixes !== 'object') return '编号规则格式不正确';
+  if (dateStyle !== undefined && !DATE_STYLES.includes(dateStyle)) return '日期格式无效';
   const normalized = {};
   for (const k of TYPE_KEYS) {
     const v = prefixes[k];
@@ -88,17 +103,19 @@ function validateRules(prefixes, pad) {
 }
 
 // 保存编号规则（调用方需保证已通过权限校验）
-function setRules(prefixes, pad) {
-  const err = validateRules(prefixes, pad);
+function setRules(prefixes, pad, dateStyle) {
+  // 未传（老调用）时用默认值保持兼容；显式传入非法值则拒绝，不能静默改写用户意图
+  const style = (dateStyle === undefined || dateStyle === null) ? DEFAULT_DATE_STYLE : dateStyle;
+  const err = validateRules(prefixes, pad, style);
   if (err) { const e = new Error(err); e.invalid = true; throw e; }
 
   const normalized = {};
   TYPE_KEYS.forEach(k => { normalized[k] = String(prefixes[k]).trim().toUpperCase(); });
-  const value = JSON.stringify({ prefixes: normalized, pad: Number(pad) });
+  const value = JSON.stringify({ prefixes: normalized, pad: Number(pad), dateStyle: style });
 
   db.prepare(`INSERT INTO params (key, value) VALUES ('doc_no_rules', ?)
               ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(value);
-  return { prefixes: normalized, pad: Number(pad) };
+  return { prefixes: normalized, pad: Number(pad), dateStyle: style };
 }
 
 // 生成单据号
@@ -108,9 +125,9 @@ function genDocNo(type, date) {
   const t = TYPES[type];
   if (!t) throw new Error('未知单据类型: ' + type);
 
-  const { prefixes, pad } = getRules();
+  const { prefixes, pad, dateStyle } = getRules();
   const prefix = prefixes[type];
-  const d = String(date || '').slice(0, 10).replace(/-/g, '');
+  const d = dateSegment(date, dateStyle);
   const like = `${prefix}-${d}-%`;
 
   let maxSeq = 0;
@@ -158,11 +175,11 @@ function compareDocNo(a, b) {
 
 // 预览下一号：按「候选前缀 + 位数 + 指定日期」计算，不写库、不占用号段
 // 供参数设置页在规则尚未保存时显示真实的下一号
-function previewDocNo(type, date, prefix, pad) {
+function previewDocNo(type, date, prefix, pad, dateStyle) {
   const t = TYPES[type];
   if (!t) return '';
   const p = String(prefix || '').trim().toUpperCase();
-  const d = String(date || '').slice(0, 10).replace(/-/g, '');
+  const d = dateSegment(date, dateStyle);
   if (!p || !d) return '';
   const like = `${p}-${d}-%`;
 
@@ -183,6 +200,8 @@ function previewDocNo(type, date, prefix, pad) {
 module.exports = {
   DEFAULT_PREFIXES,
   DEFAULT_PAD,
+  DATE_STYLES,
+  DEFAULT_DATE_STYLE,
   TYPES,
   TYPE_KEYS,
   getRules,

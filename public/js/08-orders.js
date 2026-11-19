@@ -322,6 +322,11 @@ Object.assign(App, {
       po: this.t('pu_tab_orders')
     };
     const dis = canEdit ? '' : 'disabled';
+    const dateStyles = rules.dateStyles || ['full', 'month'];
+    const curStyle = rules.dateStyle || 'full';
+    const styleLabels = { full: this.t('set_docno_date_full'), month: this.t('set_docno_date_month') };
+    const styleOptions = dateStyles.map(s =>
+      `<option value="${s}" ${s === curStyle ? 'selected' : ''}>${this.docEsc(styleLabels[s] || s)}</option>`).join('');
     const inputs = this.docNoTypeKeys().map(k => {
       const v = (rules.prefixes && rules.prefixes[k]) || '';
       return `<div class="form-group" style="min-width:150px"><label>${labels[k] || k}</label>` +
@@ -337,6 +342,8 @@ Object.assign(App, {
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">${inputs}
         <div class="form-group" style="min-width:110px"><label>${this.t('set_docno_pad')}</label>
           <input id="docno_pad" type="number" min="1" max="8" value="${rules.pad}" ${dis} oninput="App.previewDocNo()"></div>
+        <div class="form-group" style="min-width:150px"><label>${this.t('set_docno_date_style')}</label>
+          <select id="docno_date_style" ${dis} onchange="App.previewDocNo()">${styleOptions}</select></div>
       </div>
       <p style="color:var(--text-muted);margin:10px 0 6px">${this.t('set_docno_hint')}</p>
       <div style="color:var(--text-muted);margin-bottom:6px">${this.t('set_docno_preview')}</div>
@@ -367,17 +374,20 @@ Object.assign(App, {
       const el = document.getElementById('docno_' + k);
       prefixes[k] = String((el && el.value) || '').trim().toUpperCase();
     });
+    const styleEl = document.getElementById('docno_date_style');
+    const dateStyle = String((styleEl && styleEl.value) || 'full');
 
     let previews = {};
     try {
-      const r = await this.api('/api/params/docno/preview', 'POST', { prefixes, pad, date });
+      const r = await this.api('/api/params/docno/preview', 'POST', { prefixes, pad, date, dateStyle });
       previews = r.previews || {};
     } catch (_) { /* 预览失败只影响预览，不阻塞设置页 */ }
 
     const target = document.getElementById('docno_preview');
     if (!target) return;
+    const seg = dateStyle === 'month' ? date.slice(0, 6) : date;
     target.innerHTML = this.docNoTypeKeys().map(k => {
-      const text = previews[k] || `${prefixes[k] || '?'}-${date}-${'?'.repeat(pad)}`;
+      const text = previews[k] || `${prefixes[k] || '?'}-${seg}-${'?'.repeat(pad)}`;
       return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted);font-family:monospace">${this.docEsc(text)}</span>`;
     }).join('');
   },
@@ -389,8 +399,10 @@ Object.assign(App, {
       prefixes[k] = String((el && el.value) || '').trim().toUpperCase();
     });
     const pad = parseInt(document.getElementById('docno_pad')?.value, 10);
+    const styleEl = document.getElementById('docno_date_style');
+    const dateStyle = String((styleEl && styleEl.value) || 'full');
     try {
-      await this.api('/api/params/doc-no-rules', 'PUT', { prefixes, pad });
+      await this.api('/api/params/doc-no-rules', 'PUT', { prefixes, pad, dateStyle });
       this.toast(this.t('set_docno_saved'));
       this.renderSettings();
     } catch (e) { this.toast(e.message, 'error'); }
@@ -428,18 +440,30 @@ Object.assign(App, {
   },
 
   // 二次确认弹窗：必须手动输入固定短语，输错不执行
+  // opts.password=true 时追加当前账号密码输入（全库重置等不可逆操作用）
   phraseConfirm(opts) {
+    const pwdField = opts.password
+      ? `<div class="form-group"><label>${this.t('set_pwd_confirm_label')}</label>
+           <input id="set_pwd_confirm" type="password" autocomplete="current-password" oninput="App.clearFieldError('set_pwd_confirm')">
+           <div class="form-error" id="set_pwd_confirm_error"></div></div>`
+      : '';
     const body = `<p class="set-note">${opts.msg}</p>
       <div class="form-group"><label>${this.t('set_phrase_hint', { phrase: opts.phrase })}</label>
         <input id="set_phrase_input" autocomplete="off" oninput="App.clearFieldError('set_phrase_input')">
         <div class="form-error" id="set_phrase_input_error"></div>
-      </div>`;
+      </div>${pwdField}`;
     this.showModal(`<h3>${opts.title}</h3>`, body, opts.btn, () => {
       const el = document.getElementById('set_phrase_input');
       const v = String((el && el.value) || '').trim();
       if (v !== opts.phrase) { this.setFieldError('set_phrase_input', this.t('set_phrase_mismatch')); return; }
+      let password;
+      if (opts.password) {
+        const p = document.getElementById('set_pwd_confirm');
+        password = String((p && p.value) || '');
+        if (!password) { this.setFieldError('set_pwd_confirm', this.t('field_required')); return; }
+      }
       this.closeModal();
-      opts.onOk();
+      opts.onOk(password);
     });
   },
 
@@ -447,6 +471,7 @@ Object.assign(App, {
     const el = document.getElementById('set_restore_file');
     const file = el && el.files && el.files[0];
     if (!file) { this.toast(this.t('set_restore_no_file'), 'error'); return; }
+    if (!/\.(zip|db)$/i.test(file.name || '')) { this.toast(this.t('set_restore_bad_type'), 'error'); return; }
     this.phraseConfirm({
       title: this.t('set_restore_confirm_title'),
       msg: this.t('set_restore_confirm_msg'),
@@ -481,15 +506,17 @@ Object.assign(App, {
       msg: this.t(isReset ? 'set_reset_confirm_msg' : 'set_clear_confirm_msg'),
       phrase: isReset ? '全部清空' : '清空',
       btn: this.t(isReset ? 'set_reset_all_btn' : 'set_clear_business_btn'),
-      onOk: () => this.doClear(mode),
+      password: isReset,
+      onOk: (password) => this.doClear(mode, password),
     });
   },
 
-  async doClear(mode) {
+  async doClear(mode, password) {
     const isReset = mode === 'reset';
     try {
-      const data = await this.api('/api/settings/data/' + (isReset ? 'reset' : 'clear-business'), 'POST',
-        { confirm: isReset ? '全部清空' : '清空' });
+      const body = { confirm: isReset ? '全部清空' : '清空' };
+      if (isReset) body.password = password;
+      const data = await this.api('/api/settings/data/' + (isReset ? 'reset' : 'clear-business'), 'POST', body);
       if (isReset) {
         // 当前登录用户已不存在：登录页展示默认账号后强制登出
         localStorage.setItem('login_notice', JSON.stringify({ username: data.username, password: data.password }));

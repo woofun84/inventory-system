@@ -447,6 +447,13 @@ function initSchema() {
     console.log(`已按角色矩阵初始化 ${pendingPermUsers.length} 个用户的权限`);
   }
 
+  // 清理历史遗留的废弃参数：currency 现全站固定¥（params.js 硬编码），use_icons 已无引用。
+  // 二者都无代码读取，删除不影响运行；幂等，每次启动执行。
+  try {
+    const removed = db.prepare("DELETE FROM params WHERE key IN ('currency','use_icons')").run();
+    if (removed.changes) console.log(`已清理 ${removed.changes} 项废弃参数（currency/use_icons）`);
+  } catch (e) { /* 老库无 params 表时忽略 */ }
+
   // ==================== 系统审计日志 ====================
   // 记录"谁在什么时间做了什么"（登录/新增/修改/删除/确认/作废/更正）
   // created_at 统一存 UTC，前端按浏览器本地时区渲染

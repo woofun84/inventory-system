@@ -24,7 +24,7 @@ better-sqlite3（WAL）→ inventory.db
 1. `server.js` 加载 `server/config.js`，缺少 `JWT_SECRET` 或长度不足 32 时打印提示并退出。
 2. `require('./server/db')` 建立连接并执行建表，必要时创建初始管理员；只为从未初始化过的用户按角色矩阵补一份默认授权。
 3. 新建或修改物料时，`costing.syncOpeningLedger()` 与物料档案在同一事务内写入期初流水（业务日期 `1970-01-01`），保存后余额即可由流水推导。启动时的 `ensureOpeningBalances()` 只作为历史数据兜底，不再承担「保存期初」的职责。
-4. `services/auto-backup.js` 启动定时器：读取 `params.auto_backup`，启动 3 秒后先判一次是否已错过周期（停机期间错过的会立即补跑）。
+4. `services/auto-backup.js` 启动定时器：配置读 `params.auto_backup`、运行状态读 `params.auto_backup_state`（兼容旧版混在配置里的状态），启动 3 秒后先判一次是否已错过周期（停机期间错过的会立即补跑）。
 5. 注册 `express.json()`、JSON 解析错误兜底、审计中间件、静态资源（禁用缓存）。
 6. `/api/health` 与 `/api/auth/login` 免鉴权，其余 `/api` 统一经过 `requireAuth`。
 7. 挂载各路由模块，最后 `app.get('*')` 回落到 `public/index.html` 支持前端路由。
@@ -66,7 +66,7 @@ better-sqlite3（WAL）→ inventory.db
 | `services/scaled-db.js` | 包装 `better-sqlite3`：写入前把元 / 数量转成定点整数，查询后按列名把定点整数还原为可读数值 |
 | `services/costing.js` | 库存流水与余额的唯一写入口：插入、重排、重算、过账、作废、重建、期初、更正留痕、补价重算（`updateInboundPrices` / `logPriceRecalc`） |
 | `services/stock.js` | 可用库存、负库存校验、退库可退量校验、到货核销、库存汇总 |
-| `services/docno.js` | 单据编号 `{前缀}-{YYYYMMDD}-{序号}`、编号规则校验、更正号 `-R{n}` |
+| `services/docno.js` | 单据编号 `{前缀}-{日期段}-{序号}`（日期段 `YYYYMMDD` 默认 / `YYYYMM` 可选）、编号规则校验（含 `dateStyle`）、更正号 `-R{n}`、下一号实时预览 |
 | `services/session.js` | 单终端登录会话：`issueSession`（同终端沿用 `sid`）、`getSession`、`touchSession`（60 秒内不重复写）、`revokeSession` |
 | `services/user-permissions.js` | 用户级授权的规范化、整表覆盖写入、按角色初始化与读取（`admin` 直接返回全量） |
 | `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、`VACUUM INTO` 快照、打包 `images/` 与 `manifest.json`、状态查询、启动补跑 |
@@ -95,7 +95,7 @@ better-sqlite3（WAL）→ inventory.db
 
 | 表 | 关键列 | 说明 |
 | --- | --- | --- |
-| `params` | `key` PK, `value` | 系统参数。`currency` 恒为 `¥`；`doc_no_rules` 存单据编号规则 JSON |
+| `params` | `key` PK, `value` | 系统参数。货币全站恒为 `¥`（不存库）；`doc_no_rules` 存单据编号规则 JSON（`prefixes`/`pad`/`dateStyle`）；`auto_backup` 存自动备份配置、`auto_backup_state` 存运行状态；启动时幂等清理历史遗留的 `currency`/`use_icons` 键 |
 | `categories` | `id`, `name` UNIQUE, `prefix` | 物料类别 |
 | `units` | `id`, `name` UNIQUE | 计量单位 |
 | `destinations` | `id`, `name` UNIQUE | 领用去向词库 |
@@ -165,7 +165,7 @@ better-sqlite3（WAL）→ inventory.db
 - 采购单按状态分流：草稿单的表头与明细增改删走 `purchase:manage`；已确认单的同一批端点（`PUT /orders/:poNo`、`POST /lines`、`POST /lines/batch`、`PUT/DELETE /lines/:id`）改走 `purchase:modify`，无该位返回 403 `PERM_PURCHASE_MODIFY`。`PUT /orders/:poNo` 不修改 `status`；已确认单保存后若明细为 0 行返回 `PO_LAST_LINE`，数量低于已到货返回 `PO_QTY_BELOW_RECEIVED`；明细行删除同样受已到货与「至少一行」约束。价格填写仍由 `requirePriceEdit` 把关，不额外新增权限位。
 - 更正草稿的明细保存（`PUT .../lines`）按 `correct` 或 `void` 任一放行（`manage` 也放行普通草稿），与前端「更正草稿看 correct 或 void、普通草稿看 manage」一致；`void` 可单独授予，保证只有作废权的账号能删空明细后零行确认。
 - `/api/materials` 是单据「添加明细」的基础数据源：任一业务单据模块（inbound / outbound / returns / purchase / stocktake）有 `view` 即可读取，价格仍按 `price.view` 脱敏；否则只有建档编辑权的账号进不了编辑页（与 `/api/suppliers/options` 的放宽方式一致）。
-- 系统日志清空使用独立权限位 `audit:delete`，默认只给管理员；备份、恢复、自动备份、清库、成本差异结转仍是 `role === 'admin'` 的运维例外。
+- 系统日志清空使用独立权限位 `audit:delete`，默认只给管理员；备份、恢复、自动备份、清库、成本差异结转统一使用 `settings:ops` 授权（admin 默认持有、可单独委派），路由内中间件名为 `requireAdmin` 但实际按该授权校验，无授权返回 `FORBIDDEN`。
 - 开发阶段不做历史数据迁移与权限回填，也不保留旧库兼容分支：建表语句一次到位，升级时清库重建；权限默认值以 `ROLE_PERMISSIONS` 当前定义为准，已初始化用户的授权以库中记录为准。
 - `requireAuth` 解析 `Authorization: Bearer <token>`，查库确认用户存在且 `status='active'`，再比对 `user_sessions.sid`：缺 `sid` 或会话已撤销返回 `SESSION_REQUIRED`，`sid` 不一致返回 `SESSION_KICKED`。通过后挂载 `req.user`、`req.sessionSid`、`req.grants`、`req.canViewPrice`。
 - 用户管理页通过 `GET /api/permissions/catalog` 取模块 / 动作全集与各角色默认值，`PUT /api/users/:id` 提交 `permissions` 时整表覆盖；`users` 模块本身不可勾选，避免非管理员获得用户管理入口。
