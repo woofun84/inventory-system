@@ -9,8 +9,8 @@ const docno = require('../services/docno');
 
 const router = express.Router();
 
-// 领用去向为空时对外提供内置常用项（不写库；一旦用户自行配置即失效）
-const DEFAULT_DESTINATIONS = ['生产领用', '工程领用', '维修', '报废'];
+// 领用去向默认常用项：现已落库为真实记录（见 db.js 的 destinations_seeded 补种），
+// 保留此常量仅为文档说明用途，接口始终读真实表，不再返回不可删除的虚拟内置项。
 const PARAM_LABELS = { categories: '类别', units: '单位', destinations: '领用去向' };
 
 // --- 参数 ---
@@ -19,11 +19,8 @@ router.get('/api/params', (req, res) => {
   const currency = '¥';
   const categories = db.prepare("SELECT * FROM categories ORDER BY id").all();
   const units = db.prepare("SELECT * FROM units ORDER BY id").all();
-  let destinations = db.prepare("SELECT * FROM destinations ORDER BY id").all();
+  const destinations = db.prepare("SELECT * FROM destinations ORDER BY id").all();
   const destinationsEmpty = destinations.length === 0;
-  if (destinationsEmpty) {
-    destinations = DEFAULT_DESTINATIONS.map(name => ({ id: null, name, builtin: true }));
-  }
   // 单据编号规则仅设置页消费，只发给有 settings.view 权限的用户；
   // 类别/单位/去向是全站基础字典，所有登录用户都需要，保持可见。
   const body = { currency, categories, units, destinations, destinationsEmpty };

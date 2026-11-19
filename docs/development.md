@@ -95,7 +95,7 @@ better-sqlite3（WAL）→ inventory.db
 
 | 表 | 关键列 | 说明 |
 | --- | --- | --- |
-| `params` | `key` PK, `value` | 系统参数。货币全站恒为 `¥`（不存库）；`doc_no_rules` 存单据编号规则 JSON（`prefixes`/`pad`/`dateStyle`）；`auto_backup` 存自动备份配置、`auto_backup_state` 存运行状态；启动时幂等清理历史遗留的 `currency`/`use_icons` 键 |
+| `params` | `key` PK, `value` | 系统参数。货币全站恒为 `¥`（不存库）；`doc_no_rules` 存单据编号规则 JSON（`prefixes`/`pad`/`dateStyle`）；`auto_backup` 存自动备份配置、`auto_backup_state` 存运行状态；`destinations_seeded` 标记领用去向已首次补种；启动时幂等清理历史遗留的 `currency`/`use_icons` 键 |
 | `categories` | `id`, `name` UNIQUE, `prefix` | 物料类别 |
 | `units` | `id`, `name` UNIQUE | 计量单位 |
 | `destinations` | `id`, `name` UNIQUE | 领用去向词库 |

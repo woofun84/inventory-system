@@ -10,6 +10,9 @@ const bcrypt = require('bcryptjs');
 const { DB_PATH, INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('./config');
 const { grantsOf } = require('./permissions');
 
+// 领用去向默认常用项：首次初始化时落库为真实记录（可正常删除），之后不再补种
+const DEFAULT_DESTINATIONS = ['生产领用', '工程领用', '维修', '报废'];
+
 // 自动初始化数据库
 if (!fs.existsSync(DB_PATH)) {
   console.log('数据库不存在，正在初始化...');
@@ -453,6 +456,22 @@ function initSchema() {
     const removed = db.prepare("DELETE FROM params WHERE key IN ('currency','use_icons')").run();
     if (removed.changes) console.log(`已清理 ${removed.changes} 项废弃参数（currency/use_icons）`);
   } catch (e) { /* 老库无 params 表时忽略 */ }
+
+  // 领用去向默认常用项落库：旧版是「表空时返回 builtin 虚拟项（无 id、不能删）」，
+  // 改为首次初始化时写入真实记录，使这些常用项也能像类别/单位一样正常删除。
+  // 用 destinations_seeded 标记保证只补种一次：用户即使把 4 项全删光，重启也不会再冒出来。
+  try {
+    const seeded = db.prepare("SELECT 1 FROM params WHERE key='destinations_seeded'").get();
+    if (!seeded && tableExists('destinations')) {
+      const n = db.prepare('SELECT COUNT(*) n FROM destinations').get().n;
+      if (n === 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO destinations (name) VALUES (?)');
+        DEFAULT_DESTINATIONS.forEach(name => ins.run(name));
+        console.log(`已初始化 ${DEFAULT_DESTINATIONS.length} 项默认领用去向`);
+      }
+      db.prepare("INSERT INTO params (key, value) VALUES ('destinations_seeded','1')").run();
+    }
+  } catch (e) { /* 老库结构差异时跳过，不影响启动 */ }
 
   // ==================== 系统审计日志 ====================
   // 记录"谁在什么时间做了什么"（登录/新增/修改/删除/确认/作废/更正）
