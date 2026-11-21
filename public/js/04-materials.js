@@ -466,7 +466,8 @@ Object.assign(App, {
       : `<div class="mat-combo-empty">${this.t('mat_combo_no_match')}</div>`;
     menu.innerHTML = html;
     menu.style.left = rect.left + 'px';
-    menu.style.top = (rect.bottom + 2) + 'px';
+    // 与全局 :focus-visible 焦点环（outline 2px + offset 2px）留出间隙，避免菜单上沿压住蓝边
+    menu.style.top = (rect.bottom + 6) + 'px';
     menu.style.width = Math.max(rect.width, 160) + 'px';
     menu.hidden = false;
     this._matComboCtx = { i: i, field: field, input: input };

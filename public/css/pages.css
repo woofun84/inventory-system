@@ -341,6 +341,14 @@
 .pu-daterange select { height: 32px; background: transparent; border: 0; color: var(--text); font-size: var(--fs-sm); font-family: inherit; cursor: pointer; }
 .pu-toolbar input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-daterange:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+/* 焦点环只归外层 chip：内部原生 select / date 若再画全局 :focus-visible outline，
+   两圈蓝边会压在一起（原生下拉展开时尤其明显）。物料/库存/单据/台账/收发货等所有
+   .pu-daterange 筛选 chip 统一走这里，不再逐个控件打补丁。 */
+.pu-daterange :where(input, select):focus,
+.pu-daterange :where(input, select):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 /* 弹层内搜索框：与公共筛选栏 .pu-search input 同一套视觉，避免原生裸 input 被压扁 */
 .st-load-search { width: 100%; height: 34px; padding: 0 var(--space-3); margin-bottom: 10px; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: var(--fs-sm); font-family: inherit; }
 .st-load-search:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
