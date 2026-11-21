@@ -54,6 +54,7 @@ npm start
 | 变量 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `JWT_SECRET` | 是 | 无 | JWT 签名密钥，长度不足 32 个字符时服务拒绝启动 |
+| `SESSION_IDLE_HOURS` | 否 | `12` | 服务端会话空闲过期小时数（1–720）；页面打开时心跳刷新 `last_seen`，关闭浏览器后超过该时长会话自动撤销 |
 | `HOST` | 否 | `0.0.0.0` | 监听地址 |
 | `PORT` | 否 | `4000` | 监听端口 |
 | `DB_PATH` | 否 | 项目根目录 `inventory.db` | SQLite 文件路径；WAL 在 U 盘 / 网络盘报 I/O 错误时可指向本机磁盘 |
@@ -169,6 +170,7 @@ warehouse_cn/
 - 服务端路由用 `requirePerm(module, action)` 校验（内部读 `req.grants`）；前端用 `App.can(module, action)` 控制菜单与按钮显隐，不构成安全边界。
 - 价格权限分为看（`price:view`）与写（`price:edit`）两项，各自独立：由 `permissions.js` 的 `priceGranted` 判定，`admin` 恒为真，其余用户按自己的授权表决定（角色默认值见 `ROLE_PERMISSIONS`）。鉴权中间件把结果挂到 `req.canViewPrice` / `req.canEditPrice`：无查看权的接口在**服务端删除**金额、单价、成本等键（而非仅靠前端隐藏），无编辑权却提交价格字段返回 `PRICE_EDIT_FORBIDDEN`。
 - 同一账号单终端登录：`user_sessions` 每用户一行，JWT 带 `sid`；后登录的终端覆盖 `sid`，旧终端再请求时返回 401 `SESSION_KICKED`。终端标识存在浏览器 `localStorage`，同一浏览器的多个标签页视为同一终端，不会互踢。
+- 登录态（`token` / `user`）只写会话级存储 `sessionStorage`：刷新页面保持登录，关闭窗口或标签页后需重新登录；启动时清理旧版本遗留在持久化本地存储中的登录态。心跳只在页面打开时刷新 `last_seen`，服务端按 `SESSION_IDLE_HOURS`（默认 12 小时）判空闲过期，过期会话返回 401 `SESSION_REQUIRED`。
 
 ## 文档
 
