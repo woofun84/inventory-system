@@ -93,7 +93,8 @@ warehouse_cn/
 │     ├─ stock.js             # 可用库存、负库存校验、到货核销、库存汇总
 │     ├─ session.js           # 单终端登录会话：签发 / 查询 / 心跳 / 撤销
 │     ├─ user-permissions.js  # 用户级授权的读取、覆盖写入与角色默认初始化
-│     ├─ auto-backup.js       # 自动覆盖式备份（每小时 / 每天 / 每周）
+│     ├─ auto-backup.js       # 自动覆盖式备份调度（每小时 / 每天 / 每周），打包交给 worker 线程
+│     ├─ backup-worker.js     # 工作线程：后台执行备份打包，避免阻塞 HTTP 请求
 │     ├─ backup-package.js    # 备份包（.zip，含库、图片、清单）生成与恢复校验
 │     ├─ zip.js               # 无第三方依赖的最小 ZIP 读写
 │     ├─ material-images.js   # 物料图片落盘、类型与体积校验

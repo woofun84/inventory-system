@@ -69,7 +69,8 @@ better-sqlite3（WAL）→ inventory.db
 | `services/docno.js` | 单据编号 `{前缀}-{日期段}-{序号}`（日期段 `YYYYMMDD` 默认 / `YYYYMM` 可选）、编号规则校验（含 `dateStyle`）、更正号 `-R{n}`、下一号实时预览 |
 | `services/session.js` | 单终端登录会话：`issueSession`（同终端沿用 `sid`）、`getSession`、`touchSession`（60 秒内不重复写）、`revokeSession` |
 | `services/user-permissions.js` | 用户级授权的规范化、整表覆盖写入、按角色初始化与读取（`admin` 直接返回全量） |
-| `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、`VACUUM INTO` 快照、打包 `images/` 与 `manifest.json`、状态查询、启动补跑 |
+| `services/auto-backup.js` | 自动覆盖式备份：设置读写、到期判断、状态查询、启动补跑；打包交给 worker 线程，收到结果后改名并记录状态 |
+| `services/backup-worker.js` | 工作线程入口：通过 `workerData` 接收目标路径，调用 `backup-package.createPackage` 在后台完成快照与打包，结果用 `postMessage` 回传，避免同步 CPU/IO 阻塞 HTTP 主线程 |
 | `services/backup-package.js` | 备份包（`.zip`）的生成与解包、清单校验、图片目录同步、旧 `.db` 备份兼容 |
 | `services/zip.js` | 无第三方依赖的最小 ZIP 读写（仅存储，不压缩） |
 | `services/material-images.js` | 物料图片落盘：魔数识别、300KB 上限、按物料 id 命名、替换 / 删除 / 清空 |
