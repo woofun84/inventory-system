@@ -187,9 +187,9 @@ Object.assign(App, {
   sortTh(label, key, tableId, align) {
     const st = this.getTableState(tableId);
     const active = st.sortKey === key;
-    const arrow = active ? (st.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
     const cls = this.colAlignClass(align);
-    return `<th class="sort-th ${active ? 'active' : ''}${cls ? ' ' + cls : ''}" onclick="App.onSort('${tableId}','${key}')">${label}<span class="sort-arrow">${active ? (st.sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span></th>`;
+    const ariaSort = active ? (st.sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+    return `<th class="sort-th ${active ? 'active' : ''}${cls ? ' ' + cls : ''}" tabindex="0" aria-sort="${ariaSort}" onclick="App.onSort('${tableId}','${key}')" onkeydown="App.onSortKey(event,'${tableId}','${key}')">${label}<span class="sort-arrow">${active ? (st.sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span></th>`;
   },
 
   // 列对齐统一的唯一入口：数字→右，徽标/状态/操作→居中，文本与日期→左
@@ -210,6 +210,12 @@ Object.assign(App, {
     st.page = 1;
     // 触发页面重渲染
     if (this._tableRenderers && this._tableRenderers[tableId]) this._tableRenderers[tableId]();
+  },
+
+  onSortKey(e, tableId, key) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    this.onSort(tableId, key);
   },
 
   // ========== 分页 ==========
@@ -937,11 +943,129 @@ Object.assign(App, {
     this._docLinesViewAll[scope] = viewAll;
   },
 
+  // ========== 键盘与焦点 ==========
+  focusableSelector: 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+
+  // 弹层统一键盘处理：Esc 取消、Tab 在弹层内循环
+  onDialogKeydown(e, container, allowEscape, onEscape) {
+    if (e.key === 'Escape' && allowEscape) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const nodes = Array.from(container.querySelectorAll(this.focusableSelector))
+      .filter(el => el.offsetParent !== null || el === document.activeElement);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  },
+
+  // ========== 未保存提醒：快照 / 脏检测 ==========
+  // 编辑页根：只有这些长表单才做离开确认，列表筛选框不会被误判为“未保存”
+  EDIT_PAGE_ROOTS: ['#ib-new-root', '#ib-edit-root', '#ob-edit-form', '#pu-edit-root', '#st-edit-root'],
+
+  findEditRoot() {
+    for (const sel of this.EDIT_PAGE_ROOTS) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  },
+
+  collectFormSnapshot(root) {
+    if (!root) return null;
+    const out = {};
+    root.querySelectorAll('input, select, textarea').forEach((el, i) => {
+      const type = String(el.type || '').toLowerCase();
+      if (type === 'hidden' || type === 'password' || type === 'file' || el.disabled) return;
+      const key = el.id || el.name || ('__i' + i);
+      out[key] = (type === 'checkbox' || type === 'radio') ? { checked: !!el.checked } : { value: el.value };
+    });
+    return out;
+  },
+
+  isFormDirty(snapshot, root) {
+    if (!snapshot || !root) return false;
+    let dirty = false;
+    root.querySelectorAll('input, select, textarea').forEach((el, i) => {
+      if (dirty) return;
+      const type = String(el.type || '').toLowerCase();
+      if (type === 'hidden' || type === 'password' || type === 'file' || el.disabled) return;
+      const key = el.id || el.name || ('__i' + i);
+      const prev = snapshot[key];
+      if (!prev) return;
+      if (type === 'checkbox' || type === 'radio') dirty = !!el.checked !== !!prev.checked;
+      else dirty = el.value !== prev.value;
+    });
+    return dirty;
+  },
+
+  hasUnsavedChanges() {
+    if (this.isFormDirty(this._modalPristine, document.querySelector('.modal-body'))) return true;
+    return this.isFormDirty(this._pagePristine, this.findEditRoot());
+  },
+
+  clearFormDirty() {
+    this._pagePristine = null;
+    this._modalPristine = null;
+  },
+
+  // 首次聚焦表单控件时记录快照：此时异步渲染的明细行已就位，且尚未发生用户修改
+  initDirtyTracking() {
+    if (this._dirtyTrackingReady) return;
+    this._dirtyTrackingReady = true;
+    document.addEventListener('focusin', e => {
+      const el = e.target;
+      if (!el || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+      const modalBody = document.querySelector('.modal-body');
+      const root = modalBody || this.findEditRoot();
+      if (!root || !root.contains(el)) return;
+      const slot = modalBody ? '_modalPristine' : '_pagePristine';
+      if (!this[slot]) this[slot] = this.collectFormSnapshot(root);
+      // 异步插入的字段（如明细行）首次聚焦时只补记自身基线，
+      // 不重新采集整表，避免把已修改字段的当前值误当成基线
+      const type = String(el.type || '').toLowerCase();
+      if (type === 'hidden' || type === 'password' || type === 'file' || el.disabled) return;
+      const key = el.id || el.name || '';
+      if (key && !(key in this[slot])) {
+        this[slot][key] = (type === 'checkbox' || type === 'radio')
+          ? { checked: !!el.checked }
+          : { value: el.value };
+      }
+    });
+    window.addEventListener('beforeunload', e => {
+      if (!this.hasUnsavedChanges()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+  },
+
+  // 返回 Promise<boolean>，供导航拦截等待用户决定
+  confirmDiscardChanges() {
+    // confirmDialog 是单例：已有确认框在处理时直接拒绝本次导航。
+    // 否则新 Promise 的 resolve 不会被已存在的弹窗触发，导致导航流程永久挂起。
+    if (document.getElementById('confirm-overlay')) return Promise.resolve(false);
+    if (!this.hasUnsavedChanges()) return Promise.resolve(true);
+    return new Promise(resolve => {
+      this.confirmDialog(
+        this.t('unsaved_title'),
+        this.t('unsaved_msg'),
+        () => { this.clearFormDirty(); resolve(true); },
+        () => resolve(false),
+        'danger',
+      );
+    });
+  },
+
   // ========== 模态框 ==========
   // opts.maximizable：标题栏显示最大化/还原按钮（大面积表格类弹窗用）
   showModal(title, bodyHtml, btnText, onConfirm, onCancel, large, opts) {
     // 单例：已有弹窗时忽略重复打开（连点 / 回车二次触发），避免叠层后按钮全部点不动
     if (document.getElementById('modal-overlay')) return false;
+    const opener = document.activeElement;
     const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'modal-overlay';
     const modalClass = large ? 'modal modal-lg' : 'modal';
     // opts.fit：弹窗宽度跟随内容（列宽固定的表格类弹窗），避免宽弹窗里表格靠左留大片空白
@@ -949,7 +1073,7 @@ Object.assign(App, {
     const maximizable = !!(opts && opts.maximizable);
     // opts.force：不可取消的弹窗（如强制改密），隐藏关闭按钮与「取消」，且点遮罩不关闭
     const force = !!(opts && opts.force);
-    overlay.innerHTML = `<div class="${modalClass}${fit ? ' modal-fit' : ''}"><div class="modal-header">${title}<div class="modal-header-actions">${maximizable ? `<button class="modal-max-btn" id="modal-max-btn" type="button" title="${this.t('modal_maximize')}" aria-label="${this.t('modal_maximize')}">${this.icon('maximize', 'icon--tool')}</button>` : ''}${force ? '' : `<button class="modal-close" id="modal-close-btn" title="${this.t('close')}" aria-label="${this.t('close')}">${this.icon('close', 'icon--tool')}</button>`}</div></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer">${force ? '' : `<button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button>`}<button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
+    overlay.innerHTML = `<div class="${modalClass}${fit ? ' modal-fit' : ''}" role="dialog" aria-modal="true"><div class="modal-header">${title}<div class="modal-header-actions">${maximizable ? `<button class="modal-max-btn" id="modal-max-btn" type="button" title="${this.t('modal_maximize')}" aria-label="${this.t('modal_maximize')}">${this.icon('maximize', 'icon--tool')}</button>` : ''}${force ? '' : `<button class="modal-close" id="modal-close-btn" title="${this.t('close')}" aria-label="${this.t('close')}">${this.icon('close', 'icon--tool')}</button>`}</div></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer">${force ? '' : `<button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button>`}<button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
     document.body.appendChild(overlay);
     if (maximizable) {
       const box = overlay.querySelector('.modal');
@@ -961,12 +1085,17 @@ Object.assign(App, {
         btn.setAttribute('aria-label', btn.title);
       };
     }
-    const doCancel = () => { this.closeModal(); if (onCancel) onCancel(); };
+    // 弹窗插入后立即采集快照，不依赖首次 focusin：
+    // 异步填充字段、或初始焦点落在确认按钮时也能正确判断是否有未保存修改
+    this._modalPristine = this.collectFormSnapshot(overlay.querySelector('.modal-body'));
+    this._modalReturnFocus = opener;
+    const doCancel = () => this.requestCloseModal(() => { if (onCancel) onCancel(); });
     const closeBtn = document.getElementById('modal-close-btn');
     const cancelBtn = document.getElementById('modal-cancel-btn');
     if (closeBtn) closeBtn.onclick = doCancel;
     if (cancelBtn) cancelBtn.onclick = doCancel;
     if (!force) overlay.addEventListener('click', e => { if (e.target === overlay) doCancel(); });
+    overlay.addEventListener('keydown', e => this.onDialogKeydown(e, overlay, !force, doCancel));
     const confirmBtn = document.getElementById('modal-confirm-btn');
     confirmBtn.onclick = () => {
       if (confirmBtn.dataset.busy === '1') return; // 防连点：一次提交流程未结束前不再触发
@@ -977,7 +1106,35 @@ Object.assign(App, {
       if (r && typeof r.then === 'function') r.then(reset, reset);
       else reset();
     };
+    // 初始焦点优先落在第一个可编辑字段，其次落在确认按钮
+    const firstField = overlay.querySelector('.modal-body input:not([type="hidden"]):not([disabled]):not([readonly]), .modal-body select:not([disabled]), .modal-body textarea:not([disabled])');
+    (firstField || confirmBtn).focus();
   },
 
-  closeModal() { this.msClose(); const el = document.getElementById('modal-overlay'); if (el) el.remove(); }
+  // 取消路径统一走这里：有未保存修改时先二次确认；保存成功后的 closeModal() 不受影响
+  requestCloseModal(afterClose) {
+    const body = document.querySelector('.modal-body');
+    if (this.isFormDirty(this._modalPristine, body)) {
+      this.confirmDialog(
+        this.t('unsaved_title'),
+        this.t('unsaved_msg'),
+        () => { this.closeModal(); if (afterClose) afterClose(); },
+        null,
+        'danger',
+      );
+      return;
+    }
+    this.closeModal();
+    if (afterClose) afterClose();
+  },
+
+  closeModal() {
+    this.msClose();
+    const el = document.getElementById('modal-overlay');
+    if (el) el.remove();
+    this._modalPristine = null;
+    const back = this._modalReturnFocus;
+    this._modalReturnFocus = null;
+    if (back && document.body.contains(back) && typeof back.focus === 'function') back.focus();
+  }
 });

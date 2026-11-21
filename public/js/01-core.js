@@ -149,9 +149,21 @@ const App = {
     // 启动连接监视与登录会话心跳（14-connection.js）
     if (this.startConnectionWatch) this.startConnectionWatch();
     await this.loadParams();
+    // 长表单脏状态与未保存提醒（含刷新/关闭浏览器）
+    this.initDirtyTracking();
+    this._lastHash = location.hash;
     // hashchange 与草稿恢复必须在 force 分支之前注册：
     // 强制改密用户改密成功后，前进/后退才能正常触发路由重渲染、草稿才能恢复
-    window.addEventListener('hashchange', () => this.router());
+    window.addEventListener('hashchange', async () => {
+      const from = this._lastHash || (location.pathname + location.search);
+      const to = location.hash;
+      if (this.hasUnsavedChanges()) {
+        const ok = await this.confirmDiscardChanges();
+        if (!ok) { history.replaceState(null, '', from); return; }
+      }
+      this._lastHash = to;
+      this.router();
+    });
     this.restoreSessionDraft();
     // 强制改密：渲染基础布局并弹改密弹窗（router 的 must_change_pwd 拦截负责兜底后续导航）
     if (this.user && this.user.must_change_pwd) {
@@ -496,6 +508,7 @@ const App = {
       }
       this.toast(this.t('no_perm_msg'), 'error');
     }
+    this._lastHash = '#' + this.currentPage;
     this.onPageEnter(this.currentPage);
     return this.render();
   },
@@ -578,6 +591,8 @@ const App = {
   // hash 未变化（点当前菜单）时也强制重渲染+重新取数，不再依赖浏览器派发 hashchange。
   async gotoPage(name, opts = {}) {
     const { replace = false, render = true } = opts;
+    // render:false 属于模块内部跳转（随后会立即渲染目标页），不做离开确认
+    if (render && !(await this.confirmDiscardChanges())) return false;
     this.closeSidebar();
     const target = '#' + name;
     const hashChanged = location.hash !== target;
@@ -585,6 +600,7 @@ const App = {
       if (replace) history.replaceState(null, '', target);
       else history.pushState(null, '', target);
     }
+    this._lastHash = target;
     this.currentPage = name;
     if (!render) return;
     if (hashChanged) return this.router();
@@ -626,7 +642,8 @@ const App = {
       if (visibleItems.length === 0) return;
       html += `<div class="nav-section-label">${s.section}</div>`;
       visibleItems.forEach(item => {
-        html += `<div class="nav-item ${this.currentPage === item.key ? 'active' : ''}" onclick="App.gotoPage('${item.key}')"><span class="nav-icon">${this.icon(item.icon, 'icon--nav')}</span><span>${item.label}</span></div>`;
+        const active = this.currentPage === item.key;
+        html += `<button type="button" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''} onclick="App.gotoPage('${item.key}')"><span class="nav-icon">${this.icon(item.icon, 'icon--nav')}</span><span>${item.label}</span></button>`;
       });
     });
     html += '</div>';
@@ -651,6 +668,8 @@ const App = {
   closeSidebar() { document.body.classList.remove('nav-open'); },
 
   setMain(html) {
+    // 页面整体重渲染意味着旧表单已销毁，脏状态随之清空
+    this._pagePristine = null;
     // 页面整体重渲染时收起即时搜索浮层，避免固定定位面板残留到新页面
     if (this.msClose) this.msClose();
     document.getElementById('app').innerHTML = `<div class="layout">${this.renderSidebar()}<div class="sidebar-overlay" onclick="App.closeSidebar()"></div><div class="main">${html}</div></div>`;
@@ -766,30 +785,44 @@ const App = {
   confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger', opts = {}) {
     // 单例：已有确认弹窗时忽略重复触发（连点 / 回车二次提交），避免叠层后按钮全部失效
     if (document.getElementById('confirm-overlay')) return;
+    const opener = document.activeElement;
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
     const isPrimary = intent === 'primary';
     const okCls = isPrimary ? 'btn-primary' : 'btn-danger';
     const icon = this.icon(isPrimary ? 'info' : 'alert');
     const iconCls = isPrimary ? 'confirm-icon confirm-icon--info' : 'confirm-icon confirm-icon--warn';
-    overlay.innerHTML = `<div class="confirm-box"><div class="${iconCls}">${icon}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
+    overlay.innerHTML = `<div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="cf-title"><div class="${iconCls}">${icon}</div><div class="confirm-title" id="cf-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
     if (opts && opts.okDisabled) {
       const okBtn = document.getElementById('cf-ok');
       if (okBtn) { okBtn.disabled = true; okBtn.title = opts.okTitle || ''; }
     }
     let done = false;
-    const close = () => { if (done) return; done = true; overlay.remove(); if (onCancel) onCancel(); };
+    const restoreFocus = () => {
+      if (opener && document.body.contains(opener) && typeof opener.focus === 'function') opener.focus();
+    };
+    const close = () => {
+      if (done) return;
+      done = true;
+      overlay.remove();
+      restoreFocus();
+      if (onCancel) onCancel();
+    };
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    document.getElementById('cf-cancel').onclick = close;
+    overlay.addEventListener('keydown', e => this.onDialogKeydown(e, overlay, true, close));
+    const cancelBtn = document.getElementById('cf-cancel');
+    cancelBtn.onclick = close;
     document.getElementById('cf-ok').onclick = () => {
       if (done) return;
       done = true;
       const ok = document.getElementById('cf-ok');
       if (ok) ok.disabled = true;
       overlay.remove();
+      restoreFocus();
       onConfirm();
     };
+    cancelBtn.focus();
   },
 
   // ===== 徽标单一事实源 =====

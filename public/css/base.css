@@ -269,17 +269,23 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 9px 10px;
   margin-bottom: 2px;
+  border: 0;
   border-radius: var(--radius-sm);
-  cursor: pointer;
+  background: transparent;
   color: var(--sidebar-text);
+  font-family: inherit;
   font-size: 13px;
+  text-align: left;
+  cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.nav-item:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .nav-item:hover {
   background: var(--sidebar-hover-bg);
   color: #fff;

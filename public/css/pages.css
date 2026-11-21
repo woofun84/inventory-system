@@ -270,6 +270,7 @@
 .sort-th:hover { color: var(--primary); }
 .sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.6; }
 .sort-th.active { color: var(--primary); }
+.sort-th:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sort-th.active .sort-arrow { opacity: 1; }
 
 .pager {
