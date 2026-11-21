@@ -54,7 +54,6 @@
 .u-muted-xs-mb-10 { color: var(--text-muted); font-size: var(--fs-xs); margin-bottom: var(--space-2_5); }
 .u-w-36 { width: 36px; }
 .u-py-1_75 { padding: var(--space-1_75) 0; }
-.u-date-filter-input { width: 130px; padding: var(--space-1_25) var(--space-1_5); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-xs); background: var(--card-bg); color: var(--text); }
 
 /* ========== 卡片 ========== */
 .card {

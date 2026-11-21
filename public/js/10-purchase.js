@@ -191,12 +191,7 @@ Object.assign(App, {
         <input id="pu_f_kw" type="search" value="${this.docEsc(s.f.kw)}" placeholder="${ph}" aria-label="${ph}">
       </div>`;
     if (s.tab !== 'contracts') {
-      html += `<div class="pu-daterange" role="group" aria-label="${this.t('pu_date')}">
-        <label for="pu_f_from">${this.t('pu_date')}</label>
-        <input id="pu_f_from" type="date" value="${this.docEsc(s.f.from)}" aria-label="${this.t('pu_date')}">
-        <span class="pu-sep" aria-hidden="true">~</span>
-        <input id="pu_f_to" type="date" value="${this.docEsc(s.f.to)}" aria-label="${this.t('pu_date')}">
-      </div>`;
+      html += this.dateRangeHtml({ fromId: 'pu_f_from', toId: 'pu_f_to', fromVal: s.f.from, toVal: s.f.to, label: this.t('pu_date') });
     }
     html += `<button type="button" class="btn btn-outline btn-sm" data-pu="clr">${this.t('pu_clear_filter')}</button>
       <button type="button" class="btn btn-outline btn-sm" id="pu-dense-btn" aria-pressed="${!!s.dense}" data-pu="dense">${this.t('pu_dense')}</button>`;

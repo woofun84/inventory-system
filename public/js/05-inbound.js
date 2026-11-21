@@ -116,12 +116,7 @@ Object.assign(App, {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="ib_f_kw" type="search" value="${this.docEsc(s.f.kw)}" placeholder="${ph}" aria-label="${ph}">
       </div>
-      <div class="pu-daterange" role="group" aria-label="${this.t('pu_date')}">
-        <label for="ib_f_from">${this.t('pu_date')}</label>
-        <input id="ib_f_from" type="date" value="${this.docEsc(s.f.from)}" aria-label="${this.t('pu_date')}">
-        <span class="pu-sep" aria-hidden="true">~</span>
-        <input id="ib_f_to" type="date" value="${this.docEsc(s.f.to)}" aria-label="${this.t('pu_date')}">
-      </div>
+      ${this.dateRangeHtml({ fromId: 'ib_f_from', toId: 'ib_f_to', fromVal: s.f.from, toVal: s.f.to, label: this.t('pu_date') })}
       <button type="button" class="btn btn-outline btn-sm" data-ib="clr">${this.t('pu_clear_filter')}</button>
       <button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.hist}" data-ib="hist">${this.t('ibd_corr_history')}</button>
       <button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.dense}" data-ib="dense">${this.t('pu_dense')}</button>`;

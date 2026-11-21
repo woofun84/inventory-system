@@ -118,12 +118,7 @@ Object.assign(App, {
         <input id="ret_f_kw" type="search" value="${this.docEsc(s.kw)}" placeholder="${ph}" aria-label="${ph}"
           onkeydown="if(event.key==='Enter')App.retApplyFilter()">
       </div>
-      <div class="pu-daterange" role="group" aria-label="${this.t('pu_date')}">
-        <label for="ret_f_from">${this.t('pu_date')}</label>
-        <input id="ret_f_from" type="date" value="${this.docEsc(s.from)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
-        <span class="pu-sep" aria-hidden="true">~</span>
-        <input id="ret_f_to" type="date" value="${this.docEsc(s.to)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
-      </div>
+      ${this.dateRangeHtml({ fromId: 'ret_f_from', toId: 'ret_f_to', fromVal: s.from, toVal: s.to, onChange: 'App.retApplyFilter()', label: this.t('pu_date') })}
       <label class="u-row-muted"><input type="checkbox" id="ret_f_noorigin"${s.noOrigin ? ' checked' : ''} onchange="App.retApplyFilter()"> ${this.t('ret_filter_no_origin')}</label>
       <button type="button" class="btn btn-outline btn-sm" onclick="App.retClearFilter()">${this.t('pu_clear_filter')}</button>
       <button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.dense}" onclick="App.retToggleDense(this)">${this.t('pu_dense')}</button>`;
@@ -249,12 +244,7 @@ Object.assign(App, {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="ret_pick_kw" type="search" placeholder="${this.docEsc(ph)}" aria-label="${this.docEsc(ph)}" oninput="App.retPickFilter()">
         </div>
-        <div class="pu-daterange" role="group" aria-label="${this.t('pu_date')}">
-          <label for="ret_pick_from">${this.t('pu_date')}</label>
-          <input id="ret_pick_from" type="date" aria-label="${this.t('pu_date')}" onchange="App.retPickFilter(true)">
-          <span class="pu-sep" aria-hidden="true">~</span>
-          <input id="ret_pick_to" type="date" aria-label="${this.t('pu_date')}" onchange="App.retPickFilter(true)">
-        </div>
+        ${this.dateRangeHtml({ fromId: 'ret_pick_from', toId: 'ret_pick_to', onChange: 'App.retPickFilter(true)', label: this.t('pu_date') })}
         <button type="button" class="btn btn-outline btn-sm" onclick="App.retPickReset()">${this.t('pu_clear_filter')}</button>
       </div>
       <div id="ret-pick-table"></div>

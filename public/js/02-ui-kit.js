@@ -783,15 +783,29 @@ Object.assign(App, {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   },
 
+  // 全项目唯一的日期区间筛选结构：标签 + 起止日期 + 分隔号，统一走 .pu-daterange，
+  // 焦点环由外层 chip 绘制，内部原生 date 不再叠蓝边；所有列表/查询/审计页共用。
+  dateRangeHtml({ fromId, toId, fromVal = '', toVal = '', onChange = '', label = '', sep = '~' }) {
+    const esc = v => this.docEsc(v == null ? '' : String(v));
+    const name = esc(label);
+    const attrs = onChange ? ` onchange="${esc(onChange)}"` : '';
+    return `<div class="pu-daterange" role="group" aria-label="${name}">
+      ${label ? `<label for="${esc(fromId)}">${name}</label>` : ''}
+      <input id="${esc(fromId)}" type="date" value="${esc(fromVal)}" aria-label="${name}"${attrs}>
+      <span class="pu-sep" aria-hidden="true">${esc(sep)}</span>
+      <input id="${esc(toId)}" type="date" value="${esc(toVal)}" aria-label="${name}"${attrs}>
+    </div>`;
+  },
+
   // 生成表格上方工具栏（新增按钮 + 关键字筛选框 + 可选日期段筛选）
   renderTableToolbar(filterId, filterOnInput, addBtnHtml, dateFilter) {
     let dateHtml = '';
     if (dateFilter) {
-      dateHtml = `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-        <input id="${dateFilter.fromId}" type="date" class="u-date-filter-input" onchange="${dateFilter.onChange}" value="${dateFilter.fromVal || ''}">
-        <span class="u-muted-sm">~</span>
-        <input id="${dateFilter.toId}" type="date" class="u-date-filter-input" onchange="${dateFilter.onChange}" value="${dateFilter.toVal || ''}">
-      </div>`;
+      dateHtml = this.dateRangeHtml({
+        fromId: dateFilter.fromId, toId: dateFilter.toId,
+        fromVal: dateFilter.fromVal, toVal: dateFilter.toVal,
+        onChange: dateFilter.onChange, label: dateFilter.label || this.t('ledger_date')
+      });
     }
     return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
       <div>${addBtnHtml || ''}</div>

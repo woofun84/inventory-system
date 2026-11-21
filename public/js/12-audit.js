@@ -371,9 +371,7 @@
         <select id="audit_filter_module" style="${sel}" onchange="App.onAuditFilter()">${modOpts}</select>
         <select id="audit_filter_action" style="${sel}" onchange="App.onAuditFilter()">${actOpts}</select>
         <input id="audit_filter_kw" placeholder="${this.t('audit_filter_ph')}" value="${escHtml(f.keyword)}" style="${sel};flex:1;min-width:180px;max-width:320px" oninput="App.onAuditFilter()">
-        <input id="audit_filter_from" type="date" value="${f.from}" style="${sel}" onchange="App.onAuditFilter()">
-        <span class="u-muted-sm">~</span>
-        <input id="audit_filter_to" type="date" value="${f.to}" style="${sel}" onchange="App.onAuditFilter()">
+        ${this.dateRangeHtml({ fromId: 'audit_filter_from', toId: 'audit_filter_to', fromVal: f.from, toVal: f.to, onChange: 'App.onAuditFilter()', label: this.t('ledger_date') })}
         <button class="btn btn-outline btn-sm" onclick="App.resetAuditFilter()">${this.t('audit_reset')}</button>
         ${this.can('audit', 'delete')
           ? `<button class="btn btn-danger-outline btn-sm" onclick="App.confirmClearAuditLogs()">${this.t('audit_clear_btn')}</button>`
