@@ -124,6 +124,16 @@ Object.assign(App, {
     this.puRenderFilters();
     document.getElementById('pu-root').classList.toggle('pu-dense', !!s.dense);
     await this.loadPurchaseList();
+    // 看板逾期行跳转：消费一次性定位标记，打开目标采购单详情
+    const reveal = this._puRevealPo;
+    if (reveal) {
+      this._puRevealPo = null;
+      s.tab = 'orders'; s.f.kw = reveal;
+      this.puRenderTabs(); this.puRenderFilters();
+      if (!this._puList || !this._puList.some(r => r.po_no === reveal)) await this.loadPurchaseList();
+      await this.puOpen('orders', reveal);
+      return;
+    }
     // 进入页面时若有选中的单据，强制重取详情，避免复用上次的快照
     if (s.sel) await this.puOpen(s.sel.t, s.sel.id); else this.puRenderInspector();
   },

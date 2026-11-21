@@ -80,17 +80,17 @@
   --table-row-selected: var(--primary-light);
   --table-cell-fg: #334155;
 
-  /* ===== 图表 ===== */
-  --chart-1: #3b82f6;
-  --chart-2: #f59e0b;
-  --chart-3: #16a34a;
-  --chart-4: #dc2626;
-  --chart-5: #0891b2;
-  --chart-6: #8b5cf6;
-  --chart-7: #ec4899;
-  --chart-8: #14b8a6;
-  --chart-9: #f97316;
-  --chart-10: #6366f1;
+  /* ===== 图表：统一色板（品牌蓝起始，色相均匀、饱和度一致，相邻可区分） ===== */
+  --chart-1: #2563eb;  /* 主蓝 */
+  --chart-2: #0891b2;  /* 青 */
+  --chart-3: #0d9488;  /* 蓝绿 */
+  --chart-4: #65a30d;  /* 黄绿 */
+  --chart-5: #ca8a04;  /* 琥珀 */
+  --chart-6: #ea580c;  /* 橙 */
+  --chart-7: #dc2626;  /* 红 */
+  --chart-8: #9333ea;  /* 紫 */
+  --chart-9: #4f46e5;  /* 靛 */
+  --chart-10: #64748b; /* 石板灰（收尾中性） */
   --chart-text: #6b7280;
   --chart-grid: rgba(229,231,235,0.5);
 

@@ -144,7 +144,8 @@ const App = {
       this.gotoLogin('expired');
       return;
     }
-    // 启动空闲超时（5分钟无操作自动退出）
+    // 启动界面空闲锁屏（5 分钟无操作返回登录页，属前端界面保护；
+    // 与服务端 SESSION_IDLE_HOURS 会话过期是两层独立机制，见 README）
     this.startIdleTimer();
     // 启动连接监视与登录会话心跳（14-connection.js）
     if (this.startConnectionWatch) this.startConnectionWatch();
@@ -175,8 +176,10 @@ const App = {
     this.initTableScrollHints();
   },
 
-  // 空闲超时：5分钟无操作自动退出
-  _idleTimeout: 5 * 60 * 1000, // 5分钟
+  // 界面空闲锁屏：5 分钟无操作返回登录页（前端界面保护）。
+  // 注意：这与服务端 SESSION_IDLE_HOURS（默认 12 小时）的会话过期是两层独立机制：
+  // 前者防本机无人值守被他人操作，后者防关闭浏览器后旧令牌长期有效。二者不冲突。
+  _idleTimeout: 5 * 60 * 1000, // 5 分钟界面空闲
   _idleTimer: null,
   startIdleTimer() {
     this.resetIdleTimer();

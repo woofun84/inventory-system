@@ -33,15 +33,50 @@ Object.assign(App, {
       if (vp) html += `<div class="chart-grid"><div class="card"><div class="card-title">${this.t('dash_trend')}</div><div class="chart-container"><canvas id="trendChart"></canvas></div></div><div class="card"><div class="card-title">${this.t('dash_category')}</div><div class="chart-container"><canvas id="categoryChart"></canvas></div></div></div>`;
       if (vp) html += `<div class="card"><div class="card-title">${this.t('dash_top5')}</div><div class="chart-container"><canvas id="topChart"></canvas></div></div>`;
       if (data.alerts.length > 0) {
-        html += `<div class="card"><div class="card-title">${this.icon('alert')} ${this.t('dash_alert_list')} — ${data.alert_count} ${this.t('stock_items')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th></tr></thead><tbody>${data.alerts.map(a => `<tr><td>${this.docEsc(a.code)}</td><td>${this.docEsc(a.name)}</td><td>${this.docEsc(a.spec || '')}</td><td class="text-right">${this.docEsc(a.on_hand)}</td><td class="text-right">${this.docEsc(a.min_stock)}</td><td>${this.statusBadge(a.stock_status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+        html += `<div class="card"><div class="card-title">${this.icon('alert')} ${this.t('dash_alert_list')} — ${data.alert_count} ${this.t('stock_items')}</div><p class="dash-hint">${this.t('dash_row_hint')}</p><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th></tr></thead><tbody>${data.alerts.map(a => `<tr class="dash-link-row" data-dash="mat" data-code="${this.docEsc(a.code)}" tabindex="0" title="${this.docEsc(this.t('dash_alert_goto'))}"><td><span class="dash-row-link">${this.docEsc(a.code)}</span></td><td>${this.docEsc(a.name)}</td><td>${this.docEsc(a.spec || '')}</td><td class="text-right">${this.docEsc(a.on_hand)}</td><td class="text-right">${this.docEsc(a.min_stock)}</td><td>${this.statusBadge(a.stock_status)}</td></tr>`).join('')}</tbody></table></div></div>`;
       }
       if (data.overdue_orders.length > 0) {
-        html += `<div class="card"><div class="card-title">${this.icon('cart')} ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th>${vp ? `<th>${this.t('po_amount')}</th>` : ''}</tr></thead><tbody>${data.overdue_orders.map(o => `<tr><td>${this.docEsc(o.po_no)}</td><td>${this.docEsc(o.supplier)}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${this.docEsc(o.overdue_days)}</span></td><td>${this.statusBadge(o.delivery_status)}</td>${vp ? `<td class="text-right">${this.fmtMoney(o.order_amount)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>`;
+        html += `<div class="card"><div class="card-title">${this.icon('cart')} ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><p class="dash-hint">${this.t('dash_row_hint')}</p><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th>${vp ? `<th>${this.t('po_amount')}</th>` : ''}</tr></thead><tbody>${data.overdue_orders.map(o => `<tr class="dash-link-row" data-dash="po" data-code="${this.docEsc(o.po_no)}" tabindex="0" title="${this.docEsc(this.t('dash_po_goto'))}"><td><span class="dash-row-link">${this.docEsc(o.po_no)}</span></td><td>${this.docEsc(o.supplier)}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${this.docEsc(o.overdue_days)}</span></td><td>${this.statusBadge(o.delivery_status)}</td>${vp ? `<td class="text-right">${this.fmtMoney(o.order_amount)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>`;
       }
-      document.getElementById('dashboard-content').innerHTML = html;
+      const dc = document.getElementById('dashboard-content');
+      dc.innerHTML = html;
+      this.bindDashRows(dc);
       this.renderCharts(data, vp);
     } catch (e) {
       document.getElementById('dashboard-content').innerHTML = this.emptyState(this.docEsc(e.message), { icon: this.icon('alert') });
+    }
+  },
+
+  // 看板风险行 → 业务明细：事件委托，data-code 由 docEsc 转义，避免内联拼接引号风险
+  bindDashRows(root) {
+    if (!root || this._dashRowsBound === root) return;
+    root.addEventListener('click', e => {
+      const tr = e.target.closest && e.target.closest('tr.dash-link-row');
+      if (tr) this.dashGoto(tr.dataset.dash, tr.dataset.code);
+    });
+    root.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const tr = e.target.closest && e.target.closest('tr.dash-link-row');
+      if (!tr) return;
+      e.preventDefault();
+      this.dashGoto(tr.dataset.dash, tr.dataset.code);
+    });
+    this._dashRowsBound = root;
+  },
+
+  dashGoto(kind, code) {
+    if (!code) return;
+    if (kind === 'mat') {
+      // 复用查询中心既有的 ?code= 深链：router 会写入 qPendingCode，查询中心进入后自动按编码定位
+      this.gotoPage('query?code=' + encodeURIComponent(code));
+    } else if (kind === 'po') {
+      // 采购单：设置筛选词并定位到 orders 页签，随后打开该单详情
+      const s = this.puState();
+      s.tab = 'orders';
+      s.f.kw = code;
+      s.f.from = ''; s.f.to = ''; s.kpi = '';
+      this._puRevealPo = code;
+      this.gotoPage('purchase');
     }
   },
 
