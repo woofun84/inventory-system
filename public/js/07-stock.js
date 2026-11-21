@@ -59,6 +59,9 @@ Object.assign(App, {
       window.addEventListener('resize', () => {
         if (this.currentPage !== 'query') return;
         ['q_stock_pager', 'q_docs_pager', 'q_rcv_pager'].forEach(id => this.pinPager(id));
+        // 固定定位的候选浮层随窗口尺寸变化重新测量定位
+        const panel = document.getElementById('q-search-panel');
+        if (panel && !panel.hidden) this.qSearchPosition();
       });
     }
   },
@@ -364,7 +367,11 @@ Object.assign(App, {
     } catch (e) {
       if (seq !== this._qSearchSeq) return;
       const box = document.getElementById('q-search-panel');
-      if (box) { box.hidden = false; box.innerHTML = `<div class="q-search-state">${this.docEsc(e.message)}</div>`; }
+      if (box) {
+        box.hidden = false;
+        box.innerHTML = `<div class="q-search-state">${this.docEsc(e.message)}</div>`;
+        this.qSearchPosition();
+      }
     }
   },
 
@@ -378,8 +385,8 @@ Object.assign(App, {
     const panel = document.getElementById('q-search-panel');
     if (!panel) return;
     panel.hidden = false;
-    if (o.hint) { panel.innerHTML = `<div class="q-search-state">${this.t('q_search_hint')}</div>`; return; }
-    if (o.loading) { panel.innerHTML = `<div class="q-search-state">${this.t('q_loading')}</div>`; return; }
+    if (o.hint) { panel.innerHTML = `<div class="q-search-state">${this.t('q_search_hint')}</div>`; this.qSearchPosition(); return; }
+    if (o.loading) { panel.innerHTML = `<div class="q-search-state">${this.t('q_loading')}</div>`; this.qSearchPosition(); return; }
     const d = o.data || {};
     const g = d.groups || {};
     const mats = g.materials || { total: 0, rows: [] };
@@ -387,6 +394,7 @@ Object.assign(App, {
     const rcvs = g.receivers || { total: 0, rows: [] };
     if (!mats.total && !docs.total && !rcvs.total) {
       panel.innerHTML = `<div class="q-search-state">${this.t('q_search_none')}</div>`;
+      this.qSearchPosition();
       return;
     }
     const esc = v => this.docEsc(v == null ? '' : v);
@@ -396,7 +404,7 @@ Object.assign(App, {
     if (mats.total) {
       html += `<div class="q-search-group">${head(this.t('q_search_group_mat'), mats)}`
         + mats.rows.map(r => item('material', r.code, '',
-          `<span class="q-search-code">${esc(r.code)}</span><span class="q-search-sub">${esc(r.name)}${r.spec ? ' · ' + esc(r.spec) : ''}</span>`,
+          `<span class="q-search-code">${esc(r.code)}</span><span class="q-search-sub">${esc(r.name)}${r.spec || r.brand ? ' · ' + [r.spec, r.brand].filter(Boolean).map(esc).join(' · ') : ''}</span>`,
           `${r.on_hand}${r.unit ? ' ' + esc(r.unit) : ''}`)).join('')
         + '</div>';
     }
@@ -415,6 +423,39 @@ Object.assign(App, {
         + '</div>';
     }
     panel.innerHTML = html;
+    this.qSearchPosition();
+  },
+
+  // 候选浮层定位：复刻入库明细物料候选框（msPosition）的自然宽度策略——
+  // 离屏克隆量内容自然宽度，夹在 [搜索框宽, 视口宽-16]，右侧放不下就向内收，
+  // 下方空间不足时向上翻。风格与全项目候选框保持一致。
+  qSearchPosition() {
+    const panel = document.getElementById('q-search-panel');
+    const input = document.getElementById('q_global');
+    if (!panel || !input || panel.hidden) return;
+    const r = input.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const margin = 8;
+    const maxW = Math.max(160, vw - margin * 2);
+    // 离屏探针：max-content 量自然宽度；.q-search-probe 下各段不收缩、不省略
+    const probe = panel.cloneNode(true);
+    probe.classList.add('q-search-probe');
+    probe.removeAttribute('hidden');
+    document.body.appendChild(probe);
+    const chromeDelta = (panel.offsetWidth - panel.clientWidth) - (probe.offsetWidth - probe.clientWidth);
+    const natural = Math.ceil(probe.getBoundingClientRect().width) + Math.max(0, chromeDelta);
+    probe.remove();
+    const width = Math.min(Math.max(natural, Math.ceil(r.width)), maxW);
+    panel.style.width = width + 'px';
+    const left = Math.min(Math.max(margin, r.left), vw - margin - width);
+    panel.style.left = Math.round(left) + 'px';
+    const maxH = Math.min(460, Math.max(160, vh * 0.6));
+    panel.style.maxHeight = maxH + 'px';
+    let top = r.bottom + 4;
+    const h = panel.offsetHeight || 0;
+    if (h > vh - r.bottom - 8 && r.top - 8 > vh - r.bottom - 8) top = Math.max(8, r.top - 4 - h);
+    panel.style.top = Math.round(top) + 'px';
+    panel.style.maxHeight = Math.min(maxH, Math.max(120, vh - top - 8)) + 'px';
   },
 
   // 点结果：落到对应板块 → 列表按该对象过滤 → 打开详情卡（不跳页、不重建搜索框）

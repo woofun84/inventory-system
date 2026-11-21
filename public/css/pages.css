@@ -499,19 +499,38 @@
 .q-gsearch-clear.on { display: inline-flex; }
 .q-gsearch-clear .icon { width: 13px; height: 13px; }
 #q-root #q_global { padding-right: 32px; }
-/* 候选结果浮层：绝对定位在搜索框正下方，覆盖内容而非把内容往下挤 */
+/* 候选结果浮层：固定定位（不随 .page-body 的 overflow 被裁切），
+   宽度由 JS 按内容自然撑开并夹在 [搜索框宽, 视口宽-16]，风格与入库明细物料候选框一致 */
 #q-root .q-search-panel {
-  position: absolute;
-  top: calc(100% - 2px);
-  left: 0;
-  right: 0;
-  z-index: 60;
-  max-height: min(60vh, 460px);
+  position: fixed;
+  z-index: 1200;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
-  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+/* 离屏探针：量取候选内容的自然宽度（不换行、不省略），用完即移除 */
+#q-root .q-search-panel.q-search-probe {
+  left: -9999px !important;
+  top: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+  width: max-content !important;
+  max-width: none !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  scrollbar-gutter: auto;
+}
+#q-root .q-search-panel.q-search-probe .q-search-main,
+#q-root .q-search-panel.q-search-probe .q-search-sub,
+#q-root .q-search-panel.q-search-probe .q-search-code {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
 }
 #q-root .q-search-state { padding: 14px 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
 #q-root .q-search-group + .q-search-group { border-top: 1px solid var(--border); }

@@ -297,11 +297,6 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* ========== 看板可跳转风险行 ========== */
-.dash-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: -4px 0 10px;
-}
 .dash-link-row { cursor: pointer; }
 .dash-link-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .dash-row-link {
