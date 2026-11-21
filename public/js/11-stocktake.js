@@ -38,7 +38,7 @@ Object.assign(App, {
   // ========== 页面骨架（对齐入库：页签 + 条件区 + KPI + 列表/详情栏） ==========
   async renderStocktake() {
     const s = this.stState();
-    this.setMain(this.pageWrap('📋 ' + this.t('st_title'), this.t('st_desc'), '', this.stSkeleton()));
+    this.setMain(this.pageWrap(this.icon('clipboard', 'icon--title') + ' ' + this.t('st_title'), this.t('st_desc'), '', this.stSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
     this.stBindEvents();
@@ -375,8 +375,8 @@ Object.assign(App, {
           <span class="pu-badge">${this.stStatusBadge(d.status)}</span>
         </div>
         <div>
-          <button type="button" class="btn btn-outline btn-sm" data-st="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${s.wide ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-st="icl" title="${this.t('pu_close_detail')}">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" data-st="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${this.icon(s.wide ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-st="icl" title="${this.t('pu_close_detail')}" aria-label="${this.t('pu_close_detail')}">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.docEsc(m[0])}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
@@ -673,7 +673,7 @@ Object.assign(App, {
       const st = this.getTableState('stocktake');
       if (e.target.id === 'st_f_from') { s.f.from = e.target.value; st.page = 1; this.stRenderList(); }
       else if (e.target.id === 'st_f_to') { s.f.to = e.target.value; st.page = 1; this.stRenderList(); }
-      else if (e.target.id === 'st-psz') { st.pageSize = parseInt(e.target.value, 10) || 15; st.page = 1; this.stRenderList(); }
+      else if (e.target.id === 'st-psz') { st.pageSize = this.normalizePageSize(e.target.value); st.page = 1; this.stRenderList(); }
     });
 
     document.addEventListener('keydown', e => {
@@ -1083,7 +1083,7 @@ Object.assign(App, {
     this._stCache[no] = { d };
     this._stEditLines = this.stMapEditLines(d);
 
-    this.setMain(this.pageWrap('✏️ ' + this.t('st_edit_title'),
+    this.setMain(this.pageWrap(this.icon('edit', 'icon--title') + ' ' + this.t('st_edit_title'),
       `${d.stocktake_no} · ${this.t('st_scope')} ${this.stScopeLabel(d)}`, '',
       `<div id="st-edit-root" class="data-page">
         <div class="pu-edit-bar">

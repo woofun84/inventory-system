@@ -6,7 +6,7 @@ Object.assign(App, {
   async renderUsers() {
     const addBtn = this.can('users','create') ? `<button class="btn btn-primary" onclick="App.editUser()">+ ${this.t('user_add')}</button>` : '';
     const toolbar = this.renderTableToolbar('user_filter', 'App.onUsersFilter()', addBtn);
-    this.setMain(this.pageWrap('👤 ' + this.t('user_title'), this.t('user_desc'), '', `<div id="users-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="users-scroll"></div><div class="data-pager" id="users-pager"></div></div>`));
+    this.setMain(this.pageWrap(this.icon('user', 'icon--title') + ' ' + this.t('user_title'), this.t('user_desc'), '', `<div id="users-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="users-scroll"></div><div class="pu-pager" id="users-pager"></div></div>`));
     try {
       this._usersData = await this.api('/api/users');
       this._tableRenderers = this._tableRenderers || {};
@@ -35,7 +35,7 @@ Object.assign(App, {
     const statusBadge = s => s === 'active' ? `<span class="badge badge-success">${this.t('status_active')}</span>` : `<span class="badge badge-muted">${this.t('status_disabled')}</span>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(headers.length + 1); }
-    else { tbody = pageData.map(u => `<tr><td class="cell-code">${this.docEsc(u.username)}${u.must_change_pwd ? ' <span class="badge badge-warning">⚠</span>' : ''}</td><td>${this.docEsc(u.name || '')}</td><td>${roleLabel(u.role)}</td><td class="text-center">${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td class="text-center">${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
+    else { tbody = pageData.map(u => `<tr><td class="cell-code">${this.docEsc(u.username)}${u.must_change_pwd ? ' <span class="badge badge-warning">' + this.icon('alert') + '</span>' : ''}</td><td>${this.docEsc(u.name || '')}</td><td>${roleLabel(u.role)}</td><td class="text-center">${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td class="text-center">${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
     document.getElementById('users-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('users-pager').innerHTML = this.renderPager(tid, sorted.length);
   },

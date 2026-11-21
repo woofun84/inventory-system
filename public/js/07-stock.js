@@ -7,10 +7,10 @@ Object.assign(App, {
   // ========== 查询中心：四个板块骨架 ==========
   qBoards() {
     return [
-      ['stock', 'q_tab_stock', '▦'],
-      ['docs', 'q_tab_docs', '▤'],
-      ['receivers', 'q_tab_receivers', '♙'],
-      ['analysis', 'q_tab_analysis', '▥'],
+      ['stock', 'q_tab_stock', 'grid'],
+      ['docs', 'q_tab_docs', 'list'],
+      ['receivers', 'q_tab_receivers', 'users'],
+      ['analysis', 'q_tab_analysis', 'chart'],
     ];
   },
 
@@ -25,12 +25,13 @@ Object.assign(App, {
       if (code) this._qCardPending = { code, expanded: true };
     }
     this.qBoard = board;
-    this.setMain(this.pageWrap('🔍 ' + this.t('q_title'), this.t('q_desc'), '', `<div id="q-root" class="data-page">
+    this.setMain(this.pageWrap(this.icon('search', 'icon--title') + ' ' + this.t('q_title'), this.t('q_desc'), '', `<div id="q-root" class="data-page">
       <div class="data-toolbar q-global-bar">
         <nav id="q-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('q_title')}"></nav>
         <div class="q-gsearch"><div class="pu-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          ${this.icon('search')}
           <input id="q_global" autocomplete="off" placeholder="${this.t('q_search_ph')}" aria-label="${this.t('q_search_ph')}" onfocus="App.qSearchFocus()" onblur="App.qSearchBlur()" oninput="App.qSearchInput()" onkeydown="App.qSearchKey(event)">
+          <button type="button" class="q-gsearch-clear" id="q_global_clear" title="${this.t('pu_clear_filter')}" aria-label="${this.t('pu_clear_filter')}" onclick="App.qClearGlobalSearch()">${this.icon('close')}</button>
         </div></div>
       </div>
       <div id="q-search-panel" class="q-search-panel" hidden></div>
@@ -58,7 +59,7 @@ Object.assign(App, {
     const nav = document.getElementById('q-tabs');
     if (!nav) return;
     const active = this.qBoard || 'stock';
-    nav.innerHTML = this.qBoards().map(b => `<button type="button" class="pu-viewtab" role="tab" data-board="${b[0]}" aria-selected="${b[0] === active}" onclick="App.qSwitchBoard('${b[0]}')"><span style="margin-right:5px">${b[2]}</span>${this.t(b[1])}</button>`).join('');
+    nav.innerHTML = this.qBoards().map(b => `<button type="button" class="pu-viewtab" role="tab" data-board="${b[0]}" aria-selected="${b[0] === active}" onclick="App.qSwitchBoard('${b[0]}')"><span style="margin-right:5px">${this.icon(b[2])}</span>${this.t(b[1])}</button>`).join('');
   },
 
   // 按需渲染：切换板块才装配该板块内容，避免首次加载把四个板块一起拉起来
@@ -306,6 +307,8 @@ Object.assign(App, {
   qSearchInput() {
     const el = document.getElementById('q_global');
     const kw = (el && el.value || '').trim();
+    const clear = document.getElementById('q_global_clear');
+    if (clear) clear.classList.toggle('on', !!kw);
     clearTimeout(this._qSearchTimer);
     this._qSearchSeq = (this._qSearchSeq || 0) + 1; // 作废在途请求，避免旧结果覆盖新输入
     if (!kw) { this.qSearchPanelRender({ hint: true }); return; }
@@ -313,9 +316,22 @@ Object.assign(App, {
     this._qSearchTimer = setTimeout(() => this.qSearchRun(kw), 260);
   },
 
+  qClearGlobalSearch() {
+    const el = document.getElementById('q_global');
+    if (!el) return;
+    el.value = '';
+    const clear = document.getElementById('q_global_clear');
+    if (clear) clear.classList.remove('on');
+    clearTimeout(this._qSearchTimer);
+    this.qSearchPanelClose();
+    el.focus();
+  },
+
   qSearchKey(e) {
     if (e.key === 'Escape') {
       e.target.value = '';
+      const clear = document.getElementById('q_global_clear');
+      if (clear) clear.classList.remove('on');
       clearTimeout(this._qSearchTimer);
       this._qSearchSeq = (this._qSearchSeq || 0) + 1;
       this.qSearchPanelClose();
@@ -442,8 +458,8 @@ Object.assign(App, {
     return `<div class="pu-insp-head">
         <div><h2>${o.title}${o.badge ? ' ' + o.badge : ''}</h2>${o.sub ? `<small>${o.sub}</small>` : ''}</div>
         <div style="display:flex;gap:4px">
-          <button type="button" class="btn btn-outline btn-sm" title="${this.t(o.expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qInsExpand('${board}')">${o.expanded ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" onclick="App.qInsClose('${board}')">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" title="${this.t(o.expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qInsExpand('${board}')">${this.icon(o.expanded ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qInsClose('${board}')">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       ${tabs ? `<div class="pu-dtabs" role="tablist">${tabs}</div>` : ''}`;
@@ -608,8 +624,8 @@ Object.assign(App, {
     const esc = v => this.docEsc(v == null ? '' : v);
     const no = (d && (src === 'stocktake' ? d.stocktake_no : d.doc_no)) || (st && st.docNo) || '';
     const kind = src === 'returns' ? 'returns' : (src === 'stocktake' ? 'stocktake' : src);
-    const headExtra = `<button type="button" class="btn btn-outline btn-sm" title="${this.t(expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qCardDocExpand()">${expanded ? '⤡' : '⤢'}</button>`
-      + `<button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" onclick="App.qCardDocClose()">✕</button>`;
+    const headExtra = `<button type="button" class="btn btn-outline btn-sm" title="${this.t(expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qCardDocExpand()">${this.icon(expanded ? 'restore' : 'maximize', 'icon--tool')}</button>`
+      + `<button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qCardDocClose()">${this.icon('close', 'icon--tool')}</button>`;
     if (!d) {
       return `<div class="pu-insp-head"><div><h2>${esc(no || '–')}</h2></div><div style="display:flex;gap:4px">${headExtra}</div></div><div class="pu-dpanel">${this.emptyState(this.t('q_no_data'))}</div>`;
     }
@@ -695,7 +711,7 @@ Object.assign(App, {
     } catch (e) {
       if (seq !== this._qCardSeq) return;
       const box = document.getElementById('q_stock_insp');
-      if (box) box.innerHTML = `<div class="pu-insp-head"><div><h2>${this.docEsc(code)}</h2></div><button class="btn btn-outline btn-sm" onclick="App.qInsClose('stock')">✕</button></div><div class="pu-dpanel">${this.emptyState(this.docEsc(e.message))}</div>`;
+      if (box) box.innerHTML = `<div class="pu-insp-head"><div><h2>${this.docEsc(code)}</h2></div><button class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qInsClose('stock')">${this.icon('close', 'icon--tool')}</button></div><div class="pu-dpanel">${this.emptyState(this.docEsc(e.message))}</div>`;
     }
   },
 

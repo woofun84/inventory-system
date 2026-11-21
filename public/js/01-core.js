@@ -35,6 +35,9 @@ const App = {
     return s;
   },
 
+  // 统一图标：全项目只通过此入口取 SVG，避免各处混用 emoji
+  icon(name, cls) { return window.appIcon ? window.appIcon(name, cls) : ''; },
+
   // 角色标签：字典缺失时回落原始值，避免界面出现 role_xxx 这类原始 key
   // 回落值来自数据（role 字段），插入 innerHTML 前必须转义
   roleLabel(role) {
@@ -133,7 +136,7 @@ const App = {
       // 已被其它终端挤下线：由 handleKicked 弹出提示，不再静默跳转；
       // 新开页面时没有"当前页面"可保留，补一层说明页避免弹窗背后空白。
       if (this.conn && this.conn.kicked) {
-        this.setMain(this.pageWrap('📦 ' + this.t('appName'), '', '',
+        this.setMain(this.pageWrap(this.icon('box', 'icon--title') + ' ' + this.t('appName'), '', '',
           '<div style="padding:40px;text-align:center;color:var(--text-muted)">'
           + this.docEsc(this.t('kicked_desc')) + '</div>'));
         return;
@@ -152,7 +155,7 @@ const App = {
     this.restoreSessionDraft();
     // 强制改密：渲染基础布局并弹改密弹窗（router 的 must_change_pwd 拦截负责兜底后续导航）
     if (this.user && this.user.must_change_pwd) {
-      this.setMain(this.pageWrap('📦 ' + this.t('appName'), '', '', '<div id="force-pwd-hint" style="padding:40px;text-align:center;color:var(--text-muted)">' + this.t('change_password') + '</div>'));
+      this.setMain(this.pageWrap(this.icon('box', 'icon--title') + ' ' + this.t('appName'), '', '', '<div id="force-pwd-hint" style="padding:40px;text-align:center;color:var(--text-muted)">' + this.t('change_password') + '</div>'));
       this.showChangePwdModal(true);
       return;
     }
@@ -345,7 +348,10 @@ const App = {
     const langBtn = document.getElementById('hdr-lang-btn');
     if (langBtn) { langBtn.textContent = this.lang === 'zh' ? 'EN' : '中文'; langBtn.title = this.t('hdr_lang_tip'); }
     const themeBtn = document.getElementById('hdr-theme-btn');
-    if (themeBtn) { themeBtn.textContent = this.theme === 'light' ? '🌙' : '☀'; themeBtn.title = this.t('hdr_theme_tip'); }
+    if (themeBtn) {
+      themeBtn.innerHTML = this.icon(this.theme === 'light' ? 'moon' : 'sun', 'icon--tool');
+      themeBtn.title = this.t('hdr_theme_tip');
+    }
   },
 
   // 图表字体/网格色在创建时从 CSS 变量读取，换主题后就地改色，不销毁重建
@@ -448,7 +454,7 @@ const App = {
   renderToolbar() {
     return `<div class="toolbar">
       <button id="hdr-lang-btn" class="tool-btn tool-btn-sm" onclick="App.toggleLang()" title="${this.t('hdr_lang_tip')}">${this.lang === 'zh' ? 'EN' : '中文'}</button>
-      <button id="hdr-theme-btn" class="tool-btn" onclick="App.toggleTheme()" title="${this.t('hdr_theme_tip')}">${this.theme === 'light' ? '🌙' : '☀'}</button>
+      <button id="hdr-theme-btn" class="tool-btn" onclick="App.toggleTheme()" title="${this.t('hdr_theme_tip')}" aria-label="${this.t('hdr_theme_tip')}">${this.icon(this.theme === 'light' ? 'moon' : 'sun', 'icon--tool')}</button>
     </div>`;
   },
 
@@ -593,34 +599,34 @@ const App = {
 
   renderSidebar() {
     const nav = [
-      { section: this.t('nav_sec_overview'), items: [{ key: 'dashboard', icon: '🏠', label: this.t('nav_home') }]},
+      { section: this.t('nav_sec_overview'), items: [{ key: 'dashboard', icon: 'home', label: this.t('nav_home') }]},
       { section: this.t('nav_sec_business'), items: [
-        { key: 'inbound', icon: '📥', label: this.t('nav_inbound') }, { key: 'outbound', icon: '📤', label: this.t('nav_outbound') },
-        { key: 'purchase', icon: '🛒', label: this.t('nav_purchase') },
-        { key: 'returns', icon: '↩️', label: this.t('nav_returns') },
-        { key: 'stocktake', icon: '📋', label: this.t('nav_stocktake') },
+        { key: 'inbound', icon: 'inbound', label: this.t('nav_inbound') }, { key: 'outbound', icon: 'outbound', label: this.t('nav_outbound') },
+        { key: 'purchase', icon: 'cart', label: this.t('nav_purchase') },
+        { key: 'returns', icon: 'returns', label: this.t('nav_returns') },
+        { key: 'stocktake', icon: 'clipboard', label: this.t('nav_stocktake') },
       ]},
       { section: this.t('nav_sec_analytics'), items: [
-        { key: 'query', icon: '🔍', label: this.t('nav_query') },
+        { key: 'query', icon: 'search', label: this.t('nav_query') },
       ]},
       { section: this.t('nav_sec_master'), items: [
-        { key: 'materials', icon: '🏷', label: this.t('nav_materials') },
-        { key: 'suppliers', icon: '🚚', label: this.t('nav_suppliers') },
+        { key: 'materials', icon: 'tag', label: this.t('nav_materials') },
+        { key: 'suppliers', icon: 'truck', label: this.t('nav_suppliers') },
       ]},
       { section: this.t('nav_sec_system'), items: [
-        { key: 'users', icon: '👤', label: this.t('nav_users') },
-        { key: 'settings', icon: '⚙', label: this.t('nav_settings') },
-        { key: 'audit', icon: '📜', label: this.t('nav_audit') },
+        { key: 'users', icon: 'user', label: this.t('nav_users') },
+        { key: 'settings', icon: 'settings', label: this.t('nav_settings') },
+        { key: 'audit', icon: 'audit', label: this.t('nav_audit') },
       ]}
     ];
-    let html = `<div class="sidebar"><div class="sidebar-header"><h1>📦 <span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
+    let html = `<div class="sidebar"><div class="sidebar-header"><h1>${this.icon('box', 'icon--logo')}<span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
     nav.forEach(s => {
       // 按权限过滤
       const visibleItems = s.items.filter(item => this.can(item.key, 'view'));
       if (visibleItems.length === 0) return;
       html += `<div class="nav-section-label">${s.section}</div>`;
       visibleItems.forEach(item => {
-        html += `<div class="nav-item ${this.currentPage === item.key ? 'active' : ''}" onclick="App.gotoPage('${item.key}')"><span class="nav-icon">${item.icon}</span><span>${item.label}</span></div>`;
+        html += `<div class="nav-item ${this.currentPage === item.key ? 'active' : ''}" onclick="App.gotoPage('${item.key}')"><span class="nav-icon">${this.icon(item.icon, 'icon--nav')}</span><span>${item.label}</span></div>`;
       });
     });
     html += '</div>';
@@ -632,8 +638,8 @@ const App = {
           <span class="sidebar-user-name">${this.docEsc(this.user.name || this.user.username)}</span>
           <span class="sidebar-user-role">${roleLabel}</span>
         </div>
-        <button class="tool-btn tool-btn-sm" onclick="App.showChangePwdModal(false)" title="${this.t('change_password')}">🔑</button>
-        <button class="tool-btn tool-btn-sm" onclick="App.logout()" title="${this.t('hdr_logout_tip')}">⏻</button>
+        <button class="tool-btn tool-btn-sm" onclick="App.showChangePwdModal(false)" title="${this.t('change_password')}" aria-label="${this.t('change_password')}">${this.icon('key', 'icon--tool')}</button>
+        <button class="tool-btn tool-btn-sm" onclick="App.logout()" title="${this.t('hdr_logout_tip')}" aria-label="${this.t('hdr_logout_tip')}">${this.icon('logout', 'icon--tool')}</button>
       </div>`;
     }
     html += '</div>';
@@ -692,7 +698,7 @@ const App = {
   pageWrap(title, desc, headerRight, bodyHtml) {
     const tools = this.renderToolbar();
     const right = (headerRight || '') + tools;
-    return `<div class="page-header-row"><div class="page-heading"><button type="button" class="nav-toggle" onclick="App.openSidebar()" aria-label="${this.t('nav_menu')}" title="${this.t('nav_menu')}">☰</button><div class="page-heading-text"><div class="page-title">${title}</div>${desc ? `<div class="page-desc">${desc}</div>` : ''}</div></div><div>${right}</div></div><div class="page-body">${bodyHtml}</div>`;
+    return `<div class="page-header-row"><div class="page-heading"><button type="button" class="nav-toggle" onclick="App.openSidebar()" aria-label="${this.t('nav_menu')}" title="${this.t('nav_menu')}">${this.icon('menu', 'icon--tool')}</button><div class="page-heading-text"><div class="page-title">${title}</div>${desc ? `<div class="page-desc">${desc}</div>` : ''}</div></div><div>${right}</div></div><div class="page-body">${bodyHtml}</div>`;
   },
 
   async api(url, method = 'GET', body = null) {
@@ -764,7 +770,7 @@ const App = {
     overlay.className = 'confirm-overlay'; overlay.id = 'confirm-overlay';
     const isPrimary = intent === 'primary';
     const okCls = isPrimary ? 'btn-primary' : 'btn-danger';
-    const icon = isPrimary ? this.t('cf_info') : this.t('cf_warning');
+    const icon = this.icon(isPrimary ? 'info' : 'alert');
     const iconCls = isPrimary ? 'confirm-icon confirm-icon--info' : 'confirm-icon confirm-icon--warn';
     overlay.innerHTML = `<div class="confirm-box"><div class="${iconCls}">${icon}</div><div class="confirm-title">${title}</div><div class="confirm-msg">${msg}</div><div class="confirm-actions"><button class="btn btn-outline" id="cf-cancel">${this.t('cancel')}</button><button class="btn ${okCls}" id="cf-ok">${this.t('confirm')}</button></div></div>`;
     document.body.appendChild(overlay);
@@ -818,18 +824,20 @@ const App = {
     return `<div class="ui-note ui-note--danger" role="status">${html}</div>`;
   },
 
-  // 业务类型 → 徽标类：同一业务类型在全项目必须同色
+  // 业务类型 → 徽标类：同一业务类型在全项目必须同色。
+  // 语义约定：success/warning/danger 专用于「状态」（已过账/未到货/缺货），
+  // 业务类型只用「信息蓝（流入）」与「中性灰（流出/盘点）」区分方向，避免把正常业务误读成告警。
   docTypeBadgeClass(type) {
     const map = {
       '采购入库': 'badge-info',
       '零星入库': 'badge-info',
-      '采购退货': 'badge-danger',
-      '零星退货': 'badge-danger',
-      '正常出库': 'badge-warning',
-      '领料退库': 'badge-success',
+      '采购退货': 'badge-muted',
+      '零星退货': 'badge-muted',
+      '正常出库': 'badge-muted',
+      '领料退库': 'badge-info',
       '盘点单': 'badge-muted',
-      '盘盈': 'badge-success',
-      '盘亏': 'badge-danger',
+      '盘盈': 'badge-info',
+      '盘亏': 'badge-muted',
     };
     return map[type] || 'badge-muted';
   },

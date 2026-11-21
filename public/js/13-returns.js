@@ -50,7 +50,7 @@ Object.assign(App, {
     const s = this.retState();
     this._retData = null;
     this._retOriginRows = null;
-    this.setMain(this.pageWrap('↩ ' + this.t('ret_title'), this.t('ret_desc'), '',
+    this.setMain(this.pageWrap(this.icon('returns', 'icon--title') + ' ' + this.t('ret_title'), this.t('ret_desc'), '',
       `<div id="ret-root" class="data-page">
         <div class="data-toolbar">
           <nav id="ret-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('ret_title')}"></nav>
@@ -581,7 +581,7 @@ Object.assign(App, {
       ['doc_no', this.t('ret_no'), r => {
         const subs = [];
         if (r.ref_no) subs.push(`← ${this.docEsc(r.ref_no)}`);
-        if (r.corrected_by_doc_no) subs.push(`✎ ${this.docEsc(r.corrected_by_doc_no)}`);
+        if (r.corrected_by_doc_no) subs.push(`${this.icon('edit')} ${this.docEsc(r.corrected_by_doc_no)}`);
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" onclick="event.stopPropagation();App.retSelectDoc('${this.docEsc(r.doc_no)}')">${this.docEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
       }],
@@ -628,7 +628,7 @@ Object.assign(App, {
 
   retSetPageSize(v) {
     const st = this.getTableState('returns');
-    st.pageSize = parseInt(v, 10) || 15;
+    st.pageSize = this.normalizePageSize(v);
     st.page = 1;
     this.retRenderList();
   },
@@ -784,14 +784,14 @@ Object.assign(App, {
           <span class="pu-badge">${this.retStatusBadge(d.status)}</span>
         </div>
         <div>
-          <button type="button" class="btn btn-outline btn-sm" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}" onclick="App.retToggleWide()">${s.wide ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" title="${this.t('pu_close_detail')}" onclick="App.retBackToList()">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}" onclick="App.retToggleWide()">${this.icon(s.wide ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" title="${this.t('pu_close_detail')}" aria-label="${this.t('pu_close_detail')}" onclick="App.retBackToList()">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.docEsc(m[0])}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
       ${d.status === 'voided' ? this.docVoidBannerHtml(d, d.corrected_by_doc_no ? `<button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.docEsc(d.corrected_by_doc_no)}')">${this.docEsc(d.corrected_by_doc_no)}</button>` : '') : ''}
       ${d.status !== 'voided' && d.corrected_by_doc_no ? `<div class="ui-note ui-note--info">${this.t('ibd_corr_to')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.docEsc(d.corrected_by_doc_no)}')">${this.docEsc(d.corrected_by_doc_no)}</button></div>` : ''}
-      ${d.corrects_doc_no ? `<div class="ui-note ui-note--info">✎ ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.docEsc(d.corrects_doc_no)}')">${this.docEsc(d.corrects_doc_no)}</button></div>` : ''}
+      ${d.corrects_doc_no ? `<div class="ui-note ui-note--info">${this.icon('edit')} ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.docEsc(d.corrects_doc_no)}')">${this.docEsc(d.corrects_doc_no)}</button></div>` : ''}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" onclick="App.retSetDt('${k}')">${label} ${n}</button>`).join('')}</div>
       <div class="pu-dpanel" id="ret-dpanel"></div>
       <div class="pu-insp-foot">${foot}</div>`;

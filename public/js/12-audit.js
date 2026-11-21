@@ -351,11 +351,11 @@
       this._tableRenderers = this._tableRenderers || {};
       this._tableRenderers['audit'] = () => this.loadAuditLogs();
 
-      this.setMain(this.pageWrap('📜 ' + this.t('nav_audit'), this.t('audit_desc'), '', `
+      this.setMain(this.pageWrap(this.icon('audit', 'icon--title') + ' ' + this.t('nav_audit'), this.t('audit_desc'), '', `
         <div class="data-page">
           <div class="data-toolbar">${this.renderAuditToolbar()}</div>
           <div class="data-scroll" id="audit-scroll"></div>
-          <div class="data-pager" id="audit-pager"></div>
+          <div class="pu-pager" id="audit-pager"></div>
         </div>`));
       await this.loadAuditLogs();
     },

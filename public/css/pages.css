@@ -201,6 +201,7 @@
   margin-bottom: 12px;
   text-align: center;
 }
+.confirm-icon .icon { width: 32px; height: 32px; }
 .confirm-icon--warn { color: var(--danger); }
 .confirm-icon--info { color: var(--info); }
 .confirm-title {
@@ -242,7 +243,7 @@
 .form-error.show { display: block; }
 .form-note {
   font-size: 11px;
-  color: var(--warning);
+  color: var(--warning-fg);
   margin-top: 2px;
   display: none;
 }
@@ -406,7 +407,9 @@
 .pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
 .pu-pager.pin { position: sticky; bottom: 0; z-index: 5; }
 .pu-pager:empty { display: none; border-top: 0; }
-.pu-pager .btn { height: 26px; padding: 0 10px; font-size: 12px; line-height: 1; }
+.pu-pager .btn { height: 26px; min-width: 26px; padding: 0 8px; font-size: 12px; line-height: 1; justify-content: center; }
+.pu-pager .btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pu-pager-gap { padding: 0 2px; color: var(--text-muted); font-size: 12px; }
 .pu-pager select { height: 26px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); color: var(--text); font-size: 12px; }
 .pu-pager label { display: inline-flex; align-items: center; gap: 4px; }
 .pu-pager .pu-tot { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -475,6 +478,26 @@
 #q-root .q-global-bar #q-tabs { flex: 0 1 auto; min-width: 0; }
 #q-root .q-gsearch { flex: 0 0 280px; max-width: 320px; padding-bottom: 5px; }
 #q-root .q-gsearch .pu-search { width: 100%; }
+.q-gsearch-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.q-gsearch-clear.on { display: inline-flex; }
+.q-gsearch-clear .icon { width: 13px; height: 13px; }
+#q-root #q_global { padding-right: 32px; }
 #q-root .q-search-panel { margin: 10px 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
 #q-root .q-search-state { padding: 14px 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
 #q-root .q-search-group + .q-search-group { border-top: 1px solid var(--border); }
@@ -578,7 +601,7 @@
 button.pu-kpi { cursor: pointer; }
 .pu-kpi small { color: var(--text-muted); font-size: 13px; }
 .pu-kpi strong { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
-.pu-kpi.warn strong { color: var(--warning); }
+.pu-kpi.warn strong { color: var(--warning-fg); }
 .pu-kpi[aria-pressed=true] { border-color: var(--primary); background: var(--primary-light); color: var(--text); }
 
 /* --- 列表 + 右侧详情栏 --- */
@@ -761,7 +784,7 @@ button.pu-kpi { cursor: pointer; }
 .ob-confirm-warn { color: var(--danger); font-size: 12px; margin: 4px 0; }
 .ob-confirm-cost { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
 .ob-confirm-cost > div { display: flex; justify-content: space-between; gap: 12px; }
-.ob-confirm-cost .ob-confirm-diff { color: var(--warning); }
+.ob-confirm-cost .ob-confirm-diff { color: var(--warning-fg); }
 .line-error-tip { display: none; font-size: 12px; color: var(--danger); margin-top: 2px; }
 .line-error-tip.show { display: block; }
 /* 明细表格内的行级校验红框（采购 / 入库编辑页共用） */
@@ -798,7 +821,9 @@ button.pu-kpi { cursor: pointer; }
 .pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
 .pu-pager.pin { position: sticky; bottom: 0; z-index: 5; }
 .pu-pager:empty { display: none; border-top: 0; }
-.pu-pager .btn { height: 26px; padding: 0 10px; font-size: 12px; line-height: 1; }
+.pu-pager .btn { height: 26px; min-width: 26px; padding: 0 8px; font-size: 12px; line-height: 1; justify-content: center; }
+.pu-pager .btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pu-pager-gap { padding: 0 2px; color: var(--text-muted); font-size: 12px; }
 .pu-pager select { height: 26px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); color: var(--text); font-size: 12px; }
 .pu-pager label { display: inline-flex; align-items: center; gap: 4px; }
 .pu-pager .pu-tot { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

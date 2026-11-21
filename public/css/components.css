@@ -36,10 +36,10 @@
   transition: all 0.15s;
   white-space: nowrap;
 }
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(37,99,235,0.25); }
-.btn-danger { background: var(--danger); color: #fff; }
-.btn-danger:hover { background: var(--danger-fg); }
+.btn-primary { background: var(--primary-solid, var(--primary)); color: #fff; }
+.btn-primary:hover { background: var(--primary-solid-hover, var(--primary-dark)); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(37,99,235,0.25); }
+.btn-danger { background: var(--danger-solid, var(--danger)); color: #fff; }
+.btn-danger:hover { background: var(--danger-solid-hover, var(--danger)); }
 .btn-outline {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -420,6 +420,7 @@ body.conn-offline #app {
   color: var(--text-muted);
 }
 .empty-state-icon { font-size: 42px; margin-bottom: 10px; }
+.empty-state-icon .icon { width: 42px; height: 42px; vertical-align: middle; }
 
 /* ========== 日志详情 ========== */
 .audit-detail-cell {

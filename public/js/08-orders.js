@@ -8,7 +8,7 @@ Object.assign(App, {
   async renderSuppliers() {
     const addBtn = this.can('suppliers','create') ? `<button class="btn btn-primary" onclick="App.editSupplier()">+ ${this.t('sup_add')}</button>` : '';
     const toolbar = this.renderTableToolbar('sup_filter', 'App.onSuppliersFilter()', addBtn);
-    this.setMain(this.pageWrap('🚚 ' + this.t('sup_title'), this.t('sup_desc'), '', `<div id="suppliers-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="suppliers-scroll"></div><div class="data-pager" id="suppliers-pager"></div></div>`));
+    this.setMain(this.pageWrap(this.icon('truck', 'icon--title') + ' ' + this.t('sup_title'), this.t('sup_desc'), '', `<div id="suppliers-content" class="data-page"><div class="data-toolbar">${toolbar}</div><div class="data-scroll" id="suppliers-scroll"></div><div class="pu-pager" id="suppliers-pager"></div></div>`));
     try {
       this._suppliersData = await this.api('/api/suppliers');
       this._tableRenderers = this._tableRenderers || {};
@@ -86,7 +86,7 @@ Object.assign(App, {
   // 设置页样式已收敛到 public/css/pages.css，不再运行时注入
 
   async renderSettings() {
-    this.setMain(this.pageWrap('⚙ ' + this.t('set_title'), this.t('set_desc'), '', `<div id="settings-content" class="set-page"><p class="set-loading">${this.t('loading')}</p></div>`));
+    this.setMain(this.pageWrap(this.icon('settings', 'icon--title') + ' ' + this.t('set_title'), this.t('set_desc'), '', `<div id="settings-content" class="set-page"><p class="set-loading">${this.t('loading')}</p></div>`));
     try {
       const data = await this.api('/api/params');
       // 自动备份状态单独取：读失败时只让该卡片降级，不影响整页

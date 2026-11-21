@@ -38,7 +38,7 @@ Object.assign(App, {
   // ========== 页面骨架（对齐采购管理：页签 + 条件区 + KPI + 列表/详情栏） ==========
   async renderInbound() {
     const s = this.ibState();
-    this.setMain(this.pageWrap('📥 ' + this.t('ibd_title'), this.t('ibd_desc'), '', this.ibSkeleton()));
+    this.setMain(this.pageWrap(this.icon('inbound', 'icon--title') + ' ' + this.t('ibd_title'), this.t('ibd_desc'), '', this.ibSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
     this.ibBindEvents();
@@ -219,7 +219,7 @@ Object.assign(App, {
     const cols = [
       ['doc_no', this.t('ibd_no'), r => {
         const subs = [];
-        if (r.corrects_doc_no) subs.push(`✎ ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
+        if (r.corrects_doc_no) subs.push(`${this.icon('edit')} ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
         if (r.corrected_by_doc_no) subs.push(`→ ${this.t('ibd_corr_to')} ${this.docEsc(r.corrected_by_doc_no)}`);
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" data-ib="open" data-id="${this.docEsc(r.doc_no)}">${this.docEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
@@ -485,7 +485,7 @@ Object.assign(App, {
     const typeField = `<div class="form-group"><label>${preset.indexOf('退货') >= 0 ? this.t('ibd_doc_type') : this.t('ibd_type')}</label><input id="ib_f_type_text" value="${typeText}" readonly><input type="hidden" id="ib_f_txn_type" value="${typeVal}"></div>`;
     const pageTitle = isReturn ? this.t(isMiscReturn ? 'ret_new_misc' : 'ret_new_purchase') : this.t('ibd_add');
 
-    this.setMain(this.pageWrap('🆕 ' + pageTitle, this.t('ibd_create_hint'), '',
+    this.setMain(this.pageWrap(this.icon('plus', 'icon--title') + ' ' + pageTitle, this.t('ibd_create_hint'), '',
       `<div class="data-page" id="ib-new-root">
         <div class="pu-edit-bar">
           <span class="action-link" onclick="App.backToInboundList()">← ${this.t('ibd_back_list')}</span>
@@ -1126,8 +1126,8 @@ Object.assign(App, {
           <span class="pu-badge">${this.ibdStatusBadge(d.status)}</span>
         </div>
         <div>
-          <button type="button" class="btn btn-outline btn-sm" data-ib="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${s.wide ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-ib="icl" title="${this.t('pu_close_detail')}">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" data-ib="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${this.icon(s.wide ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-ib="icl" title="${this.t('pu_close_detail')}" aria-label="${this.t('pu_close_detail')}">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div${m[2] ? ` id="ib_d_${m[2]}" data-ib-field="${m[2]}"` : ''}><dt>${this.docEsc(m[0])}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
@@ -1379,7 +1379,7 @@ Object.assign(App, {
       const st = this.getTableState('inbound');
       if (e.target.id === 'ib_f_from') { s.f.from = e.target.value; st.page = 1; this.ibRenderList(); }
       else if (e.target.id === 'ib_f_to') { s.f.to = e.target.value; st.page = 1; this.ibRenderList(); }
-      else if (e.target.id === 'ib-psz') { st.pageSize = parseInt(e.target.value, 10) || 15; st.page = 1; this.ibRenderList(); }
+      else if (e.target.id === 'ib-psz') { st.pageSize = this.normalizePageSize(e.target.value); st.page = 1; this.ibRenderList(); }
       else if (e.target.id === 'ib_mat_cat') { this._ibMatCat = e.target.value; this.ibRefreshMatOptions(); }
     });
 
@@ -1646,7 +1646,7 @@ Object.assign(App, {
     const backNo = isCorr ? detail.corrects_doc_no : docNo;
     if (!alive()) return;
 
-    this.setMain(this.pageWrap((isCorr ? '✎ ' : '✏️ ') + (isCorr ? detail.corrects_doc_no : detail.doc_no),
+    this.setMain(this.pageWrap(this.icon('edit', 'icon--title') + ' ' + (isCorr ? detail.corrects_doc_no : detail.doc_no),
       `${this.t(isCorr ? 'ibd_corr_title' : (isReturn ? 'ibd_edit_title_return' : 'ibd_edit_title'))} · ${typeLabel}`, '',
       `<div id="ib-edit-root" class="data-page">
         <div class="pu-edit-bar">

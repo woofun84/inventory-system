@@ -35,7 +35,7 @@ Object.assign(App, {
   async renderOutbound() {
     const s = this.obState();
     this._obView = 'list';
-    this.setMain(this.pageWrap('📤 ' + this.t('obd_title'), this.t('obd_desc'), '', this.obSkeleton()));
+    this.setMain(this.pageWrap(this.icon('outbound', 'icon--title') + ' ' + this.t('obd_title'), this.t('obd_desc'), '', this.obSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
     this.obBindEvents();
@@ -206,7 +206,7 @@ Object.assign(App, {
     const cols = [
       ['doc_no', this.t('obd_no'), r => {
         const subs = [];
-        if (r.corrects_doc_no) subs.push(`✎ ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
+        if (r.corrects_doc_no) subs.push(`${this.icon('edit')} ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
         if (r.corrected_by_doc_no) subs.push(`→ ${this.t('ibd_corr_to')} ${this.docEsc(r.corrected_by_doc_no)}`);
         const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
         return `<button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(r.doc_no)}">${this.docEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
@@ -311,7 +311,7 @@ Object.assign(App, {
       const st = this.getTableState('outbound');
       if (e.target.id === 'ob_f_from') { s.f.from = e.target.value; st.page = 1; this.obRenderList(); }
       else if (e.target.id === 'ob_f_to') { s.f.to = e.target.value; st.page = 1; this.obRenderList(); }
-      else if (e.target.id === 'ob-psz') { st.pageSize = parseInt(e.target.value, 10) || 15; st.page = 1; this.obRenderList(); }
+      else if (e.target.id === 'ob-psz') { st.pageSize = this.normalizePageSize(e.target.value); st.page = 1; this.obRenderList(); }
     });
 
     document.addEventListener('keydown', e => {
@@ -382,7 +382,7 @@ Object.assign(App, {
   // 出库编辑页统一壳：新建 / 编辑 / 更正三态共用（对齐入库、采购编辑页）
   // o: { icon, title, desc, backHtml, badge, formHtml, showLines, linesTitleKey, extraHtml, actions }
   obEditShell(o) {
-    this.setMain(this.pageWrap(o.icon + ' ' + o.title, o.desc || '', '',
+    this.setMain(this.pageWrap(this.icon(o.icon, 'icon--title') + ' ' + o.title, o.desc || '', '',
       `<div class="data-page" id="outbound-content">
         <div class="pu-edit-bar">
           ${o.backHtml || ''}
@@ -499,7 +499,7 @@ Object.assign(App, {
             <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><textarea id="ob_f_remarks" rows="2"></textarea></div>
           </div>`;
     this.obEditShell({
-      icon: '📤',
+      icon: 'plus',
       title: pageTitle,
       desc: this._obNoOrigin ? this.t('ret_no_origin_hint') : this.t('obd_create_hint'),
       backHtml: `<span class="action-link" onclick="App.backToOutboundList()">← ${this.t('obd_back_list')}</span>`,
@@ -798,8 +798,8 @@ Object.assign(App, {
           <span class="pu-badge">${this.obdStatusBadge(d.status)}</span>
         </div>
         <div>
-          <button type="button" class="btn btn-outline btn-sm" data-ob="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${s.wide ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-ob="icl" title="${this.t('pu_close_detail')}">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" data-ob="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${this.icon(s.wide ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-ob="icl" title="${this.t('pu_close_detail')}" aria-label="${this.t('pu_close_detail')}">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.docEsc(m[0])}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
@@ -825,7 +825,7 @@ Object.assign(App, {
       parts.push(`<span>${this.t('ibd_corr_to')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(d.corrected_by_doc_no)}">${this.docEsc(d.corrected_by_doc_no)}</button></span>`);
     }
     if (String(d.corrects_doc_no || '')) {
-      parts.push(`<span>✎ ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(d.corrects_doc_no)}">${this.docEsc(d.corrects_doc_no)}</button></span>`);
+      parts.push(`<span>${this.icon('edit')} ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(d.corrects_doc_no)}">${this.docEsc(d.corrects_doc_no)}</button></span>`);
     }
     if (c && c.has_draft && String(c.draft_doc_no || '') && (this.can(this.obPermModule(d), 'correct') || this.can(this.obPermModule(d), 'void'))) {
       parts.push(`<span>${this.t('ibd_corr_draft_link')} <button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(c.draft_doc_no)}">${this.docEsc(c.draft_doc_no)}</button></span>`);
@@ -1151,7 +1151,7 @@ Object.assign(App, {
     const isCorr = !!this._obCorrection;
     const backNo = isCorr ? this._obCorrection.original_doc_no : docNo;
     this.obEditShell({
-      icon: isCorr ? '✎' : '✏️',
+      icon: 'edit',
       title: isCorr ? this._obCorrection.original_doc_no : detail.doc_no,
       desc: `${this.t(isCorr ? 'ibd_corr_title' : (this._obIsReturn ? 'obd_edit_title_return' : 'obd_edit_title'))} · ${this.obTypeLabel(detail.txn_type)}`,
       backHtml: `<span class="action-link" onclick="App.backToOutboundDetail('${backNo}')">← ${this.t('obd_back_detail')}</span>`,

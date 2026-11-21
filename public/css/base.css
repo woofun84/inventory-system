@@ -14,6 +14,11 @@
   --success: #16a34a;
   --warning: #f59e0b;
   --danger: #dc2626;
+  /* 填充按钮专用实色：与文字/描边用的语义色分离，保证暗色主题白字对比度 */
+  --primary-solid: #2563eb;
+  --primary-solid-hover: #1d4ed8;
+  --danger-solid: #dc2626;
+  --danger-solid-hover: #b91c1c;
   --info: #0891b2;
   --bg: #f0f2f5;
   --card-bg: #ffffff;
@@ -126,6 +131,21 @@ body {
   font-size: 14px;
   line-height: 1.6;
 }
+
+/* ========== 统一图标：线性 SVG，继承 currentColor ========== */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -0.14em;
+}
+.icon--nav { width: 18px; height: 18px; vertical-align: middle; }
+.icon--title { width: 20px; height: 20px; vertical-align: -0.16em; }
+.icon--logo { width: 22px; height: 22px; }
+.icon--metric { width: 14px; height: 14px; vertical-align: -0.12em; }
+.icon--tool { width: 18px; height: 18px; vertical-align: middle; }
+.page-title .icon { margin-right: 2px; }
 
 #app {
   width: 100%;
@@ -270,9 +290,11 @@ body {
   font-weight: 600;
 }
 .nav-icon {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  text-align: center;
+  height: 20px;
   flex-shrink: 0;
 }
 

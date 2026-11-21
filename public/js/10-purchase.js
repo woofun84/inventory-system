@@ -115,7 +115,7 @@ Object.assign(App, {
   async renderPurchase() {
     const s = this.puState();
     s.view = 'list';
-    this.setMain(this.pageWrap('🛒 ' + this.t('pu_title'), this.t('pu_desc'), '', this.puSkeleton()));
+    this.setMain(this.pageWrap(this.icon('cart', 'icon--title') + ' ' + this.t('pu_title'), this.t('pu_desc'), '', this.puSkeleton()));
     const pb = document.querySelector('.page-body');
     if (pb) pb.classList.add('pu-page-body');
     this.puBindEvents();
@@ -519,8 +519,8 @@ Object.assign(App, {
           ${isPo ? `<span class="pu-badge">${this.puOrderStatusBadge(d.status)}${this.puDeliveryBadge((d.summary || {}).delivery_status)}</span>` : this.puContractStatusBadge(d.status)}
         </div>
         <div>
-          <button type="button" class="btn btn-outline btn-sm" data-pu="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${s.wide ? '⤡' : '⤢'}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-pu="icl" title="${this.t('pu_close_detail')}">✕</button>
+          <button type="button" class="btn btn-outline btn-sm" data-pu="wide" aria-pressed="${s.wide}" title="${s.wide ? this.t('pu_collapse') : this.t('pu_expand')}">${this.icon(s.wide ? 'restore' : 'maximize', 'icon--tool')}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-pu="icl" title="${this.t('pu_close_detail')}" aria-label="${this.t('pu_close_detail')}">${this.icon('close', 'icon--tool')}</button>
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${m[0]}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
@@ -624,7 +624,7 @@ Object.assign(App, {
       const od = Number(l.overdue_days || 0);
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" data-pu="ex" data-id="${l.id}" aria-expanded="${ex}">
-          ${od ? `<span class="pu-odm" title="${this.t('pu_overdue')} ${od}"><span aria-hidden="true">⚠</span><span class="sr-only">${this.t('pu_overdue')} ${od}</span></span>` : ''}
+          ${od ? `<span class="pu-odm" title="${this.t('pu_overdue')} ${od}"><span aria-hidden="true">${this.icon('alert')}</span><span class="sr-only">${this.t('pu_overdue')} ${od}</span></span>` : ''}
           <span class="pu-line-n"><strong>${this.docEsc(l.code)}</strong> ${this.docEsc(l.material_name || '')} <span class="pu-mu">${this.docEsc(l.material_spec || '')}</span></span>
           <span class="pu-line-q">${this.fmtQty(l.received_qty)}/${this.fmtQty(l.order_qty)}${l.material_unit ? ' ' + this.docEsc(l.material_unit) : ''}</span>
           ${this.puDeliveryBadge(l.line_status)}
@@ -751,7 +751,7 @@ Object.assign(App, {
       const s = this.puState();
       if (e.target.id === 'pu_f_from') { s.f.from = e.target.value; this.getTableState('purchase').page = 1; this.loadPurchaseList(); }
       else if (e.target.id === 'pu_f_to') { s.f.to = e.target.value; this.getTableState('purchase').page = 1; this.loadPurchaseList(); }
-      else if (e.target.id === 'pu-psz') { const st = this.getTableState('purchase'); st.pageSize = parseInt(e.target.value, 10) || 15; st.page = 1; this.puRenderList(); }
+      else if (e.target.id === 'pu-psz') { const st = this.getTableState('purchase'); st.pageSize = this.normalizePageSize(e.target.value); st.page = 1; this.puRenderList(); }
       else if (e.target.id === 'pu_mat_cat') { this._puMatCat = e.target.value; this.puRefreshMatOptions(); }
       else if (e.target.id === 'pu_lm_cat') { this._puLmCat = e.target.value; this.puRefreshLmOptions(); }
     });
@@ -976,7 +976,7 @@ Object.assign(App, {
     const ov = document.createElement('div');
     ov.className = 'pu-ov';
     ov.innerHTML = `<div class="pu-drawer" role="dialog" aria-modal="true" aria-label="${this.docEsc(title)}">
-      <div class="pu-drawer-h"><h3>${this.docEsc(title)}</h3><button type="button" class="btn btn-outline btn-sm" data-pu="drawer-close" aria-label="${this.t('close')}">✕</button></div>
+      <div class="pu-drawer-h"><h3>${this.docEsc(title)}</h3><button type="button" class="btn btn-outline btn-sm" data-pu="drawer-close" aria-label="${this.t('close')}">${this.icon('close', 'icon--tool')}</button></div>
       <div class="pu-drawer-b">${bodyHtml}</div>
     </div>`;
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
@@ -1073,7 +1073,7 @@ Object.assign(App, {
     const title = isNew ? this.t('pu_new_order')
       : (status === 'draft' ? this.t('pu_edit_order') : this.t('pu_modify_order')) + ' · ' + this.docEsc(po.po_no);
     const desc = isNew ? this.t('pu_create_hint') : (status === 'posted' ? this.t('pu_edit_posted_hint') : this.t('pu_edit_hint'));
-    this.setMain(this.pageWrap((isNew ? '🆕 ' : '✏️ ') + title, desc, '', `
+    this.setMain(this.pageWrap(this.icon(isNew ? 'plus' : 'edit', 'icon--title') + ' ' + title, desc, '', `
       <div class="data-page" id="pu-edit-root">
         <div class="pu-edit-bar">
           <span class="action-link" onclick="App.puBackToList()">← ${this.t('pu_back_list')}</span>

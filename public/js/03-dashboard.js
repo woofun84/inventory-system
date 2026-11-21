@@ -11,7 +11,7 @@ Object.assign(App, {
 
   // ========== 仪表盘 ==========
   async renderDashboard() {
-    this.setMain(this.pageWrap('🏠 ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
+    this.setMain(this.pageWrap(this.icon('home', 'icon--title') + ' ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
     try {
       const data = await this.api('/api/dashboard');
       // 无价格权限时服务端不返回金额字段，据此决定金额卡片/图表/列是否渲染
@@ -22,26 +22,26 @@ Object.assign(App, {
         ? this.t('dash_cost_variance_count', { n: cv.count })
         : this.t('dash_cost_variance_none');
       html += `<div class="metric-grid">
-        <div class="metric-card"><div class="metric-label">🔖 ${this.t('dash_total_items')}</div><div class="metric-value">${data.total_items}</div><div class="metric-sub">${this.t('dash_items_sub')}</div></div>
-        ${vp ? `<div class="metric-card metric-success"><div class="metric-label">💰 ${this.t('dash_total_value')}</div><div class="metric-value">${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>
-        <div class="metric-card ${cv.exceeded ? 'metric-diff-alert' : ''}" style="cursor:pointer" onclick="App.showCostVariance()" title="${this.t('dash_cost_variance_desc')}"><div class="metric-label">≠ ${this.t('dash_cost_variance')}</div><div class="metric-value">${this.fmtMoney(cv.total)}</div><div class="metric-sub">${cvSub}${cv.exceeded ? ' · ' + this.t('dash_cost_variance_alert', { pct: Math.round(cv.ratio * 1000) / 10 }) : ''}</div></div>
-        <div class="metric-card metric-info"><div class="metric-label">📥 ${this.t('dash_month_in')}</div><div class="metric-value">${this.fmtMoney(data.month_in_amount)}</div><div class="metric-sub">${this.t('dash_month_in_sub')}</div></div>
-        <div class="metric-card metric-warning"><div class="metric-label">📤 ${this.t('dash_month_out')}</div><div class="metric-value">${this.fmtMoney(data.month_out_amount)}</div><div class="metric-sub">${this.t('dash_month_out_sub')}</div></div>` : ''}
-        <div class="metric-card"><div class="metric-label">🧾 ${this.t('dash_month_txn')}</div><div class="metric-value">${data.month_txn_count}</div><div class="metric-sub">${this.t('dash_txn_sub')}</div></div>
-        <div class="metric-card metric-danger"><div class="metric-label">⚠ ${this.t('dash_alerts')}</div><div class="metric-value">${data.alert_count}</div><div class="metric-sub">${this.t('dash_alerts_sub')}</div></div></div>`;
+        <div class="metric-card"><div class="metric-label">${this.icon('tag', 'icon--metric')} ${this.t('dash_total_items')}</div><div class="metric-value">${data.total_items}</div><div class="metric-sub">${this.t('dash_items_sub')}</div></div>
+        ${vp ? `<div class="metric-card metric-success"><div class="metric-label">${this.icon('wallet', 'icon--metric')} ${this.t('dash_total_value')}</div><div class="metric-value">${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>
+        <div class="metric-card ${cv.exceeded ? 'metric-diff-alert' : ''}" style="cursor:pointer" onclick="App.showCostVariance()" title="${this.t('dash_cost_variance_desc')}"><div class="metric-label">${this.icon('chart', 'icon--metric')} ${this.t('dash_cost_variance')}</div><div class="metric-value">${this.fmtMoney(cv.total)}</div><div class="metric-sub">${cvSub}${cv.exceeded ? ' · ' + this.t('dash_cost_variance_alert', { pct: Math.round(cv.ratio * 1000) / 10 }) : ''}</div></div>
+        <div class="metric-card metric-info"><div class="metric-label">${this.icon('inbound', 'icon--metric')} ${this.t('dash_month_in')}</div><div class="metric-value">${this.fmtMoney(data.month_in_amount)}</div><div class="metric-sub">${this.t('dash_month_in_sub')}</div></div>
+        <div class="metric-card metric-warning"><div class="metric-label">${this.icon('outbound', 'icon--metric')} ${this.t('dash_month_out')}</div><div class="metric-value">${this.fmtMoney(data.month_out_amount)}</div><div class="metric-sub">${this.t('dash_month_out_sub')}</div></div>` : ''}
+        <div class="metric-card"><div class="metric-label">${this.icon('receipt', 'icon--metric')} ${this.t('dash_month_txn')}</div><div class="metric-value">${data.month_txn_count}</div><div class="metric-sub">${this.t('dash_txn_sub')}</div></div>
+        <div class="metric-card metric-danger"><div class="metric-label">${this.icon('alert', 'icon--metric')} ${this.t('dash_alerts')}</div><div class="metric-value">${data.alert_count}</div><div class="metric-sub">${this.t('dash_alerts_sub')}</div></div></div>`;
       html += this.renderMonthBreakdown(data, vp);
       if (vp) html += `<div class="chart-grid"><div class="card"><div class="card-title">${this.t('dash_trend')}</div><div class="chart-container"><canvas id="trendChart"></canvas></div></div><div class="card"><div class="card-title">${this.t('dash_category')}</div><div class="chart-container"><canvas id="categoryChart"></canvas></div></div></div>`;
       if (vp) html += `<div class="card"><div class="card-title">${this.t('dash_top5')}</div><div class="chart-container"><canvas id="topChart"></canvas></div></div>`;
       if (data.alerts.length > 0) {
-        html += `<div class="card"><div class="card-title">⚠ ${this.t('dash_alert_list')} — ${data.alert_count} ${this.t('stock_items')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th></tr></thead><tbody>${data.alerts.map(a => `<tr><td>${this.docEsc(a.code)}</td><td>${this.docEsc(a.name)}</td><td>${this.docEsc(a.spec || '')}</td><td class="text-right">${this.docEsc(a.on_hand)}</td><td class="text-right">${this.docEsc(a.min_stock)}</td><td>${this.statusBadge(a.stock_status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+        html += `<div class="card"><div class="card-title">${this.icon('alert')} ${this.t('dash_alert_list')} — ${data.alert_count} ${this.t('stock_items')}</div><div class="table-wrap"><table><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th><th>${this.t('stock_on_hand')}</th><th>${this.t('stock_min')}</th><th>${this.t('mat_status')}</th></tr></thead><tbody>${data.alerts.map(a => `<tr><td>${this.docEsc(a.code)}</td><td>${this.docEsc(a.name)}</td><td>${this.docEsc(a.spec || '')}</td><td class="text-right">${this.docEsc(a.on_hand)}</td><td class="text-right">${this.docEsc(a.min_stock)}</td><td>${this.statusBadge(a.stock_status)}</td></tr>`).join('')}</tbody></table></div></div>`;
       }
       if (data.overdue_orders.length > 0) {
-        html += `<div class="card"><div class="card-title">🛒 ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th>${vp ? `<th>${this.t('po_amount')}</th>` : ''}</tr></thead><tbody>${data.overdue_orders.map(o => `<tr><td>${this.docEsc(o.po_no)}</td><td>${this.docEsc(o.supplier)}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${this.docEsc(o.overdue_days)}</span></td><td>${this.statusBadge(o.delivery_status)}</td>${vp ? `<td class="text-right">${this.fmtMoney(o.order_amount)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>`;
+        html += `<div class="card"><div class="card-title">${this.icon('cart')} ${this.t('dash_overdue')} (${data.overdue_orders.length})</div><div class="table-wrap"><table><thead><tr><th>${this.t('po_no')}</th><th>${this.t('po_supplier')}</th><th>${this.t('po_expected')}</th><th>${this.t('po_overdue')}</th><th>${this.t('po_delivery')}</th>${vp ? `<th>${this.t('po_amount')}</th>` : ''}</tr></thead><tbody>${data.overdue_orders.map(o => `<tr><td>${this.docEsc(o.po_no)}</td><td>${this.docEsc(o.supplier)}</td><td>${this.fmtDate(o.expected_date)}</td><td class="text-center"><span class="badge badge-danger">${this.docEsc(o.overdue_days)}</span></td><td>${this.statusBadge(o.delivery_status)}</td>${vp ? `<td class="text-right">${this.fmtMoney(o.order_amount)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>`;
       }
       document.getElementById('dashboard-content').innerHTML = html;
       this.renderCharts(data, vp);
     } catch (e) {
-      document.getElementById('dashboard-content').innerHTML = this.emptyState(this.docEsc(e.message), { icon: '⚠' });
+      document.getElementById('dashboard-content').innerHTML = this.emptyState(this.docEsc(e.message), { icon: this.icon('alert') });
     }
   },
 
@@ -75,7 +75,7 @@ Object.assign(App, {
           <td class="text-right">${this.fmtQty(total.qty)}</td>${vp ? `<td class="text-right">${this.fmtMoney(total.amount)}</td>` : ''}</tr>
       </tbody></table></div>`;
     }
-    return `<div class="pu-card"><div class="pu-card-title"><span>📊</span>${this.t('dash_comp_title')}<small>${this.t('dash_comp_desc')}</small></div>${body}</div>`;
+    return `<div class="pu-card"><div class="pu-card-title"><span>${this.icon('chart')}</span>${this.t('dash_comp_title')}<small>${this.t('dash_comp_desc')}</small></div>${body}</div>`;
   },
 
   // 累计成本差异明细：点开看板卡片后弹出「构成」——每条都能追到来源单据与明细行
@@ -84,7 +84,7 @@ Object.assign(App, {
       const d = await this.api('/api/cost-variance');
       let body;
       if (!d.rows.length) {
-        body = this.emptyState(this.t('cv_empty'), { icon: '✓', pad: 24 });
+        body = this.emptyState(this.t('cv_empty'), { icon: this.icon('check'), pad: 24 });
       } else {
         // 业务类型存的是中文，英文界面按现有字典翻译
         const BIZ_KEY = {

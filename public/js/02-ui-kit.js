@@ -111,6 +111,10 @@ Object.assign(App, {
     if (!this.tableStates[tableId]) {
       this.tableStates[tableId] = { sortKey: '', sortDir: 'asc', page: 1, pageSize: 15 };
     }
+    // 统一每页条数白名单：历史数据里若有旧的 10/50 以外的非法值，回落到 15
+    if (![10, 15, 20, 50, 0].includes(this.tableStates[tableId].pageSize)) {
+      this.tableStates[tableId].pageSize = 15;
+    }
     return this.tableStates[tableId];
   },
 
@@ -215,46 +219,29 @@ Object.assign(App, {
     return data.slice(start, start + pageSize);
   },
 
+  // 全站唯一分页条：普通列表、单据列表、查询中心共用同一套视觉与行为
+  // renderPager 仅负责把「起止条数」格式化成 totText，实际标记全部由 puPagerHtml 产出
   renderPager(tableId, total) {
     const st = this.getTableState(tableId);
-    const pageSize = st.pageSize;
-    const totalPages = pageSize > 0 ? Math.ceil(total / pageSize) : 1;
-    if (st.page > totalPages) st.page = 1;
-    const page = st.page;
-    const startIdx = total === 0 ? 0 : (page - 1) * pageSize + 1;
-    const endIdx = Math.min(page * pageSize, total);
-    const sizes = [10, 15, 20, 50, 0];
-    let html = `<div class="pager">
-      <span class="pager-info">${startIdx}-${endIdx} / ${total} ${this.t('records')}</span>`;
-    // 上一页
-    html += `<button class="pager-btn" ${page <= 1 ? 'disabled' : ''} onclick="App.onPage('${tableId}',${page - 1})">‹</button>`;
-    // 页码按钮
-    let pStart = Math.max(1, page - 2), pEnd = Math.min(totalPages, page + 2);
-    if (pStart > 1) { html += `<button class="pager-btn" onclick="App.onPage('${tableId}',1)">1</button>`; if (pStart > 2) html += `<span class="pager-info">...</span>`; }
-    for (let i = pStart; i <= pEnd; i++) {
-      html += `<button class="pager-btn ${i === page ? 'active' : ''}" onclick="App.onPage('${tableId}',${i})">${i}</button>`;
-    }
-    if (pEnd < totalPages) { if (pEnd < totalPages - 1) html += `<span class="pager-info">...</span>`; html += `<button class="pager-btn" onclick="App.onPage('${tableId}',${totalPages})">${totalPages}</button>`; }
-    // 下一页
-    html += `<button class="pager-btn" ${page >= totalPages ? 'disabled' : ''} onclick="App.onPage('${tableId}',${page + 1})">›</button>`;
-    // 每页条数
-    html += `<span class="pager-size"><select onchange="App.onPageSize('${tableId}',this.value)">`;
-    sizes.forEach(s => { html += `<option value="${s}" ${s === pageSize ? 'selected' : ''}>${s === 0 ? this.t('all') : s + ' / ' + this.t('page')}</option>`; });
-    html += `</select></span></div>`;
-    return html;
+    const pages = st.pageSize === 0 ? 1 : Math.max(1, Math.ceil(total / st.pageSize));
+    if (st.page > pages) st.page = pages;
+    if (st.page < 1) st.page = 1;
+    const start = total === 0 ? 0 : (st.page - 1) * st.pageSize + 1;
+    const end = st.pageSize === 0 ? total : Math.min(st.page * st.pageSize, total);
+    return this.puPagerHtml(tableId, total, `${start}-${end} / ${total} ${this.t('records')}`);
   },
 
-  // 公共分页条：单据列表与查询中心统一在这里产出（.pu-pager）
   // opts.ns      模块事件委托前缀（如 'ib' → data-ib="pg" data-id="-1"，select id="ib-psz"）
   // opts.selId   仅为每页条数 select 指定 id（不接 onchange，由调用方自行绑定）
   // opts.pgClick 翻页走指定全局方法（如 'retPage' → onclick="App.retPage(-1)"）
   // opts.hideEmpty 总数为 0 时不输出分页条
   puPagerHtml(tableId, total, totText, opts) {
     const st = this.getTableState(tableId);
-    const sizes = [10, 15, 20, 50];
-    if (!sizes.includes(st.pageSize)) st.pageSize = 10;
-    const tp = Math.max(1, Math.ceil(total / st.pageSize));
+    const sizes = [10, 15, 20, 50, 0];
+    const all = st.pageSize === 0;
+    const tp = all ? 1 : Math.max(1, Math.ceil(total / st.pageSize));
     if (st.page > tp) st.page = tp;
+    if (st.page < 1) st.page = 1;
     // 记录总数：翻页时据此夹住越界页码，避免连点/键盘触发到空页
     this._tableTotals = this._tableTotals || {};
     this._tableTotals[tableId] = total;
@@ -264,17 +251,36 @@ Object.assign(App, {
     const o = opts || {};
     const selId = o.selId || (o.ns ? `${o.ns}-psz` : '');
     const selAttr = selId ? ` id="${selId}"` : ` onchange="App.onPageSize('${tableId}',this.value)"`;
-    const pgBtn = (delta, disabled) => {
+    // 事件层沿用各模块既有的 delta 语义；数字页码换算成相对当前页的 delta，
+    // 因此无需改动任何模块的分页事件处理函数。
+    const pgBtn = (target, label, active, disabled) => {
+      const delta = target - page;
       const act = o.ns ? `data-${o.ns}="pg" data-id="${delta}"`
         : o.pgClick ? `onclick="App.${o.pgClick}(${delta})"`
-        : `onclick="App.onPage('${tableId}',${page + delta})"`;
-      return `<button type="button" class="btn btn-outline btn-sm" ${act}${disabled ? ' disabled' : ''}>`;
+        : `onclick="App.onPage('${tableId}',${target})"`;
+      return `<button type="button" class="btn btn-outline btn-sm${active ? ' active' : ''}" ${act}${disabled ? ' disabled' : ''}>${label}</button>`;
     };
+    let nums = '';
+    if (tp <= 7) {
+      for (let i = 1; i <= tp; i++) nums += pgBtn(i, i, i === page, false);
+    } else {
+      let pStart = Math.max(1, page - 2), pEnd = Math.min(tp, page + 2);
+      if (pStart > 1) {
+        nums += pgBtn(1, 1, false, false);
+        if (pStart > 2) nums += `<span class="pu-pager-gap">…</span>`;
+      }
+      for (let i = pStart; i <= pEnd; i++) nums += pgBtn(i, i, i === page, false);
+      if (pEnd < tp) {
+        if (pEnd < tp - 1) nums += `<span class="pu-pager-gap">…</span>`;
+        nums += pgBtn(tp, tp, false, false);
+      }
+    }
     return `<span class="pu-tot">${tot}</span>
       <span>${page} / ${tp} ${this.t('page')}</span>
-      <label>${this.t('pageSize')} <select${selAttr}>${sizes.map(n => `<option value="${n}"${n === st.pageSize ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-      ${pgBtn(-1, page <= 1)}${this.t('pu_prev')}</button>
-      ${pgBtn(1, page >= tp)}${this.t('pu_next')}</button>`;
+      <label>${this.t('pageSize')} <select${selAttr}>${sizes.map(n => `<option value="${n}"${n === st.pageSize ? ' selected' : ''}>${n === 0 ? this.t('all') : n + ' / ' + this.t('page')}</option>`).join('')}</select></label>
+      ${pgBtn(page - 1, this.t('pu_prev'), false, all || page <= 1)}
+      ${nums}
+      ${pgBtn(page + 1, this.t('pu_next'), false, all || page >= tp)}`;
   },
 
   // 只有内容超出视口时才把分页条吸附到底部；内容不足一屏时随内容排在末尾
@@ -285,17 +291,26 @@ Object.assign(App, {
     pager.classList.toggle('pin', pb.scrollHeight > pb.clientHeight + 2);
   },
 
+  // 每页条数统一解析：0 表示「全部」，非法值回落 15
+  normalizePageSize(v) {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 && [10, 15, 20, 50, 0].includes(n) ? n : 15;
+  },
+
   onPage(tableId, page) {
     const st = this.getTableState(tableId);
-    const total = this._tableTotals ? this._tableTotals[tableId] : null;
-    const tp = total == null ? null : Math.max(1, Math.ceil(total / st.pageSize));
-    st.page = tp == null ? Math.max(1, page) : Math.min(Math.max(1, page), tp);
+    if (st.pageSize === 0) { st.page = 1; }
+    else {
+      const total = this._tableTotals ? this._tableTotals[tableId] : null;
+      const tp = total == null ? null : Math.max(1, Math.ceil(total / st.pageSize));
+      st.page = tp == null ? Math.max(1, page) : Math.min(Math.max(1, page), tp);
+    }
     if (this._tableRenderers && this._tableRenderers[tableId]) this._tableRenderers[tableId]();
   },
 
   onPageSize(tableId, size) {
     const st = this.getTableState(tableId);
-    st.pageSize = parseInt(size);
+    st.pageSize = this.normalizePageSize(size);
     st.page = 1;
     if (this._tableRenderers && this._tableRenderers[tableId]) this._tableRenderers[tableId]();
   },
@@ -692,6 +707,14 @@ Object.assign(App, {
     return html;
   },
 
+  // 清除表格关键字筛选：清空后派发 input 事件，复用各页面已有的筛选处理逻辑
+  clearTableFilter(filterId) {
+    const el = document.getElementById(filterId);
+    if (!el) return;
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+
   // 生成表格上方工具栏（新增按钮 + 关键字筛选框 + 可选日期段筛选）
   renderTableToolbar(filterId, filterOnInput, addBtnHtml, dateFilter) {
     let dateHtml = '';
@@ -704,9 +727,10 @@ Object.assign(App, {
     }
     return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
       <div>${addBtnHtml || ''}</div>
-      <div class="form-group" style="flex:1;max-width:400px;margin:0;margin-rigth:auto">
+      <div class="form-group" style="flex:1;max-width:400px;margin:0;margin-right:auto">
         <input id="${filterId}" type="text" placeholder="${this.t('quick_filter_ph')}" oninput="${filterOnInput}" style="width:100%">
       </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="App.clearTableFilter('${filterId}')" title="${this.t('pu_clear_filter')}">${this.icon('close', 'icon--tool')} ${this.t('pu_clear_filter')}</button>
       ${dateHtml}
     </div>`;
   },
@@ -925,14 +949,14 @@ Object.assign(App, {
     const maximizable = !!(opts && opts.maximizable);
     // opts.force：不可取消的弹窗（如强制改密），隐藏关闭按钮与「取消」，且点遮罩不关闭
     const force = !!(opts && opts.force);
-    overlay.innerHTML = `<div class="${modalClass}${fit ? ' modal-fit' : ''}"><div class="modal-header">${title}<div class="modal-header-actions">${maximizable ? `<button class="modal-max-btn" id="modal-max-btn" type="button" title="${this.t('modal_maximize')}" aria-label="${this.t('modal_maximize')}">⤢</button>` : ''}${force ? '' : '<button class="modal-close" id="modal-close-btn">&times;</button>'}</div></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer">${force ? '' : `<button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button>`}<button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
+    overlay.innerHTML = `<div class="${modalClass}${fit ? ' modal-fit' : ''}"><div class="modal-header">${title}<div class="modal-header-actions">${maximizable ? `<button class="modal-max-btn" id="modal-max-btn" type="button" title="${this.t('modal_maximize')}" aria-label="${this.t('modal_maximize')}">${this.icon('maximize', 'icon--tool')}</button>` : ''}${force ? '' : `<button class="modal-close" id="modal-close-btn" title="${this.t('close')}" aria-label="${this.t('close')}">${this.icon('close', 'icon--tool')}</button>`}</div></div><div class="modal-body">${bodyHtml}</div><div class="modal-footer">${force ? '' : `<button class="btn btn-outline" id="modal-cancel-btn">${this.t('cancel')}</button>`}<button class="btn btn-primary" id="modal-confirm-btn">${btnText}</button></div></div>`;
     document.body.appendChild(overlay);
     if (maximizable) {
       const box = overlay.querySelector('.modal');
       const btn = document.getElementById('modal-max-btn');
       btn.onclick = () => {
         const on = box.classList.toggle('modal-maximized');
-        btn.textContent = on ? '🗗' : '⤢';
+        btn.innerHTML = this.icon(on ? 'restore' : 'maximize', 'icon--tool');
         btn.title = this.t(on ? 'modal_restore' : 'modal_maximize');
         btn.setAttribute('aria-label', btn.title);
       };

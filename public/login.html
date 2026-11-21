@@ -11,6 +11,7 @@
   body { margin: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   .login-wrap { width: 360px; max-width: 92vw; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.12); padding: 40px 32px; }
   .login-logo { text-align: center; font-size: 40px; margin-bottom: 8px; }
+  .login-logo svg { width: 40px; height: 40px; color: var(--primary); stroke-width: 1.6; }
   .login-title { text-align: center; font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
   .login-sub { text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 28px; }
   .login-form .form-group { margin-bottom: 16px; }
@@ -25,7 +26,7 @@
 </head>
 <body>
 <div class="login-wrap">
-  <div class="login-logo">📦</div>
+  <div class="login-logo" id="login-logo"></div>
   <div class="login-title" id="title">库存进出库管理系统</div>
   <div class="login-sub" id="subtitle">进出库跟踪</div>
   <div class="login-notice" id="login-notice"></div>
@@ -43,8 +44,10 @@
   </div>
   <div class="login-hint" id="hint">初始管理员账号由部署环境配置，请联系系统管理员获取</div>
 </div>
+<script src="js/00-icons.js"></script>
 <script>
 (function() {
+  document.getElementById('login-logo').innerHTML = window.appIcon('box');
   var lang = localStorage.getItem('lang') || 'zh';
   var i18n = {
     zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录' },

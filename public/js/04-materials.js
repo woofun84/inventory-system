@@ -18,10 +18,11 @@ Object.assign(App, {
         <div class="pu-daterange"><label>${this.t('mat_category')}</label><select id="mat_category_filter" onchange="App.onMaterialsFilter()"><option value="">${this.t('stock_all')}</option>${catOpts}</select></div>
         <div class="pu-daterange"><label>${this.t('mat_status')}</label><select id="mat_status_filter" onchange="App.onMaterialsFilter()"><option value="">${this.t('stock_all')}</option><option value="active"${f.status === 'active' ? ' selected' : ''}>${this.t('mat_in_use')}</option><option value="停用"${f.status === '停用' ? ' selected' : ''}>${this.t('mat_stopped')}</option></select></div>
         <div class="pu-daterange"><label>${this.t('stock_status')}</label><select id="mat_stock_filter" onchange="App.onMaterialsFilter()"><option value="">${this.t('stock_all')}</option><option value="正常"${f.stock === '正常' ? ' selected' : ''}>${this.t('st_normal')}</option><option value="补货"${f.stock === '补货' ? ' selected' : ''}>${this.t('st_restock')}</option><option value="缺货"${f.stock === '缺货' ? ' selected' : ''}>${this.t('st_out')}</option></select></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="App.clearMaterialsFilter()" title="${this.t('pu_clear_filter')}">${this.icon('close', 'icon--tool')} ${this.t('pu_clear_filter')}</button>
       </div>
       <div class="pu-head-actions">${addBtn}</div>
     </div>`;
-    this.setMain(this.pageWrap('🏷 ' + this.t('mat_title'), this.t('mat_desc'), '', `<div id="materials-content" class="data-page">${toolbar}<div class="data-scroll" id="materials-scroll"></div><div class="data-pager" id="materials-pager"></div></div>`));
+    this.setMain(this.pageWrap(this.icon('tag', 'icon--title') + ' ' + this.t('mat_title'), this.t('mat_desc'), '', `<div id="materials-content" class="data-page">${toolbar}<div class="data-scroll" id="materials-scroll"></div><div class="pu-pager" id="materials-pager"></div></div>`));
     try {
       this._materialsData = await this.api('/api/materials');
       this._tableRenderers = this._tableRenderers || {};
@@ -1072,6 +1073,12 @@ Object.assign(App, {
           this.t('confirm'), () => this.closeModal());
       }
     });
+  },
+
+  clearMaterialsFilter() {
+    this._matFilters = { keyword: '', category: '', status: '', stock: '' };
+    this.getTableState('materials').page = 1;
+    this.renderMaterials();
   },
 
   onMaterialsFilter() {
