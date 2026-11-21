@@ -36,7 +36,11 @@ Object.assign(App, {
     thHtml += `<th class="text-center"></th>`;
     const colCount = headers.length + 2;
     let tbody = '';
-    if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
+    if (pageData.length === 0) {
+      tbody = this.emptyRow(colCount, null, this.can('suppliers', 'create')
+        ? { actionLabel: this.t('sup_add'), action: 'App.editSupplier()' }
+        : {});
+    }
     else {
       const startIdx = (st.page - 1) * st.pageSize;
       tbody = pageData.map((s, i) => {

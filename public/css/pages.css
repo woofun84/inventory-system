@@ -44,16 +44,70 @@
   .nav-toggle { display: inline-flex; }
 }
 
+/* 窄屏筛选抽屉：搜索框常驻，其余条件收进可展开面板 */
+.filter-toggle { display: none; }
 @media (max-width: 768px) {
   .page-header,
   .page-header-row { padding: 12px; }
   .page-body { padding: 12px; }
   .chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .data-toolbar { position: relative; }
+  .pu-toolbar { flex-wrap: wrap; }
+  .filter-toggle { display: inline-flex; order: 2; margin-left: auto; }
+  .pu-toolbar > .pu-filter-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    order: 3;
+    flex: 1 1 100%;
+  }
+  .pu-toolbar:not(.filters-open) > .pu-filter-inner > :not(.pu-search) { display: none; }
+  .pu-toolbar.filters-open > .pu-filter-inner {
+    padding: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+  }
+  .pu-toolbar.filters-open > .pu-filter-inner > .pu-search { width: 100%; }
+  .pu-head-actions { order: 1; }
 }
 
 @media (max-width: 480px) {
   .page-title { font-size: 17px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ===== 移动端触控热区：视觉尺寸保持不变，命中区统一 ≥44×44px ===== */
+@media (max-width: 640px) {
+  .btn, .tool-btn, .nav-toggle, .nav-item, .pu-pager .btn,
+  .pu-pager select, .st-load-tab, .pu-viewtab, .pu-dtab, .st-tab, .pu-chip,
+  .pu-kpi, .q-an-class > button, .modal-close, .modal-max-btn,
+  .image-lightbox-close, .q-gsearch-clear, .toast-action,
+  .action-link, .pu-lk, .pu-edit-del, .form-group input,
+  .form-group select, .form-group textarea, .pu-toolbar input,
+  .pu-toolbar select, .pu-matfilter input, .pu-matfilter select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .nav-item { padding-block: 12px; }
+  .modal-close, .modal-max-btn, .image-lightbox-close, .q-gsearch-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .action-link { display: inline-flex; align-items: center; }
+  /* 复选框/单选框保持视觉尺寸，用包裹标签与单元格提供 44px 命中区 */
+  input[type="checkbox"], input[type="radio"] { width: 22px; height: 22px; }
+  label:has(input[type="checkbox"]), label:has(input[type="radio"]) { min-height: 44px; }
+  td:has(> input[type="checkbox"]), td:has(> input[type="radio"]) {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+  .dash-link-row td { padding-top: 14px; padding-bottom: 14px; }
+  #q-root #q_global { padding-right: 48px; }
+  .form-group input[type="date"] { min-width: 0; }
 }
 
 /* ==========================================
@@ -160,6 +214,7 @@
   color: var(--primary);
   background: var(--primary-light);
 }
+.tool-btn:active:not(:disabled) { background: var(--table-row-hover); transform: translateY(1px); }
 .tool-btn.active {
   background: var(--primary);
   color: #fff;
@@ -273,55 +328,7 @@
 .sort-th:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sort-th.active .sort-arrow { opacity: 1; }
 
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.pager-info { margin-right: 8px; }
-.pager-btn {
-  min-width: 28px;
-  height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--card-bg);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 6px;
-  transition: all 0.12s;
-}
-.pager-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-.pager-btn.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
-.pager-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.pager-size {
-  margin-left: 8px;
-}
-.pager-size select {
-  padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12px;
-  background: var(--card-bg);
-  color: var(--text);
-}
+/* 旧 .pager 系列已下线：全站统一使用 .pu-pager + App.puPagerHtml */
 
 
 /* ==========================================
@@ -341,7 +348,7 @@
 .pu-toolbar input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-daterange:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 /* 弹层内搜索框：与公共筛选栏 .pu-search input 同一套视觉，避免原生裸 input 被压扁 */
-.st-load-search { width: 100%; height: 34px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+.st-load-search { width: 100%; height: 34px; padding: 0 12px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: var(--fs-sm); font-family: inherit; }
 .st-load-search:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 
 /* 盘点页：密度、新建盘点单范围窗口（全盘 / 按类别 / 按物料盘点）、已选物料芯片 */
@@ -352,7 +359,6 @@
 .st-load-tab:hover { color: var(--text); }
 .st-load-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 .st-load-panel { min-height: 210px; }
-.st-load-search { box-sizing: border-box; margin-bottom: 10px; }
 .st-load-cat-list { max-height: 230px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 2px; }
 .st-load-cat-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer; }
 .st-load-cat-item:hover { background: var(--surface); }
@@ -390,16 +396,14 @@
 .st-adj-head { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .st-adj-row { cursor: default; }
 .st-adj-row--openable { cursor: pointer; }
-.st-adj-row--openable:hover { background: var(--hover-bg, rgba(0,0,0,.03)); }
+.st-adj-row--openable:hover { background: var(--hover-bg); }
 /* 名称单元格：单行内联排版，三角/角标不额外占行，名称过长省略 */
 .st-adj-c-material { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
 .st-adj-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .st-adj-caret { flex: none; display: inline-block; width: 10px; font-size: 11px; color: var(--primary); visibility: hidden; transition: transform .15s ease; }
 .st-adj-row--openable .st-adj-caret { visibility: visible; }
 .st-adj-row.open .st-adj-caret { transform: rotate(90deg); }
-.st-adj-badge { flex: none; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--hover-bg, rgba(0,0,0,.06)); color: var(--primary); font-size: 11px; line-height: 16px; text-align: center; }
-.st-adj-caret { display: inline-block; transition: transform .15s ease; }
-.st-adj-row.open .st-adj-caret { transform: rotate(90deg); }
+.st-adj-badge { flex: none; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--hover-bg); color: var(--primary); font-size: 11px; line-height: 16px; text-align: center; }
 .st-adj-hist { grid-column: 1 / -1; padding: 6px 0 2px; border-top: 1px dashed var(--border); margin-top: 6px; }
 .st-ver-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .st-ver-list > li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 12px; color: var(--text-muted); }
@@ -590,9 +594,7 @@
 .pu-viewtab[aria-selected=true] { background: var(--primary-light); color: var(--primary); font-weight: 600; box-shadow: var(--shadow); }
 .pu-viewtab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 
-/* --- 条件区 + 主操作：一行铺满 --- */
-.pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; }
-.pu-filter-inner { display: contents; }
+/* --- 主操作区（筛选栏公共定义见上方「公共筛选栏」段） --- */
 .pu-head-actions { margin-left: auto; display: flex; gap: 8px; }
 
 /* --- 退货退库：单一「新建单据」入口靠右（与其他模块一致），窄屏下满宽 --- */
@@ -617,16 +619,7 @@
         text-align: center;
     }
 }
-.pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
-.pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
-.pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
-/* 搜索框聚焦：不依赖 .pu-toolbar 祖先，查询中心的 .q-gsearch 也有一致的主色边框 */
-.pu-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
-.pu-daterange { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.pu-daterange label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
-.pu-daterange input[type=date] { width: 118px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; }
-.pu-toolbar input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
-.pu-sep { color: var(--text-muted); font-size: 12px; }
+.pu-sep { color: var(--text-muted); font-size: var(--fs-xs); }
 /* 窄屏：日期范围占满一行，两个日期框等分收缩，避免撑破弹窗/工具栏 */
 @media (max-width: 640px) {
     .pu-daterange { width: 100%; box-sizing: border-box; }
@@ -855,16 +848,6 @@ button.pu-kpi { cursor: pointer; }
 .set-danger-card { border-color: var(--danger-border); }
 .set-loading { margin: 20px 0; text-align: center; color: var(--text-muted); }
 
-/* --- 分页：内容超出视口时吸附到底部（贴底不留间隙），未超出时随内容排在末尾 --- */
-.pu-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; padding: 5px 0; font-size: 12px; line-height: 1.2; color: var(--text-muted); background: var(--card-bg); border-top: 1px solid var(--border); }
-.pu-pager.pin { position: sticky; bottom: 0; z-index: 5; }
-.pu-pager:empty { display: none; border-top: 0; }
-.pu-pager .btn { height: 26px; min-width: 26px; padding: 0 8px; font-size: 12px; line-height: 1; justify-content: center; }
-.pu-pager .btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.pu-pager-gap { padding: 0 2px; color: var(--text-muted); font-size: 12px; }
-.pu-pager select { height: 26px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card-bg); color: var(--text); font-size: 12px; }
-.pu-pager label { display: inline-flex; align-items: center; gap: 4px; }
-.pu-pager .pu-tot { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- 紧凑行距 --- */
 #pu-root.pu-dense .table-wrap tbody td { padding: 4px 10px; height: auto; }
@@ -879,8 +862,6 @@ button.pu-kpi { cursor: pointer; }
 .pu-drawer-b { padding: 16px 20px; overflow: auto; flex: 1; }
 
 /* --- 可撤销删除的 toast --- */
-.pu-toast-undo { display: flex; align-items: center; gap: 14px; }
-.pu-toast-undo button { background: none; border: 0; color: inherit; text-decoration: underline; font-weight: 700; cursor: pointer; font-family: inherit; font-size: 14px; }
 
 /* --- 采购单编辑页（新建 / 整单编辑） --- */
 .pu-edit-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
@@ -957,9 +938,18 @@ button.pu-kpi { cursor: pointer; }
   .pu-split.open { grid-template-columns: minmax(0, 1fr) 420px; }
 }
 @media (max-width: 1000px) {
-  .pu-split.open { grid-template-columns: minmax(0, 1fr); }
-  .pu-split.open .pu-list { display: none; }
-  .pu-insp { position: static; max-height: none; }
+  /* 详情改为浮层，列表保留在底层，不丢失筛选与滚动位置 */
+  .pu-split.open:not(.wide):not(.q-ins-split) { grid-template-columns: minmax(0, 1fr); }
+  .pu-split.open:not(.wide):not(.q-ins-split) .pu-list { display: block; }
+  .pu-split.open:not(.wide):not(.q-ins-split) > .pu-insp:not([hidden]) {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: min(92vw, 480px);
+    max-height: 100dvh;
+    z-index: 880;
+    box-shadow: var(--shadow-lg);
+  }
+  .pu-split.wide .pu-insp { position: static; max-height: none; }
   .pu-mback { display: inline-flex; }
 }
 

@@ -283,10 +283,10 @@ Object.assign(App, {
       (o.doc_no === selected ? ' selected' : '') + '>' +
       this.docEsc(o.doc_no) + ' · ' + this.docEsc(o.date || '') + (o.supplier ? ' · ' + this.docEsc(o.supplier) : '') + '</option>'
     ).join('');
-    return '<div class="form-group" style="grid-column:1/-1"><label>' + this.t('ret_origin_inbound_doc') + ' *</label>' +
+    return '<div class="form-group u-full"><label>' + this.t('ret_origin_inbound_doc') + ' *</label>' +
       '<select id="ib_f_origin_doc" onchange="App.ibOnReturnOriginChange()">' +
       '<option value="">' + this.t('please_select') + '</option>' + originOpts + '</select>' +
-      '<small style="color:var(--text-muted);font-size:12px">' + this.t('ret_origin_inbound_hint') + '</small></div>';
+      '<small class="u-muted-sm">' + this.t('ret_origin_inbound_hint') + '</small></div>';
   },
 
   // 原入库单切换：清空预览并重新带出可退明细
@@ -502,7 +502,7 @@ Object.assign(App, {
             <div class="form-group" id="ib_f_source_wrap"><label>${this.t('ibd_source')} *</label><select id="ib_f_source" onchange="App.ibOnSourceChange()"><option value="">${this.t('ibd_src_pick')}</option>${sourceOptions}</select></div>
             <div class="form-group" id="ib_f_source_refs_wrap"><label>${this.t('ibd_source_refs')}</label><input id="ib_f_source_refs" readonly></div>
             ${returnFields}
-            <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2"></textarea></div>
+            <div class="form-group u-full"><label>${this.t('ibd_remarks')}</label><textarea id="ib_f_remarks" rows="2"></textarea></div>
           </div>
         </div>
         <div id="ib-preload"></div>
@@ -1042,7 +1042,7 @@ Object.assign(App, {
     split.classList.add('open');
     split.classList.toggle('wide', s.wide);
     const rec = this._ibDetailCache[s.sel];
-    if (!rec || rec.loading) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (!rec || rec.loading) { box.innerHTML = `${this.skeleton('detail')}`; return; }
     if (rec.error) { box.innerHTML = `<div class="pu-empty">${this.docEsc(rec.error)}</div>`; return; }
     const d = rec.d;
     const lines = d.lines || [];
@@ -1693,8 +1693,8 @@ Object.assign(App, {
           <div class="form-group"><label>${this.t('ibd_handler')}</label><input value="${this.docEsc(d.handler || '')}" readonly></div>
           <div class="form-group"><label>${this.t('in_po_no')}</label><input value="${this.docEsc(d.po_no || '')}" readonly></div>
           <div class="form-group"><label>${this.t('in_contract')}</label><input value="${this.docEsc(d.contract_no || '')}" readonly></div>
-          <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
-          <div class="form-group" style="grid-column:1/-1"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_prefill_hint')}</div></div>
+          <div class="form-group u-full"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
+          <div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_prefill_hint')}</div></div>
         </div>`;
       } else if (isDraft) {
         // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商/来源单位 → 经手人 → [采购单号 → 合同号] → 备注(整行)
@@ -1706,7 +1706,7 @@ Object.assign(App, {
         } else if (isReturn) {
           // 采购退货只认原入库单（只读展示，来源在新建时选定）
           const originNo = tier === 'inbound' ? (d.origin_doc_no || '') : (d.return_ref_no || '');
-          poFields = `<div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_origin_inbound_doc')}</label><input value="${this.docEsc(originNo)}" readonly></div>`;
+          poFields = `<div class="form-group u-full"><label>${this.t('ret_origin_inbound_doc')}</label><input value="${this.docEsc(originNo)}" readonly></div>`;
         } else {
           const curVal = this._ibSource ? `${this._ibSource.kind}:${this._ibSource.no}` : '';
           poFields = `
@@ -1714,14 +1714,14 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('ibd_source_refs')}</label><input id="ib_e_source_refs" value="${this.docEsc(this.ibSourceRefsText())}" readonly></div>`;
         }
         const lockHint = linked
-          ? `<div class="form-group" style="grid-column:1/-1"><div class="ui-note ui-note--info" style="margin:0">${this.t('ret_line_origin_locked')}</div></div>` : '';
+          ? `<div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ret_line_origin_locked')}</div></div>` : '';
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.docEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${isReturn ? this.t('ibd_doc_type') : this.t('ibd_type')}</label><input id="ib_e_type" value="${this.docEsc(typeLabel)}" readonly></div>
           <div class="form-group"><label>${supLabel}</label><input id="ib_e_supplier" list="ib_e_sup_list" autocomplete="off" placeholder="${supPlaceholder}" value="${this.docEsc((isMiscReturn ? d.source_unit : d.supplier) || '')}"${isMiscReturn ? ' readonly' : ''}><datalist id="ib_e_sup_list">${supOptions}</datalist><div class="form-error"></div></div>
           <div class="form-group"><label>${this.t('ibd_handler')}</label><input id="ib_e_handler" value="${this.docEsc(d.handler || '')}"></div>${poFields}${lockHint}
-          <div class="form-group" style="grid-column:1/-1"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
+          <div class="form-group u-full"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
         </div>`;
       } else {
         formEl.innerHTML = `<div class="ui-note ui-note--info">${this.t('ibd_posted_hint')}</div>`;
@@ -1816,7 +1816,7 @@ Object.assign(App, {
     if (lines.length === 0) {
       tbody = this.emptyRow(colCount, `
         ${this.t('ibd_no_lines')}
-        ${isCorr ? `<div style="margin-top:8px;color:var(--warning)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
+        ${isCorr ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
         ${isDraft && !linked ? `<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
       `, { pad: 26 });
     } else {

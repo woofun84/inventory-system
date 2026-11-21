@@ -72,7 +72,11 @@ Object.assign(App, {
     const widths = vp ? [10, 12, 9, 9, 6, 8, 9, 8, 14, 7, 8] : [10, 12, 9, 9, 6, 8, 8, 22, 7, 9];
     const colgroup = `<colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>`;
     let tbody = '';
-    if (pageData.length === 0) { tbody = this.emptyRow(vp ? 11 : 10); }
+    if (pageData.length === 0) {
+      tbody = this.emptyRow(vp ? 11 : 10, null, this.can('materials', 'create')
+        ? { actionLabel: this.t('mat_add'), action: 'App.editMaterial()' }
+        : {});
+    }
     else {
       tbody = pageData.map(m => {
         // 单据编码要作为 JS 字符串参数嵌进 onclick：先做 JSON 字符串化，再做 HTML 属性转义
@@ -92,7 +96,7 @@ Object.assign(App, {
     const showPrice = this.canEditPrice();
     // 已有期初以外的流水：期初数量/单价锁定，置灰并说明原因
     const openingLocked = !!(code && m.opening_locked);
-    const openingTip = openingLocked ? `<div class="ui-note ui-note--warning" style="grid-column:1/-1">${this.t('mat_opening_locked')}</div>` : '';
+    const openingTip = openingLocked ? `<div class="ui-note ui-note--warning u-full">${this.t('mat_opening_locked')}</div>` : '';
     const cats = this.params.categories.map(c => c.name), units = this.params.units.map(u => u.name);
     const sel = (arr, val) => arr.map(a => `<option value="${this.docEsc(a)}" ${a === val ? 'selected' : ''}>${this.docEsc(a)}</option>`).join('');
     // 参考图片：压缩后的 blob 暂存在内存，物料保存成功后再上传；删除同理

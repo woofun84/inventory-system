@@ -11,7 +11,7 @@ Object.assign(App, {
 
   // ========== 仪表盘 ==========
   async renderDashboard() {
-    this.setMain(this.pageWrap(this.icon('home', 'icon--title') + ' ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content"><p style="text-align:center;padding:40px;color:var(--text-muted)">${this.t('loading')}</p></div>`));
+    this.setMain(this.pageWrap(this.icon('home', 'icon--title') + ' ' + this.t('dash_title'), this.t('dash_desc'), '', `<div id="dashboard-content">${this.skeleton('metrics')}${this.skeleton('charts')}</div>`));
     try {
       const data = await this.api('/api/dashboard');
       // 无价格权限时服务端不返回金额字段，据此决定金额卡片/图表/列是否渲染
@@ -41,7 +41,8 @@ Object.assign(App, {
       const dc = document.getElementById('dashboard-content');
       dc.innerHTML = html;
       this.bindDashRows(dc);
-      this.renderCharts(data, vp);
+      // 图表是增强层：即使脚本或画布异常，也不能让指标卡与风险清单一起消失
+      this.safeRenderCharts(data, vp);
     } catch (e) {
       document.getElementById('dashboard-content').innerHTML = this.emptyState(this.docEsc(e.message), { icon: this.icon('alert') });
     }
@@ -160,6 +161,21 @@ Object.assign(App, {
       this.renderTrendChart(data.months_trend);
       this.renderCategoryChart(data.category_values);
       this.renderTopChart(data.top_items);
+    }
+  },
+
+  safeRenderCharts(data, vp) {
+    const created = (this.charts || []).length;
+    try {
+      if (typeof window.Chart !== 'function') throw new Error('Chart.js unavailable');
+      this.renderCharts(data, vp);
+    } catch (e) {
+      // 回收本次已创建的图表实例，避免半初始化实例泄漏
+      (this.charts || []).slice(created).forEach(c => { try { c.destroy(); } catch (_) { /* 已销毁 */ } });
+      this.charts.length = created;
+      document.querySelectorAll('#dashboard-content .chart-container').forEach(box => {
+        box.innerHTML = `<div class="chart-fallback">${this.icon('chart', 'icon--tool')}<span>${this.docEsc(this.t('dash_chart_unavailable'))}</span></div>`;
+      });
     }
   },
 

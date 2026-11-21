@@ -110,6 +110,26 @@
   --num-neg: #b91c1c;
   --num-zero: #b45309;
   --num-warn: #b45309;
+
+  /* ===== 字号 / 行高 / 间距阶梯（4px 基准，新增样式一律复用） ===== */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --lh-tight: 1.4;
+  --lh-base: 1.6;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* 断点约定：1400 / 1024 / 768 / 640 / 480。
+     CSS 自定义媒体查询兼容性不足，断点值仍写在 @media 中，
+     但新增响应式规则只允许使用上述五档，避免碎片化。 */
+  --hover-bg: #f1f5f9;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -335,6 +355,10 @@ body {
   font-weight: 700;
   color: var(--text);
   margin-bottom: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .page-desc {
   font-size: 12px;
@@ -373,7 +397,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overflow-x: auto;
+  /* 横向滚动只由表格/详情等局部容器承担，页面本身不产生意外横滚 */
+  overflow-x: hidden;
   padding: 20px 24px;
 }
 

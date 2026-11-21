@@ -452,7 +452,7 @@ Object.assign(App, {
     split.classList.add('open');
     split.classList.toggle('wide', s.wide);
     const rec = this.puDetail();
-    if (!rec || rec.loading) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (!rec || rec.loading) { box.innerHTML = `${this.skeleton('detail')}`; return; }
     if (rec.error) { box.innerHTML = `<div class="pu-empty">${this.docEsc(rec.error)}</div>`; return; }
     const d = rec.d;
     const isPo = s.sel.t === 'orders';
@@ -996,16 +996,8 @@ Object.assign(App, {
 
   // ========== 可撤销删除 ==========
   puToastUndo(msg, undo) {
-    const el = document.createElement('div');
-    el.className = 'toast toast-success pu-toast-undo';
-    el.innerHTML = `<span>${this.docEsc(msg)}</span><button type="button">${this.t('pu_undo')}</button>`;
-    document.body.appendChild(el);
-    const timer = setTimeout(() => el.remove(), 7000);
-    el.querySelector('button').onclick = async () => {
-      clearTimeout(timer); el.remove();
-      try { await undo(); this.toast(this.t('pu_restored')); }
-      catch (e) { this.toast(e.message, 'error'); }
-    };
+    // 复用统一 Toast：进入 #toast-stack，撤销按钮可点，7 秒后自动消失
+    this.toast(msg, 'success', { actionLabel: this.t('pu_undo'), onAction: undo, duration: 7000 });
   },
 
   async puConfirmDelete(title, msg, doDelete, doneMsg) {
@@ -1121,7 +1113,7 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('pu_project')}</label><input id="pu_e_project" value="${this.docEsc(po.project || '')}"></div>
       <div class="form-group"><label>${this.t('pu_expected')}</label><input id="pu_e_expected" type="date" value="${this.fmtDate(po.expected_date)}"></div>
       <div class="form-group"><label>${this.t('pu_manual_status')}</label><select id="pu_e_manual">${msOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>${this.t('pu_remarks')}</label><textarea id="pu_e_remarks" rows="2">${this.docEsc(po.remarks || '')}</textarea></div>
+      <div class="form-group u-full"><label>${this.t('pu_remarks')}</label><textarea id="pu_e_remarks" rows="2">${this.docEsc(po.remarks || '')}</textarea></div>
     </div>`;
   },
 
@@ -1579,7 +1571,7 @@ Object.assign(App, {
     // 已到货行的数量下限：前端给出输入约束与提示，服务端仍做最终校验
     const recvFloor = Number(l.received_qty || 0);
     const body = `<div class="form-grid" style="max-width:none">
-      <div class="form-group" style="grid-column:1/-1"><label>${this.t('pu_material')} *</label>
+      <div class="form-group u-full"><label>${this.t('pu_material')} *</label>
         ${matFilter}
         <select id="pu_l_code" ${isEdit ? 'disabled' : ''}>${matOpts}</select>
         <div class="form-error" id="pu_l_code_error"></div></div>
@@ -1588,7 +1580,7 @@ Object.assign(App, {
         ? `<input id="pu_l_price" type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}">`
         : `<div class="pu-readonly" style="padding:7px 0">${this.fmtMoney(l.order_price)}</div>`}</div>` : ''}
       <div class="form-group"><label>${this.t('pu_contract_filter')}</label><input id="pu_l_contract" list="pu_l_c_list" value="${this.docEsc(l.contract_no || '')}"><datalist id="pu_l_c_list">${cList}</datalist></div>
-      <div class="form-group" style="grid-column:1/-1"><label>${this.t('pu_remarks')}</label><textarea id="pu_l_remarks" rows="2">${this.docEsc(l.remarks || '')}</textarea></div>
+      <div class="form-group u-full"><label>${this.t('pu_remarks')}</label><textarea id="pu_l_remarks" rows="2">${this.docEsc(l.remarks || '')}</textarea></div>
     </div>`;
     this.showModal(`<h3>${isEdit ? this.t('pu_edit_line') : this.t('pu_add_line')}</h3>`, body,
       isEdit ? this.t('save') : this.t('add'), async () => {
@@ -1692,7 +1684,7 @@ Object.assign(App, {
         ? `<input id="pu_c_amount" type="number" step="0.01" min="0" value="${c.amount || ''}">`
         : `<div style="padding:7px 0">${this.fmtMoney(c.amount)}</div>`}</div>` : ''}
       <div class="form-group"><label>${this.t('pu_status')}</label><select id="pu_c_status">${stOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>${this.t('pu_remarks')}</label><textarea id="pu_c_remarks" rows="2">${this.docEsc(c.remarks || '')}</textarea></div>
+      <div class="form-group u-full"><label>${this.t('pu_remarks')}</label><textarea id="pu_c_remarks" rows="2">${this.docEsc(c.remarks || '')}</textarea></div>
     </div>`;
     this.showModal(`<h3>${isEdit ? this.t('pu_edit_contract') : this.t('pu_new_contract')}</h3>`, body,
       isEdit ? this.t('save') : this.t('create'), async () => {

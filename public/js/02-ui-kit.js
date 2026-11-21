@@ -400,15 +400,66 @@ Object.assign(App, {
     const o = opts || {};
     const body = text != null ? text : this.t('noData');
     const attr = o.cls ? ` class="${o.cls}"` : ` style="text-align:center;padding:${o.pad == null ? 40 : o.pad}px;color:var(--text-muted)"`;
-    return `<tr><td colspan="${colSpan}"${attr}>${body}</td></tr>`;
+    const action = o.actionLabel
+      ? `<button type="button" class="btn btn-primary empty-state-action" onclick="${o.action || ''}">${this.docEsc(o.actionLabel)}</button>`
+      : '';
+    return `<tr><td colspan="${colSpan}"${attr}>${body}${action}</td></tr>`;
   },
 
-  // 区块空态：opts.icon 为图标字符（可选），opts.pad 为上下留白 px（可选，默认沿用样式表）
+  // 区块空态：opts.icon 图标；opts.pad 留白；opts.description 说明；opts.actionLabel + opts.action 引导按钮
+  // 传入的 text 若本身就是「加载中…」则自动降级为骨架屏，避免整屏文字闪烁。
   emptyState(text, opts) {
     const o = opts || {};
+    if (o.skeleton || /^(加载中|Loading)([….]|$)/.test(String(text == null ? '' : text).trim())) {
+      return this.skeleton(o.variant || 'list');
+    }
     const pad = o.pad != null ? ` style="padding:${o.pad}px"` : '';
     const icon = o.icon ? `<div class="empty-state-icon">${o.icon}</div>` : '';
-    return `<div class="empty-state"${pad}>${icon}<p>${text}</p></div>`;
+    const desc = o.description ? `<p class="empty-state-desc">${this.docEsc(o.description)}</p>` : '';
+    const action = o.actionLabel
+      ? `<button type="button" class="btn btn-primary empty-state-action" onclick="${o.action || ''}">${this.docEsc(o.actionLabel)}</button>`
+      : '';
+    return `<div class="empty-state"${pad}>${icon}<p>${text}</p>${desc}${action}</div>`;
+  },
+
+  // 骨架屏：list / detail / metrics / charts 四种形态，纯 CSS 动画，尊重系统减少动态效果设置
+  skeleton(variant = 'list') {
+    const bar = cls => `<i class="sk ${cls}"></i>`;
+    if (variant === 'metrics') {
+      return `<div class="skeleton-grid skeleton-metrics">${Array.from({ length: 6 }, () =>
+        `<div class="sk-card">${bar('sk-label')}${bar('sk-value')}${bar('sk-sub')}</div>`).join('')}</div>`;
+    }
+    if (variant === 'charts') {
+      return `<div class="skeleton-grid skeleton-charts">${Array.from({ length: 2 }, () =>
+        `<div class="sk-card sk-chart">${bar('sk-chart-bar')}</div>`).join('')}</div>`;
+    }
+    if (variant === 'detail') {
+      return `<div class="skeleton-detail">${bar('sk-title')}${Array.from({ length: 5 }, () =>
+        `<div class="sk-line">${bar('sk-key')}${bar('sk-val')}</div>`).join('')}</div>`;
+    }
+    return `<div class="skeleton-list">${Array.from({ length: 5 }, () =>
+      `<div class="sk-line">${bar('sk-lg')}${bar('sk-sm')}${bar('sk-md')}</div>`).join('')}</div>`;
+  },
+
+  // 按钮 Loading 态：保留原内容并在结束时还原，disabled + aria-busy 防重复提交
+  setButtonLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+      if (btn.dataset.loading === '1') return;
+      btn.dataset.loading = '1';
+      btn._loadingHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      btn.setAttribute('aria-busy', 'true');
+      btn.innerHTML = `<span class="btn-spinner"></span>${this.docEsc(this.t('loading'))}`;
+    } else {
+      if (btn.dataset.loading !== '1') return;
+      delete btn.dataset.loading;
+      if (btn._loadingHtml != null) btn.innerHTML = btn._loadingHtml;
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+      btn.removeAttribute('aria-busy');
+    }
   },
 
   // ========== 多关键字模糊筛选 ==========
@@ -738,7 +789,7 @@ Object.assign(App, {
     if (dateFilter) {
       dateHtml = `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
         <input id="${dateFilter.fromId}" type="date" style="width:130px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)" onchange="${dateFilter.onChange}" value="${dateFilter.fromVal || ''}">
-        <span style="color:var(--text-muted);font-size:12px">~</span>
+        <span class="u-muted-sm">~</span>
         <input id="${dateFilter.toId}" type="date" style="width:130px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)" onchange="${dateFilter.onChange}" value="${dateFilter.toVal || ''}">
       </div>`;
     }
@@ -1111,7 +1162,13 @@ Object.assign(App, {
     confirmBtn.onclick = () => {
       if (confirmBtn.dataset.busy === '1') return; // 防连点：一次提交流程未结束前不再触发
       confirmBtn.dataset.busy = '1';
-      const reset = () => { if (document.body.contains(confirmBtn)) confirmBtn.dataset.busy = ''; };
+      this.setButtonLoading(confirmBtn, true);
+      const reset = () => {
+        if (document.body.contains(confirmBtn)) {
+          confirmBtn.dataset.busy = '';
+          this.setButtonLoading(confirmBtn, false);
+        }
+      };
       let r;
       try { r = onConfirm(); } catch (e) { reset(); throw e; }
       if (r && typeof r.then === 'function') r.then(reset, reset);

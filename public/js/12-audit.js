@@ -372,7 +372,7 @@
         <select id="audit_filter_action" style="${sel}" onchange="App.onAuditFilter()">${actOpts}</select>
         <input id="audit_filter_kw" placeholder="${this.t('audit_filter_ph')}" value="${escHtml(f.keyword)}" style="${sel};flex:1;min-width:180px;max-width:320px" oninput="App.onAuditFilter()">
         <input id="audit_filter_from" type="date" value="${f.from}" style="${sel}" onchange="App.onAuditFilter()">
-        <span style="color:var(--text-muted);font-size:12px">~</span>
+        <span class="u-muted-sm">~</span>
         <input id="audit_filter_to" type="date" value="${f.to}" style="${sel}" onchange="App.onAuditFilter()">
         <button class="btn btn-outline btn-sm" onclick="App.resetAuditFilter()">${this.t('audit_reset')}</button>
         ${this.can('audit', 'delete')
@@ -464,8 +464,8 @@
             : `<span class="badge badge-danger">${this.t('audit_fail')} ${escHtml(r.status)}</span>`;
           const roleCell = r.role ? this.roleLabel(r.role) : '';
           return `<tr>
-            <td style="white-space:nowrap">${this.fmtDateTime(r.created_at, true)}</td>
-            <td><strong>${escHtml(r.username || '-')}</strong>${r.name ? `<div style="color:var(--text-muted);font-size:12px">${escHtml(r.name)} · ${escHtml(roleCell)}</div>` : ''}</td>
+            <td class="u-nowrap">${this.fmtDateTime(r.created_at, true)}</td>
+            <td><strong>${escHtml(r.username || '-')}</strong>${r.name ? `<div class="u-muted-sm">${escHtml(r.name)} · ${escHtml(roleCell)}</div>` : ''}</td>
             <td>${escHtml(this.auditModuleLabel(r.module))}</td>
             <td>${escHtml(this.auditActionLabel(r.action))}</td>
             <td>${escHtml(this.auditTargetLabel(r.target) || '')}</td>

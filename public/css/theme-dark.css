@@ -8,7 +8,7 @@
 [data-theme="dark"] {
   --primary: #3b82f6;
   --primary-dark: #2563eb;
-  --primary-light: #1e3a5f;
+  --primary-light: #1e40af;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
@@ -58,6 +58,7 @@
   /* 弱底色（条形图轨道等） */
   --bg-muted: #334155;
   --surface: #1e293b;
+  --hover-bg: #334155;
 
   /* ===== 滚动条：暗色深灰轨道 + 中性滑块（仅内容溢出时出现） ===== */
   --scrollbar-size: 10px;

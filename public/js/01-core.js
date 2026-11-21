@@ -174,6 +174,7 @@ const App = {
     }
     this.router();
     this.initTableScrollHints();
+    document.addEventListener('keydown', e => this.onClickableKeydown(e));
   },
 
   // 界面空闲锁屏：5 分钟无操作返回登录页（前端界面保护）。
@@ -295,17 +296,17 @@ const App = {
 
   showChangePwdModal(force) {
     const body = `<div class="form-grid" style="max-width:400px;margin:0 auto">
-      <div class="form-group" style="grid-column:1/-1">
+      <div class="form-group u-full">
         <label>${this.t('old_password')} *</label>
         <input id="cp_old" type="password" oninput="App.clearFieldError('cp_old')">
         <div class="form-error" id="cp_old_error"></div>
       </div>
-      <div class="form-group" style="grid-column:1/-1">
+      <div class="form-group u-full">
         <label>${this.t('new_password')} * <span style="font-size:11px;color:var(--text-muted)">(${this.t('pwd_min_len')})</span></label>
         <input id="cp_new" type="password" oninput="App.clearFieldError('cp_new')">
         <div class="form-error" id="cp_new_error"></div>
       </div>
-      <div class="form-group" style="grid-column:1/-1">
+      <div class="form-group u-full">
         <label>${this.t('confirm_password')} *</label>
         <input id="cp_confirm" type="password" oninput="App.clearFieldError('cp_confirm')">
         <div class="form-error" id="cp_confirm_error"></div>
@@ -695,7 +696,49 @@ const App = {
     this._tblHintTimer = setTimeout(() => {
       this._tblHintTimer = null;
       this.refreshTableScrollHints();
+      this.enhanceClickables();
+      this.enhanceFilterBars();
     }, 100);
+  },
+
+  // 窄屏筛选折叠：保留搜索框常驻，其余条件收进可展开面板（纯前端增强，不改业务筛选逻辑）
+  enhanceFilterBars() {
+    document.querySelectorAll('.pu-filter-inner:not([data-filter-enhanced])').forEach(box => {
+      box.setAttribute('data-filter-enhanced', '1');
+      const toolbar = box.closest('.pu-toolbar') || box.parentElement;
+      if (!toolbar) return;
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'filter-toggle btn btn-outline btn-sm';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = this.t('filter_toggle');
+      toggle.addEventListener('click', () => {
+        const open = toolbar.classList.toggle('filters-open');
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+      toolbar.insertBefore(toggle, box);
+    });
+  },
+
+  // 把历史上用 span/div 实现的“可点击项”补齐为键盘可达：
+  // 只读属性 + 统一 Enter/Space 委托，避免逐个模块改模板时漏掉动态渲染的列表。
+  enhanceClickables() {
+    document.querySelectorAll(
+      '.action-link:not([role]), .q-search-item:not([role]), .metric-card[onclick]:not([role])'
+    ).forEach(el => {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+    });
+  },
+
+  // Enter / Space 触发带 onclick 的自定义“按钮”；不干扰输入框与已有键盘处理的表格行
+  onClickableKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const el = e.target;
+    if (!el || !el.matches || !el.matches('[role="button"][onclick]')) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+    e.preventDefault();
+    el.click();
   },
   refreshTableScrollHints() {
     const narrow = window.innerWidth <= 900;
@@ -772,7 +815,10 @@ const App = {
     throw err;
   },
 
-  toast(msg, type = 'success') {
+  // 统一 Toast：支持可选的行动按钮（如删除撤销），所有提示只进入 #toast-stack，
+  // 避免出现游离于 body 末尾、被页面滚动容器裁切的“幽灵提示”。
+  toast(msg, type = 'success', opts = {}) {
+    const o = opts || {};
     let stack = document.getElementById('toast-stack');
     if (!stack) {
       stack = document.createElement('div');
@@ -780,9 +826,37 @@ const App = {
       document.body.appendChild(stack);
     }
     const el = document.createElement('div');
-    el.className = `toast toast-${type}`; el.textContent = msg;
+    el.className = `toast toast-${type}`;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    const text = document.createElement('span');
+    text.textContent = msg;
+    el.appendChild(text);
+    let timer = null, exitTimer = null;
+    const dismiss = () => {
+      if (exitTimer) return;
+      clearTimeout(timer);
+      el.classList.add('toast-leaving');
+      exitTimer = setTimeout(() => {
+        el.remove();
+        if (stack && !stack.children.length) stack.remove();
+      }, 180);
+    };
+    if (o.actionLabel && typeof o.onAction === 'function') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'toast-action';
+      btn.textContent = o.actionLabel;
+      btn.addEventListener('click', async () => {
+        dismiss();
+        try { await o.onAction(); } catch (e) { this.toast(e.message, 'error'); }
+      });
+      el.appendChild(btn);
+    }
     stack.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => { el.remove(); if (stack && !stack.children.length) stack.remove(); }, 300); }, 2500);
+    const ttl = Number(o.duration) > 0 ? Number(o.duration) : (o.actionLabel ? 7000 : 2500);
+    timer = setTimeout(dismiss, ttl);
+    return el;
   },
 
   confirmDialog(title, msg, onConfirm, onCancel, intent = 'danger', opts = {}) {

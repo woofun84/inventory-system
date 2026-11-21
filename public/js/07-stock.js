@@ -109,8 +109,8 @@ Object.assign(App, {
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_keyword" placeholder="${this.t('quick_filter_ph')}" oninput="App.qStockFilter()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('stock_category')}</label><select id="q_category" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:132px"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${this.docEsc(c.name)}">${this.docEsc(c.name)}</option>`).join('')}</select></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('stock_status')}</label><select id="q_status" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:96px"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_category')}</label><select id="q_category" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:132px"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${this.docEsc(c.name)}">${this.docEsc(c.name)}</option>`).join('')}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_status')}</label><select id="q_status" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:96px"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div>
         </div>
         <div class="pu-head-actions">
           <button class="btn btn-outline" onclick="App.qStockExport()">${this.t('doc_export')}</button>
@@ -837,7 +837,7 @@ Object.assign(App, {
       : '';
     return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${imageRow}
       <dl class="pu-insp-meta q-card-meta q-card-stock">${stats.map(k => `<div><dt>${k[0]}</dt><dd class="q-num">${k[1]}</dd></div>`).join('')}</dl>
-      <div class="q-card-month">${this.t('q_month_in_qty')} <strong style="color:var(--success)">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong style="color:var(--warning)">−${io.out}</strong></div>`;
+      <div class="q-card-month">${this.t('q_month_in_qty')} <strong style="color:var(--num-pos)">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong style="color:var(--warning-fg)">−${io.out}</strong></div>`;
   },
 
   qCardFlowPanel() {
@@ -861,10 +861,10 @@ Object.assign(App, {
       .map(o => `<option value="${o[0]}">${this.t(o[1])}</option>`).join('');
     return `<div class="pu-toolbar" style="margin:0 0 10px;padding:0">
         <div class="pu-filter-inner">
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_start')}</label><input id="q_c_start" type="date" onchange="App.qCardFlowReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_c_end" type="date" onchange="App.qCardFlowReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_type')}</label><select id="q_c_type" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${biz}</select></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_direction')}</label><select id="q_c_dir" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:80px"><option value="">${this.t('stock_all')}</option><option value="in">${this.t('q_dir_in')}</option><option value="out">${this.t('q_dir_out')}</option><option value="adj">${this.t('q_dir_adj')}</option></select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_start')}</label><input id="q_c_start" type="date" onchange="App.qCardFlowReload()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_end')}</label><input id="q_c_end" type="date" onchange="App.qCardFlowReload()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_type')}</label><select id="q_c_type" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${biz}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_direction')}</label><select id="q_c_dir" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:80px"><option value="">${this.t('stock_all')}</option><option value="in">${this.t('q_dir_in')}</option><option value="out">${this.t('q_dir_out')}</option><option value="adj">${this.t('q_dir_adj')}</option></select></div>
           <label style="display:inline-flex;align-items:center;gap:6px;height:34px;color:var(--text);font-size:13px;white-space:nowrap"><input type="checkbox" id="q_c_voided" style="width:auto;margin:0" onchange="App.qCardFlowReload()"> ${this.t('ledger_show_voided')}</label>
         </div>
       </div>
@@ -948,7 +948,7 @@ Object.assign(App, {
     const items = [];
     if (detail.origin_doc_no) items.push({ doc_no: detail.origin_doc_no, type: this.t('q_source_doc'), status: '', src: this.qDocSourceOf(detail.origin_doc_no) });
     (detail.related_returns || []).forEach(x => items.push({ doc_no: x.doc_no, type: x.txn_type ? this.qDocTypeLabel(x.txn_type) : this.t('q_related_docs'), status: x.status, src: srcOf(x) }));
-    if (!items.length) return `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">${this.t('q_related_docs')}</div><div style="color:var(--text-muted);font-size:12px">${this.t('q_no_related')}</div></div>`;
+    if (!items.length) return `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">${this.t('q_related_docs')}</div><div class="u-muted-sm">${this.t('q_no_related')}</div></div>`;
     return `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">${this.t('q_related_docs')}</div>
       ${items.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0">
         <button class="pu-lk" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'${x.src}'})">${esc(x.doc_no)}</button>
@@ -1099,10 +1099,10 @@ Object.assign(App, {
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_d_keyword" autocomplete="off" placeholder="${this.t('q_doc_search_ph')}" aria-label="${this.t('q_doc_search_ph')}" oninput="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_doc_type')}</label><select id="q_d_type" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${types}</select></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_start')}</label><input id="q_d_start" type="date" onchange="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_d_end" type="date" onchange="App.qDocsReload()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_type')}</label><select id="q_d_type" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${types}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_start')}</label><input id="q_d_start" type="date" onchange="App.qDocsReload()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_end')}</label><input id="q_d_end" type="date" onchange="App.qDocsReload()"></div>
         </div>
         <div class="pu-head-actions">
           <button class="btn btn-outline" onclick="App.qDocsExport()">${this.t('doc_export')}</button>
@@ -1476,8 +1476,8 @@ Object.assign(App, {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
             <input id="q_r_kw" autocomplete="off" placeholder="${this.t('q_rcv_search_ph')}" oninput="App.qReceiversFilter()">
           </div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_start')}</label><input id="q_r_start" type="date" onchange="App.qReceiversFilter()"></div>
-          <div class="pu-daterange"><label style="white-space:nowrap">${this.t('ledger_end')}</label><input id="q_r_end" type="date" onchange="App.qReceiversFilter()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_start')}</label><input id="q_r_start" type="date" onchange="App.qReceiversFilter()"></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_end')}</label><input id="q_r_end" type="date" onchange="App.qReceiversFilter()"></div>
         </div>
         <div class="pu-head-actions">
           <button class="btn btn-outline" onclick="App.qReceiversExport()">${this.t('doc_export')}</button>

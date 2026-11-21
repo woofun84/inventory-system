@@ -475,14 +475,14 @@ Object.assign(App, {
       } catch (e) { /* 原单列表拉取失败不阻断创建 */ }
     }
     const originField = (preset && !this._obNoOrigin) ? `
-              <div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_origin_doc')}</label>
+              <div class="form-group u-full"><label>${this.t('ret_origin_doc')}</label>
                 <select id="ob_f_origin_doc" onchange="App.obLoadOriginPreview()"><option value="">${this.t('ret_origin_none')}</option>${originOptions}</select>
-                <small style="color:var(--text-muted);font-size:12px">${this.t('ret_origin_hint')}</small>
+                <small class="u-muted-sm">${this.t('ret_origin_hint')}</small>
               </div>` : '';
     const reasonField = this._obNoOrigin ? `
-              <div class="form-group" style="grid-column:1/-1"><label>${this.t('ret_return_reason')} *</label>
+              <div class="form-group u-full"><label>${this.t('ret_return_reason')} *</label>
                 <input id="ob_f_return_reason" value="" placeholder="${this.t('ret_return_reason_ph')}">
-                <small style="color:var(--text-muted);font-size:12px">${this.t('ret_no_origin_hint')}</small>
+                <small class="u-muted-sm">${this.t('ret_no_origin_hint')}</small>
               </div>` : '';
     const reqMark = this._obNoOrigin ? ' *' : '';
 
@@ -496,7 +496,7 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('obd_receiver')}${reqMark}</label><input id="ob_f_receiver" value="" oninput="this.dataset.auto='0'"></div>
             <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_f_handler" value="${this.user?.name || this.user?.username || ''}"></div>
             ${reasonField}
-            <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><textarea id="ob_f_remarks" rows="2"></textarea></div>
+            <div class="form-group u-full"><label>${this.t('obd_remarks')}</label><textarea id="ob_f_remarks" rows="2"></textarea></div>
           </div>`;
     this.obEditShell({
       icon: 'plus',
@@ -745,7 +745,7 @@ Object.assign(App, {
     split.classList.add('open');
     split.classList.toggle('wide', s.wide);
     const rec = this._obDetailCache[s.sel];
-    if (!rec || rec.loading) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (!rec || rec.loading) { box.innerHTML = `${this.skeleton('detail')}`; return; }
     if (rec.error) { box.innerHTML = `<div class="pu-empty">${this.docEsc(rec.error)}</div>`; return; }
     const d = rec.d;
     this._obDetail = d;
@@ -1229,21 +1229,21 @@ Object.assign(App, {
     const formEl = document.getElementById('ob-edit-form');
     if (formEl) {
       if (isDraft) {
-        const originSelect = (this._obIsReturn && !this._obCorrection && !this._obNoOrigin) ? `<div class="form-group" style="grid-column:1/-1">
+        const originSelect = (this._obIsReturn && !this._obCorrection && !this._obNoOrigin) ? `<div class="form-group u-full">
             <label>${this.t('ret_origin_doc')}</label>
             <select id="ob_e_origin_doc" onchange="App.onOutboundOriginChange()">
               <option value="">${this.t('ret_origin_none')}</option>
               ${(this._obOriginCandidates || []).map(o => `<option value="${this.docEsc(o.doc_no)}" ${o.doc_no === this._obOriginDocNo ? 'selected' : ''}>${this.docEsc(o.doc_no)} · ${this.docEsc(o.date)} · ${this.docEsc(o.destination || '')}</option>`).join('')}
             </select>
-            <small style="color:var(--text-muted);font-size:12px">${this.t('ret_origin_hint')}</small>
+            <small class="u-muted-sm">${this.t('ret_origin_hint')}</small>
           </div>` : '';
-        const reasonField = (this._obIsReturn && this._obNoOrigin) ? `<div class="form-group" style="grid-column:1/-1">
+        const reasonField = (this._obIsReturn && this._obNoOrigin) ? `<div class="form-group u-full">
             <label>${this.t('ret_return_reason')} *</label>
             <input id="ob_e_return_reason" value="${this.docEsc(d.return_reason || '')}" placeholder="${this.t('ret_return_reason_ph')}">
           </div>` : '';
         const reqMark = this._obNoOrigin ? ' *' : '';
         const corrField = this._obCorrection ? `<div class="form-group"><label>${this.t('ibd_corr_from')}</label><input value="${this.docEsc(this._obCorrection.original_doc_no)}" readonly></div>` : '';
-        const corrHint = this._obCorrection ? `<div class="form-group" style="grid-column:1/-1"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_confirm_hint')}</div></div>` : '';
+        const corrHint = this._obCorrection ? `<div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_confirm_hint')}</div></div>` : '';
         formEl.innerHTML = `<div class="form-grid" style="max-width:none">
           <div class="form-group"><label>${this.t('obd_no')}</label><input value="${this.docEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
@@ -1254,7 +1254,7 @@ Object.assign(App, {
           <div class="form-group"><label>${this.t('obd_handler')}</label><input id="ob_e_handler" value="${this.docEsc(d.handler || '')}"></div>
           ${originSelect}
           ${reasonField}
-          <div class="form-group" style="grid-column:1/-1"><label>${this.t('obd_remarks')}</label><textarea id="ob_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
+          <div class="form-group u-full"><label>${this.t('obd_remarks')}</label><textarea id="ob_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
           ${corrHint}
         </div>`;
       } else {
@@ -1320,7 +1320,7 @@ Object.assign(App, {
     if (lines.length === 0) {
       tbody = this.emptyRow(headers.length, `
         ${this.t('obd_no_lines')}
-        ${this._obCorrection ? `<div style="margin-top:8px;color:var(--warning)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
+        ${this._obCorrection ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
         <div style="margin-top:10px">${isDraft ? `<button class="btn btn-primary btn-sm" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>` : ''}</div>
       `, { pad: 26 });
     } else {

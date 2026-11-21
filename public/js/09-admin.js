@@ -34,7 +34,11 @@ Object.assign(App, {
     const roleLabel = r => this.roleLabel(r);
     const statusBadge = s => s === 'active' ? `<span class="badge badge-success">${this.t('status_active')}</span>` : `<span class="badge badge-muted">${this.t('status_disabled')}</span>`;
     let tbody = '';
-    if (pageData.length === 0) { tbody = this.emptyRow(headers.length + 1); }
+    if (pageData.length === 0) {
+      tbody = this.emptyRow(headers.length + 1, null, this.can('users', 'create')
+        ? { actionLabel: this.t('user_add'), action: 'App.editUser()' }
+        : {});
+    }
     else { tbody = pageData.map(u => `<tr><td class="cell-code">${this.docEsc(u.username)}${u.must_change_pwd ? ' <span class="badge badge-warning">' + this.icon('alert') + '</span>' : ''}</td><td>${this.docEsc(u.name || '')}</td><td>${roleLabel(u.role)}</td><td class="text-center">${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td class="text-center">${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
     document.getElementById('users-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('users-pager').innerHTML = this.renderPager(tid, sorted.length);
@@ -59,7 +63,7 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('user_name')}</label><input id="u_name" value="${this.docEsc(u.name || '')}"></div>
       <div class="form-group"><label>${this.t('user_role')} *</label><select id="u_role" onchange="App.onUserRoleChange(this.value)">${roleOpts}</select></div>
       <div class="form-group"><label>${this.t('user_status')}</label><select id="u_status">${statusOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>${this.t('user_password')} ${id ? `<span style="font-size:11px;color:var(--text-muted)">(${this.t('user_password_hint')})</span>` : '*'}</label><input id="u_password" type="password" ${id ? 'placeholder="' + this.t('user_password_hint') + '"' : ''} oninput="App.clearFieldError('u_password')"><div class="form-error" id="u_password_error"></div></div>
+      <div class="form-group u-full"><label>${this.t('user_password')} ${id ? `<span style="font-size:11px;color:var(--text-muted)">(${this.t('user_password_hint')})</span>` : '*'}</label><input id="u_password" type="password" ${id ? 'placeholder="' + this.t('user_password_hint') + '"' : ''} oninput="App.clearFieldError('u_password')"><div class="form-error" id="u_password_error"></div></div>
       ${this.renderPermMatrix(catalog, grants, u.role === 'admin')}
     </div>`, this.t('save'), async () => {
       const body = {
@@ -114,7 +118,7 @@ Object.assign(App, {
       }).join('');
       return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border)"><span style="min-width:84px;font-size:12px;color:var(--text-muted);padding-top:2px">${this.t('nav_' + (m.key === 'dashboard' ? 'home' : m.key))}</span><span style="flex:1;display:flex;flex-wrap:wrap;gap:4px 0">${boxes}</span></div>`;
     }).join('');
-    return `<div class="form-group" style="grid-column:1/-1"><label>${this.t('perm_title')}</label><div id="u_perm_matrix" style="border:1px solid var(--border);border-radius:6px;max-height:250px;overflow:auto">${rows}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">${this.t(adminLocked ? 'perm_admin_hint' : 'perm_hint')}</div></div>`;
+    return `<div class="form-group u-full"><label>${this.t('perm_title')}</label><div id="u_perm_matrix" style="border:1px solid var(--border);border-radius:6px;max-height:250px;overflow:auto">${rows}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">${this.t(adminLocked ? 'perm_admin_hint' : 'perm_hint')}</div></div>`;
   },
 
   onUserRoleChange(role) {

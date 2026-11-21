@@ -320,7 +320,7 @@ Object.assign(App, {
     split.classList.add('open');
     split.classList.toggle('wide', s.wide);
     const rec = this._stCache[s.sel];
-    if (!rec || rec.loading) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (!rec || rec.loading) { box.innerHTML = `${this.skeleton('detail')}`; return; }
     if (rec.error) { box.innerHTML = `<div class="pu-empty">${this.docEsc(rec.error)}</div>`; return; }
     const d = rec.d;
     const lines = d.lines || [];
@@ -811,7 +811,7 @@ Object.assign(App, {
         <div class="form-group"><label>${this.t('st_no')}</label><input value="${this.docEsc(no)}" readonly></div>
         <div class="form-group"><label>${this.t('adj_date')} *</label><input id="st_f_date" type="date" value="${date}" oninput="App.clearFieldError('st_f_date')"><div class="form-error" id="st_f_date_error"></div></div>
         <div class="form-group"><label>${this.t('st_handler')}</label><input id="st_f_handler" value="${this.docEsc(this.user?.name || this.user?.username || '')}"></div>
-        <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_remark')}</label><input id="st_f_remarks" placeholder="${this.t('st_remark')}"></div>
+        <div class="form-group u-full"><label>${this.t('st_remark')}</label><input id="st_f_remarks" placeholder="${this.t('st_remark')}"></div>
       </div>
       <div class="st-load-tabs" id="st-new-tabs" role="tablist" aria-label="${this.t('st_new_scope')}">
         <span class="st-load-tab active" role="tab" data-mode="all" onclick="App.switchStNewScope('all')">${this.t('st_scope_mode_all')}</span>
@@ -1097,7 +1097,7 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('adj_date')}</label><input value="${this.fmtDate(d.date)}" readonly></div>
             <div class="form-group"><label>${this.t('st_handler')}</label><input value="${this.docEsc(d.handler || '')}" readonly></div>
             <div class="form-group"><label>${this.t('st_scope')}</label><input value="${this.docEsc(this.stScopeLabel(d))}" readonly></div>
-            <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_remark')}</label><input value="${this.docEsc(d.remarks || '')}" readonly></div>
+            <div class="form-group u-full"><label>${this.t('st_remark')}</label><input value="${this.docEsc(d.remarks || '')}" readonly></div>
           </div>
         </div>
         <div class="pu-card">
@@ -1562,7 +1562,7 @@ Object.assign(App, {
         <div class="form-group"><label>${this.t('mat_code')}</label><input value="${this.docEsc(l.code)}" readonly></div>
         <div class="form-group"><label>${this.t('st_book_qty')}</label><input value="${this.fmtQty(l.book_qty)}" readonly></div>
         <div class="form-group"><label>${this.t('st_count_qty')} *</label><input id="st-cf-target" type="number" step="0.01" value="${this.docEsc(l.count_qty)}"></div>
-        <div class="form-group" style="grid-column:1/-1"><label>${this.t('st_correct_reason')}</label><input id="st-cf-reason" value=""></div>
+        <div class="form-group u-full"><label>${this.t('st_correct_reason')}</label><input id="st-cf-reason" value=""></div>
       </div>`,
       this.t('st_correct_line'), () => this.stApplyCorrect(no, l, null), null, false);
   },

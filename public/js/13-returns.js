@@ -713,10 +713,10 @@ Object.assign(App, {
     box.hidden = false;
     split.classList.add('open');
     split.classList.toggle('wide', s.wide);
-    if (this._retLoading) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (this._retLoading) { box.innerHTML = `${this.skeleton('detail')}`; return; }
     if (this._retErr) { box.innerHTML = `<div class="pu-empty">${this.docEsc(this._retErr)}</div>`; return; }
     const d = this._retData;
-    if (!d) { box.innerHTML = `<div class="pu-empty">${this.t('loading')}</div>`; return; }
+    if (!d) { box.innerHTML = `${this.skeleton('detail')}`; return; }
 
     const lines = d.lines || [];
     const logs = d.logs || [];
