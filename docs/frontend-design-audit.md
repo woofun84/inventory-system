@@ -5,6 +5,8 @@
 审查基线：`a616cba`；实施基线：`f624080`（随后发现该提交包含三份后续 UI 提交，所有发现已按 `f624080` 复核有效）
 
 > **修复状态（2026-11-21 22:45）**：报告中的 P0-1 / P0-2 / P0-3、P1-1 / P1-2 / P1-3 / P1-4 / P1-5 / P1-6 / P1-7 / P1-8 及全部 P2 已实施。实施记录与验证结果见文末第 6 节。
+>
+> **第二轮复审（2026-11-21 23:30）**：在同基线 `e3a2fd7` 上重新审查并实测，新增一次移动端热区兜底修复；结论与评分见第 7 节。
 
 ## 1. 审查范围与方法
 
@@ -144,3 +146,84 @@
 - 内置浏览器 375px 真实视口测量：`vp=375 items=18 small=0 pageOverflow=false`（18 个可见交互元素，0 个低于 44px，页面无横向溢出）。
 - 浏览器交互验证：筛选面板 `filterOpen=true innerDisplay=flex`；详情浮层 `open=true listDisplay=block inspPos=fixed`；撤销提示 `inStack=true ... action=54x44 visible=true`。
 - 截图复核：375px 下看板、物料列表筛选展开、入库详情浮层均布局正常，表格保留局部横滑提示。
+
+## 7. 第二轮复审与结论（2026-11-21 23:30）
+
+复审基线：`e3a2fd7` + 本节发现的移动端热区兜底补丁（`public/css/pages.css` 末尾）。复审沿用首轮同一套三维标准，并补做多分辨率真实浏览器 DOM 测量。
+
+### 7.1 复审方法
+
+- 代码复查：重新扫描 4 份 CSS、15 个业务 JS、2 份 HTML，核对首轮 18 项问题是否真正闭环。
+- 浏览器实测：同源 iframe 包装页固定宽度 375 / 414 / 768 / 1024 / 1440 / 1920，在真实浏览器里触发媒体查询，读取可见交互元素的 `getBoundingClientRect()`、`.page-body` 滚动尺寸与 `.data-scroll` 局部滚动状态。
+- 主题覆盖：补测暗色主题下 375px 的看板、物料、审计页。
+- 说明：仍无设计稿/Figma 源文件，不评价像素级还原度；本轮以「内部一致性 + 硬性体验指标」为结论依据。
+
+### 7.2 首轮问题闭环情况
+
+| 项 | 复审结论 | 说明 |
+|---|---|---|
+| P0-1 撤销提示不可见 | 已闭环 | 撤销入口进入统一 Toast 栈，ARIA 与行动按钮均在位 |
+| P0-2 Chart.js CDN 单点故障 | 已闭环 | 本地 vendor + `safeRenderCharts()` 分级降级 |
+| P0-3 移动端 44px 热区 | 已闭环（本轮补修） | 首轮补丁遗漏分页当前页、审计筛选、设置文件输入、查询中心搜索框；末尾兜底后 375/414 全部 `small=0` |
+| P1-1 Loading / 空状态 | 部分闭环 | 骨架屏、空状态引导、弹窗确认与登录 Loading 已到位；但 `setButtonLoading()` 目前仅弹窗确认使用，业务表单提交按钮覆盖面仍有限 |
+| P1-2 交互态与键盘可达 | 基本闭环 | 全局焦点环/active、可点元素键盘可达已实测；个别历史 `onclick` 仍靠 `enhanceClickables()` 兜底 |
+| P1-3 筛选折叠 / 详情浮层 | 已闭环 | 浏览器实测筛选展开与详情 fixed 浮层正常，列表保留 |
+| P1-4 设计令牌 | 部分闭环 | 令牌已建立且工具类已落地，但采用率低（见 7.3） |
+| P1-5 重复 CSS / 未定义令牌 | 部分闭环 | `.pager` 死代码与主要重复块已删，`--hover-bg` 已定义；仍有约 30 处选择器重复定义 |
+| P1-6 空状态引导 | 已闭环 | 物料/供应商/用户等空列表有明确行动入口 |
+| P1-7 语义色对比度 | 已闭环 | 正文改用 `--warning-fg` / `--num-pos` |
+| P1-8 页面级横滚 | 已闭环 | 实测各档 `pbOver=false`、`docOver=false` |
+| P2-1 ~ P2-7 | 已闭环 | Toast ARIA、dvh、reduced-motion、登录页、页头省略、暗色焦点环均已落地 |
+
+### 7.3 量化对比
+
+| 指标 | 首轮基线 | 本轮实测 | 变化 |
+|---|---:|---:|---:|
+| JS 内联 `style="` | 282 | 222 | -60（-21%） |
+| CSS 硬编码颜色 | 187 | 187 | 0 |
+| `var(--fs-*)` 使用次数 | 0 | 3 | +3 |
+| `var(--space-*)` 使用次数 | 0 | 6 | +6 |
+| max-width 断点取值 | 10 档（另含 min-901） | 10 档（另含 min-901） | 0 |
+| 选择器重复定义（含 keyframes 片段） | — | 约 30 处 | 仍需治理 |
+
+语法与静态检查：4 份 CSS 括号配平、15 个业务 JS `node --check` 通过、`git diff --check` 通过（仅 CRLF 提示）。
+
+### 7.4 多分辨率实测结果
+
+`small` = 可见交互元素中宽或高小于 44px 的数量；`pbOver` = `.page-body` 横向溢出；`docOver` = 文档级横向溢出；`localScroll` = 表格局部横滚容器数量。
+
+| 视口 / 页面 | 结果 | 判定 |
+|---|---|---|
+| 1920 / 看板 | `small=16 pbOver=false docOver=false localScroll=0` | 桌面非触控口径，16 个为常规紧凑控件，不计缺陷 |
+| 1440 / 看板 | `small=16 pbOver=false docOver=false localScroll=0` | 同上 |
+| 1024 / 物料 | `small=31 pbOver=false docOver=false localScroll=1` | 页面无横滚；表格局部横滚为设计内降级 |
+| 768 / 物料 | `small=28 pbOver=false docOver=false localScroll=1` | 同上；平板 44px 热区未做强制，原始要求仅限定手机 |
+| 414 / 物料（补丁后） | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 手机热区达标 |
+| 375 / 看板 | `items=18 small=0 pbOver=false docOver=false localScroll=0` | 达标 |
+| 375 / 物料（补丁后） | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 采购 | `items=28 small=0 pbOver=false docOver=false localScroll=0` | 达标 |
+| 375 / 入库 | `items=34 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 设置（补丁后） | `items=58 small=0 pbOver=false docOver=false localScroll=0` | 达标 |
+| 375 / 审计（补丁后） | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 查询中心（补丁后） | `items=30 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 用户 | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 看板·暗色 | `items=18 small=0 pbOver=false docOver=false localScroll=0` | 达标 |
+| 375 / 物料·暗色 | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+| 375 / 审计·暗色 | `items=28 small=0 pbOver=false docOver=false localScroll=1` | 达标 |
+
+### 7.5 重新评分
+
+| 维度 | 首轮 | 本轮 | 变化 | 判断 |
+|---|---:|---:|---:|---|
+| 响应式与多端适配 | 6.5 | 8.8 | +2.3 | 手机硬指标全部达标；断点碎片化仍在，扣分有限 |
+| 交互与状态反馈 | 6.0 | 8.3 | +2.3 | 撤销/骨架/键盘/浮层/降级补齐；业务提交按钮 Loading 未全覆盖 |
+| 视觉与规范一致性 | 7.0 | 7.6 | +0.6 | 令牌与工具类建立，但采用率低、硬编码与重复定义仍多 |
+| **综合** | **6.5** | **8.2** | **+1.7** | 从「能用但粗糙」提升到「稳定可用、体验合格」 |
+
+### 7.6 最终结论
+
+变化**足够大**：用户明确点名的三类硬性要求里，移动端 44px 热区、无页面级横向溢出、表格降级横滚、筛选折叠、详情浮层、Loading/空状态/错误降级都已实测通过；P0 全部闭环，P1 大部分闭环，综合评分提升 1.7 分，已经跨过可用性与体验合格线。
+
+但尚未达到「体系化设计系统」程度：视觉一致性提升明显小于响应式与交互，根因是新令牌只解决「有没有」，未解决「用不用」——字色仍有 187 处硬编码、`--fs-*` / `--space-*` 分别仅用 3 / 6 次、约 30 处重复选择器与 10 档断点仍在。若下一轮继续投入，优先级建议为：① 把业务表单提交按钮统一接入 `setButtonLoading()`；② 分批把高频静态内联样式迁移到工具类；③ 合并断点到 4～5 档并建立 `breakpoints.css`；④ 清理剩余重复选择器。
+
+本轮新增的 `public/css/pages.css` 末尾热区兜底属于对首轮 P0-3 的补漏，随本报告一并提交部署；除此之外不再扩大改动范围，以保持复审结论与被审代码一致。

@@ -1068,3 +1068,12 @@ button.pu-kpi { cursor: pointer; }
 @media (max-width: 1180px) {
   #q-analysis .q-an-class { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* 移动端热区兜底：放在文件末尾，确保覆盖前面同权重/更高特异性的固定高度 */
+@media (max-width: 640px) {
+  .pu-pager .btn,
+  .pu-pager select { min-width: 44px; min-height: 44px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea { min-height: 44px; }
+}
