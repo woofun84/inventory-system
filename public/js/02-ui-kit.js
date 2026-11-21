@@ -267,19 +267,22 @@ Object.assign(App, {
       return `<button type="button" class="btn btn-outline btn-sm${active ? ' active' : ''}" ${act}${disabled ? ' disabled' : ''}>${label}</button>`;
     };
     let nums = '';
-    if (tp <= 7) {
+    // 可见数字页码控制在最多 5 个（首页 + 当前页±1 + 末页），避免页码条过长。
+    // 当前页靠近两端时窗口向内收缩，始终保证 5 个以内且首尾可达。
+    if (tp <= 5) {
       for (let i = 1; i <= tp; i++) nums += pgBtn(i, i, i === page, false);
     } else {
-      let pStart = Math.max(1, page - 2), pEnd = Math.min(tp, page + 2);
-      if (pStart > 1) {
-        nums += pgBtn(1, 1, false, false);
-        if (pStart > 2) nums += `<span class="pu-pager-gap">…</span>`;
-      }
+      let pStart = Math.max(2, page - 1), pEnd = Math.min(tp - 1, page + 1);
+      // 窗口固定占 3 个中间位：靠左/靠右时平移窗口，保证中间始终 3 个
+      if (page <= 2) { pStart = 2; pEnd = 4; }
+      else if (page >= tp - 1) { pStart = tp - 3; pEnd = tp - 1; }
+      // 首页
+      nums += pgBtn(1, 1, false, false);
+      if (pStart > 2) nums += `<span class="pu-pager-gap">…</span>`;
       for (let i = pStart; i <= pEnd; i++) nums += pgBtn(i, i, i === page, false);
-      if (pEnd < tp) {
-        if (pEnd < tp - 1) nums += `<span class="pu-pager-gap">…</span>`;
-        nums += pgBtn(tp, tp, false, false);
-      }
+      if (pEnd < tp - 1) nums += `<span class="pu-pager-gap">…</span>`;
+      // 末页
+      nums += pgBtn(tp, tp, false, false);
     }
     return `<span class="pu-tot">${tot}</span>
       <span>${page} / ${tp} ${this.t('page')}</span>

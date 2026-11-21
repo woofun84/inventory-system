@@ -32,9 +32,11 @@ Object.assign(App, {
           ${this.icon('search')}
           <input id="q_global" autocomplete="off" placeholder="${this.t('q_search_ph')}" aria-label="${this.t('q_search_ph')}" onfocus="App.qSearchFocus()" onblur="App.qSearchBlur()" oninput="App.qSearchInput()" onkeydown="App.qSearchKey(event)">
           <button type="button" class="q-gsearch-clear" id="q_global_clear" title="${this.t('pu_clear_filter')}" aria-label="${this.t('pu_clear_filter')}" onclick="App.qClearGlobalSearch()">${this.icon('close')}</button>
-        </div></div>
+        </div>
+        <!-- 候选结果做浮层：挂在此容器内，position:absolute 相对 .q-gsearch 定位，不占文档流 -->
+        <div id="q-search-panel" class="q-search-panel" hidden></div>
+        </div>
       </div>
-      <div id="q-search-panel" class="q-search-panel" hidden></div>
       <div id="q-panel"></div>
     </div>`));
     document.querySelector('.page-body')?.classList.add('pu-page-body');
@@ -43,6 +45,12 @@ Object.assign(App, {
     if (!this._qOutBound) {
       this._qOutBound = true;
       document.addEventListener('click', e => this.qCardOutsideClick(e), true);
+      // 全局搜索浮层：点搜索框与浮层以外区域即收起（浮层不占文档流，需监听 document）
+      document.addEventListener('click', e => {
+        if (this.currentPage !== 'query') return;
+        if (e.target.closest('.q-gsearch')) return;
+        this.qSearchPanelClose();
+      }, true);
     }
     this.qSwitchBoard(board);
     // 与入库/出库/采购/盘点一致：窗口尺寸变化后重新判断分页条是否需要吸底

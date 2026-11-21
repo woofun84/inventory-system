@@ -61,12 +61,12 @@ Object.assign(App, {
     const pageData = this.paginate(sorted, st.page, st.pageSize);
     const headers = [
       ['code', this.t('mat_code')], ['name', this.t('mat_name')], ['spec', this.t('mat_spec')],
-      ['category', this.t('mat_category')], ['unit', this.t('mat_unit')], ['opening_qty', this.t('mat_opening_qty')],
-      ...vp ? [['opening_price', this.t('mat_opening_price')]] : [],
-      ['min_stock', this.t('mat_min_stock')],
+      ['category', this.t('mat_category')], ['unit', this.t('mat_unit')], ['opening_qty', this.t('mat_opening_qty'), true],
+      ...vp ? [['opening_price', this.t('mat_opening_price'), true]] : [],
+      ['min_stock', this.t('mat_min_stock'), true],
       ['brand', this.t('mat_brand')]
     ];
-    let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
+    let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid, h[2])).join('');
     thHtml += `<th class="text-center">${this.t('mat_status')}</th><th class="text-center"></th>`;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(vp ? 11 : 10); }

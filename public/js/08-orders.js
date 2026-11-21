@@ -31,7 +31,7 @@ Object.assign(App, {
       ['name', this.t('sup_name')], ['contact', this.t('sup_contact')],
       ['phone', this.t('sup_phone')], ['remarks', this.t('sup_remarks')]
     ];
-    let thHtml = `<th>${this.t('sup_seq')}</th>`;
+    let thHtml = `<th class="text-center">${this.t('sup_seq')}</th>`;
     thHtml += headers.map(h => this.sortTh(h[1], h[0], tid)).join('');
     thHtml += `<th class="text-center"></th>`;
     const colCount = headers.length + 2;

@@ -474,10 +474,10 @@
 }
 #q-root .table-wrap tbody .badge { padding: 2px 7px; font-size: 11px; line-height: 1.5; }
 
-/* --- 查询中心：全局搜索（与板块页签同一行，右侧固定宽度；结果就地展开，不浮层/不抽屉） --- */
+/* --- 查询中心：全局搜索（与板块页签同一行，右侧固定宽度；结果以浮层展示，不占文档流） --- */
 #q-root .q-global-bar { display: flex; align-items: center; gap: 12px; }
 #q-root .q-global-bar #q-tabs { flex: 0 1 auto; min-width: 0; }
-#q-root .q-gsearch { flex: 0 0 280px; max-width: 320px; padding-bottom: 5px; }
+#q-root .q-gsearch { position: relative; flex: 0 0 280px; max-width: 320px; padding-bottom: 5px; }
 #q-root .q-gsearch .pu-search { width: 100%; }
 .q-gsearch-clear {
   position: absolute;
@@ -499,7 +499,20 @@
 .q-gsearch-clear.on { display: inline-flex; }
 .q-gsearch-clear .icon { width: 13px; height: 13px; }
 #q-root #q_global { padding-right: 32px; }
-#q-root .q-search-panel { margin: 10px 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
+/* 候选结果浮层：绝对定位在搜索框正下方，覆盖内容而非把内容往下挤 */
+#q-root .q-search-panel {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-lg);
+}
 #q-root .q-search-state { padding: 14px 12px; color: var(--text-muted); font-size: 12px; text-align: center; }
 #q-root .q-search-group + .q-search-group { border-top: 1px solid var(--border); }
 #q-root .q-search-ghead { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--text-muted); }
