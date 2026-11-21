@@ -9,6 +9,8 @@
 > **第二轮复审（2026-11-21 23:30）**：在同基线 `e3a2fd7` 上重新审查并实测，新增一次移动端热区兜底修复；结论与评分见第 7 节。
 >
 > **第三轮收口（2026-11-21 23:45）**：按第 7.6 节建议实施 ①～④，完整记录见第 8 节；第 7 节评分仍作为「改造前复审基线」，第 8 节给出新的实测结果与结论。
+>
+> **第四轮视觉一致性清理（2026-11-21 23:55）**：继续处理硬编码颜色、字号/间距与静态内联样式，记录见第 9 节。
 
 ## 1. 审查范围与方法
 
@@ -302,3 +304,62 @@
 ### 8.7 收口结论
 
 ①～④ 均已落地并通过回归，前三项分别关闭了第 7.6 节列出的具体残余，第四项澄清了「重复定义」的真实构成。视觉一致性里仍未解决的是**硬编码颜色 187 处未变**、`--fs-*` / `--space-*` 采用率仍低（分别为 5 / 8 次）——这属于更大规模的设计系统重构，不在本轮四项建议范围内。
+
+## 9. 第四轮：继续清理视觉一致性残余（2026-11-21 23:55）
+
+用户要求「还有什么没有修复的继续修复」。本轮直接处理第 8.7 节留下的硬编码颜色、字号/间距与剩余静态内联样式。
+
+### 9.1 改动概览
+
+| 指标 | 本轮前 | 本轮后 | 说明 |
+|---|---:|---:|---|
+| 业务规则硬编码颜色 | 42 | **0** | 仅统计 `:root` / `[data-theme="dark"]` 变量定义之外的声明；变量定义保留色值是正确做法 |
+| 非零硬编码字号/间距 | 约 390 | **0** | `0`、`auto` 与 `calc()` 保留；令牌定义本身不计 |
+| `--fs-*` 采用次数 | 5 | 165 | 字号阶梯扩展为 18 个受控令牌 |
+| `--space-*` 采用次数 | 8 | 230 | 间距阶梯扩展为 16 个受控令牌（含 2/3/5/7/9/11/14/18px 半档） |
+| JS 字面 `style="` | 152 | 100 | 第三批迁移 52 处，另手工处理 6 处条件属性；动态值保留 |
+
+### 9.2 颜色令牌化
+
+- `base.css` 新增 `--on-solid`、`--on-solid-hover-bg(-strong)`、`--overlay-bg(-strong/-hover)`、`--sidebar-divider`、`--shadow-sidebar/primary/popover/image`、`--skeleton-shimmer`。
+- `components.css` / `pages.css` / `theme-dark.css` 中 42 处业务颜色声明改为令牌引用：
+  - 白色按钮文字 → `--on-solid`；输入框/弹窗/图片底 → `--card-bg`。
+  - 各类遮罩 → `--overlay-bg` / `--overlay-bg-strong` / `--overlay-bg-hover`。
+  - 滚动条 → `--scrollbar-thumb` / `--scrollbar-thumb-hover`。
+  - 错误输入环 → `--danger-ring`；骨架微光 → `--skeleton-shimmer`。
+  - 暗色主题 9 处覆盖（`background: #0f172a`、`#1e293b`、`#334155`、`#e2e8f0` 等）也改用现有语义令牌。
+- 上下文感知扫描确认：变量定义之外的硬编码颜色为 0。
+
+### 9.3 字号与间距令牌化
+
+- 字号阶梯补齐：`--fs-9/10/11_5/15/17/18/22/24/25/32/42` 等，连同原有 `--fs-xxs/xs/sm/md/lg/xl` 共 18 个。
+- 间距阶梯补齐：`--space-0_5/0_75/1_25/1_75/2_25/2_75/3_5/4_5` 等，连同 4px 基准档共 16 个。
+- 批量改写 `font-size`、`padding`、`margin`、`gap`、`row-gap`、`column-gap` 共约 390 处声明；`0`、`auto`、`calc()` 与动态值保持原样。
+- 上下文感知扫描确认：非零硬编码字号/间距为 0。
+
+### 9.4 第三批内联样式迁移
+
+- 新增工具类：`.u-semibold`、`.u-pointer`、`.u-min-w-*`（0/86/90/96/100/120/130/140/150/220）、`.u-mb-10`、`.u-mb-3`、`.u-muted-disabled`、`.u-muted-xs-mt-* / mb-10`、`.u-warning-mt-2`、`.u-row-muted`、`.u-scroll-420`、`.u-plain-control`、`.u-kicked-msg`、`.u-date-filter-input`、`.u-w-36`、`.u-py-1_75` 等。
+- 批量替换 52 处；另手工处理 2 处条件字符串与 4 处 date filter/宽度/内边距，共 58 处。
+- JS 中引用的 44 个 `u-*` 工具类全部有 CSS 定义，无遗漏。
+
+### 9.5 回归验证
+
+- 15 个业务 JS `node --check` 通过；5 份 CSS 括号配平；`git diff --check` 通过（仅 CRLF 提示）。
+- 浏览器复测 1920 / 1440 / 1024 / 768 / 375（含暗色）：
+
+  | 视口 / 页面 | 结果 |
+  |---|---|
+  | 1920 / 看板 | `bp=1024px fs=12px small=16 pbOver=false docOver=false localScroll=0` |
+  | 1440 / 看板 | `bp=1024px fs=12px small=16 pbOver=false docOver=false localScroll=0` |
+  | 1024 / 物料 | `small=31 pbOver=false docOver=false localScroll=1` |
+  | 768 / 物料 | `small=28 pbOver=false docOver=false localScroll=1` |
+  | 375 / 看板 | `small=0 pbOver=false docOver=false localScroll=0` |
+  | 375 / 物料·暗色 | `small=0 pbOver=false docOver=false localScroll=1` |
+  | 375 / 审计·暗色 | `small=0 pbOver=false docOver=false localScroll=1` |
+
+- 桌面/平板 `small` 计数仍为移动端口径外的紧凑控件；手机端全部达标，页面级横滚为 0，表格局部横滚保持不变。
+
+### 9.6 结论
+
+第 7 节指出的视觉一致性残余已基本关闭：业务 CSS 不再有硬编码颜色与非零字号/间距，令牌采用量由个位提升到三位数，剩余内联样式以动态计算值为主。后续若要继续提升，重点应从「令牌覆盖率」转向「语义令牌命名与组件 API 化」，那属于设计系统重构范畴，而非缺陷修复。

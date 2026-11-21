@@ -384,10 +384,10 @@ Object.assign(App, {
     ];
     const rows = types.map((x, i) => {
       const hint = x.ok ? x.desc : `${x.desc} — ${x.reason}`;
-      return `<tr data-ib-new-row="${x.kind}"${x.ok ? '' : ' style="color:var(--text-muted);cursor:not-allowed"'}>
-          <td style="width:36px"><input type="radio" name="ib_new_type" id="ib_new_${i}" value="${x.kind}"${x.ok ? '' : ' disabled'}></td>
+      return `<tr data-ib-new-row="${x.kind}"${x.ok ? '' : ' class="u-muted-disabled"'}>
+          <td class="u-w-36"><input type="radio" name="ib_new_type" id="ib_new_${i}" value="${x.kind}"${x.ok ? '' : ' disabled'}></td>
           <td><label for="ib_new_${i}" style="cursor:${x.ok ? 'pointer' : 'not-allowed'}"><b>${x.name}</b>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${hint}</div></label></td></tr>`;
+            <div class="u-muted-xs-mt-0_5">${hint}</div></label></td></tr>`;
     }).join('');
     const opened = this.showModal(this.t('ibd_add'),
       `<div class="table-wrap" id="ib-new-picker"><table><tbody>${rows}</tbody></table></div>`,
@@ -1816,7 +1816,7 @@ Object.assign(App, {
     if (lines.length === 0) {
       tbody = this.emptyRow(colCount, `
         ${this.t('ibd_no_lines')}
-        ${isCorr ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
+        ${isCorr ? `<div class="u-warning-mt-2">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
         ${isDraft && !linked ? `<div class="u-mt-10"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
       `, { pad: 26 });
     } else {
@@ -1898,7 +1898,7 @@ Object.assign(App, {
         let matCell;
         if (lockMat) {
           const outOfScope = isPurchaseIn && !!l._outOfScope;
-          matCell = `<div style="font-size:13px">${this.ibLineLabel(l)}` +
+          matCell = `<div class="u-fs-sm">${this.ibLineLabel(l)}` +
             `${outOfScope ? `<small class="ib-out-scope"> ${this.t('ibd_line_out_of_scope')}</small>` : ''}</div>`;
         } else if (isPurchaseIn && (!isCorr || this._ibSource)) {
           matCell = `<select class="ib-line-ol" data-idx="${i}" onchange="App.ibPickOrderLine(${i}, this.value)">${this.ibOrderLineOpts(l)}</select>`;
@@ -1910,16 +1910,16 @@ Object.assign(App, {
         const lockPrice = !this.canEditPrice() || linked || (isCorr && !corrPriceEditable);
         const priceCell = lockPrice
           ? `<td>${this.fmtMoney(l.price)}</td>`
-          : `<td style="min-width:100px"><input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.price)}" oninput="App.ibEditSet(${i},'price',this.value)"></td>`;
+          : `<td class="u-min-w-100"><input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.price)}" oninput="App.ibEditSet(${i},'price',this.value)"></td>`;
         const qtyMax = linked ? ` max="${linkedMax}"` : '';
         const qtyMin = isCorr ? '0' : '0.01';
         return `<tr>
-          <td style="min-width:220px">${matCell}<div class="line-error-tip" data-ib-tip="${i}"></div></td>
-          <td style="min-width:100px"><div class="pu-qty-wrap"><input type="number" class="ib-edit-qty" data-idx="${i}" step="0.01" min="${qtyMin}"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
+          <td class="u-min-w-220">${matCell}<div class="line-error-tip" data-ib-tip="${i}"></div></td>
+          <td class="u-min-w-100"><div class="pu-qty-wrap"><input type="number" class="ib-edit-qty" data-idx="${i}" step="0.01" min="${qtyMin}"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
           ${vp ? `${priceCell}
           <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
           <td style="min-width:120px;font-size:12px">${contract}</td>
-          <td style="min-width:140px"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
+          <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
           ${corrUnrecCell}
           <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px"${(availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
           <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>

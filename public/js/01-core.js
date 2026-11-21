@@ -206,7 +206,7 @@ const App = {
       // 新开页面时没有"当前页面"可保留，补一层说明页避免弹窗背后空白。
       if (this.conn && this.conn.kicked) {
         this.setMain(this.pageWrap(this.icon('box', 'icon--title') + ' ' + this.t('appName'), '', '',
-          '<div style="padding:40px;text-align:center;color:var(--text-muted)">'
+          '<div class="u-kicked-msg">'
           + this.docEsc(this.t('kicked_desc')) + '</div>'));
         return;
       }
@@ -240,7 +240,7 @@ const App = {
     this.restoreSessionDraft();
     // 强制改密：渲染基础布局并弹改密弹窗（router 的 must_change_pwd 拦截负责兜底后续导航）
     if (this.user && this.user.must_change_pwd) {
-      this.setMain(this.pageWrap(this.icon('box', 'icon--title') + ' ' + this.t('appName'), '', '', '<div id="force-pwd-hint" style="padding:40px;text-align:center;color:var(--text-muted)">' + this.t('change_password') + '</div>'));
+      this.setMain(this.pageWrap(this.icon('box', 'icon--title') + ' ' + this.t('appName'), '', '', '<div class="u-kicked-msg" id="force-pwd-hint">' + this.t('change_password') + '</div>'));
       this.showChangePwdModal(true);
       return;
     }

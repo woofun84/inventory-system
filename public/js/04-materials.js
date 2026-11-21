@@ -311,7 +311,7 @@ Object.assign(App, {
   },
 
   matBatchBody() {
-    return `<div style="margin-bottom:10px;color:var(--text-muted);font-size:12px">${this.t('mat_batch_hint')}</div>
+    return `<div class="u-muted-xs-mb-10">${this.t('mat_batch_hint')}</div>
       <div id="mat-batch-summary" class="ui-note ui-note--danger" style="display:none"></div>
       <div id="mat-batch-table-wrap">${this.matBatchTableHtml()}</div>
       <div class="u-mt-10"><button type="button" class="btn btn-outline btn-sm" onclick="App.matBatchAddRow()">+ ${this.t('mat_batch_add_row')}</button></div>`;
@@ -330,15 +330,15 @@ Object.assign(App, {
       <th>${this.t('mat_opening_qty')}</th>${ep ? `<th>${this.t('mat_opening_price')}</th>` : ''}
       <th>${this.t('mat_min_stock')}</th><th></th><th></th></tr>`;
     const rows = st.rows.map((r, i) => `<tr id="mat-batch-row-${i}">
-      <td style="min-width:96px"><input data-field="code" value="${this.matEsc(r.code)}" placeholder="${this.t('mat_code_auto')}" oninput="App.matBatchSet(${i},'code',this.value,this)"></td>
+      <td class="u-min-w-96"><input data-field="code" value="${this.matEsc(r.code)}" placeholder="${this.t('mat_code_auto')}" oninput="App.matBatchSet(${i},'code',this.value,this)"></td>
       <td class="u-min-w-110">${this.matComboHtml(i, 'category', r.category, cats)}</td>
-      <td style="min-width:130px"><input data-field="name" value="${this.matEsc(r.name)}" oninput="App.matBatchSet(${i},'name',this.value,this)"></td>
+      <td class="u-min-w-130"><input data-field="name" value="${this.matEsc(r.name)}" oninput="App.matBatchSet(${i},'name',this.value,this)"></td>
       <td class="u-min-w-110"><input data-field="spec" value="${this.matEsc(r.spec)}" oninput="App.matBatchSet(${i},'spec',this.value,this)"></td>
-      <td style="min-width:90px"><input data-field="brand" value="${this.matEsc(r.brand)}" oninput="App.matBatchSet(${i},'brand',this.value,this)"></td>
-      <td style="min-width:90px">${this.matComboHtml(i, 'unit', r.unit, unitList)}</td>
-      <td style="min-width:86px"><input data-field="opening_qty" type="${numType(r.opening_qty)}" step="0.01" value="${this.matEsc(r.opening_qty)}" oninput="App.matBatchSet(${i},'opening_qty',this.value,this)"></td>
-      ${ep ? `<td style="min-width:86px"><input data-field="opening_price" type="${numType(r.opening_price)}" step="0.01" value="${this.matEsc(r.opening_price)}" oninput="App.matBatchSet(${i},'opening_price',this.value,this)"></td>` : ''}
-      <td style="min-width:86px"><input data-field="min_stock" type="${numType(r.min_stock)}" step="0.01" value="${this.matEsc(r.min_stock)}" oninput="App.matBatchSet(${i},'min_stock',this.value,this)"></td>
+      <td class="u-min-w-90"><input data-field="brand" value="${this.matEsc(r.brand)}" oninput="App.matBatchSet(${i},'brand',this.value,this)"></td>
+      <td class="u-min-w-90">${this.matComboHtml(i, 'unit', r.unit, unitList)}</td>
+      <td class="u-min-w-86"><input data-field="opening_qty" type="${numType(r.opening_qty)}" step="0.01" value="${this.matEsc(r.opening_qty)}" oninput="App.matBatchSet(${i},'opening_qty',this.value,this)"></td>
+      ${ep ? `<td class="u-min-w-86"><input data-field="opening_price" type="${numType(r.opening_price)}" step="0.01" value="${this.matEsc(r.opening_price)}" oninput="App.matBatchSet(${i},'opening_price',this.value,this)"></td>` : ''}
+      <td class="u-min-w-86"><input data-field="min_stock" type="${numType(r.min_stock)}" step="0.01" value="${this.matEsc(r.min_stock)}" oninput="App.matBatchSet(${i},'min_stock',this.value,this)"></td>
       <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.matBatchRemoveRow(${i})">${this.t('in_remove_row')}</button></td>
       <td id="mat-batch-err-${i}" style="font-size:12px;color:var(--danger);min-width:150px;max-width:260px"></td>
     </tr>`).join('');
@@ -732,7 +732,7 @@ Object.assign(App, {
     try { this._materialsData = await this.api('/api/materials'); }
     catch (e) { this.toast(e.message, 'error'); return; }
     this._matImport = { rows: [], errors: [], fileName: '', submitting: false };
-    const body = `<div style="margin-bottom:10px;color:var(--text-muted);font-size:12px">${this.t('mat_import_hint')}</div>
+    const body = `<div class="u-muted-xs-mb-10">${this.t('mat_import_hint')}</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <input type="file" id="mat-import-file" accept=".csv,.xlsx,.xls,text/csv" onchange="App.matImportFilePicked(this)">
         <button type="button" class="btn btn-outline btn-sm" onclick="App.downloadMaterialTemplate()">${this.t('mat_import_download_tpl')}</button>
@@ -1076,7 +1076,7 @@ Object.assign(App, {
         const rows = e.details.blockers.map(b =>
           `<li>${this.matEsc(en ? (b.label_en || b.label) : b.label)}：${b.count}${b.samples && b.samples.length ? `（${b.samples.map(s => this.matEsc(s)).join('、')}）` : ''}</li>`).join('');
         this.showModal(`<h3>${this.t('mat_delete_blocked_title')}</h3>`,
-          `<div style="line-height:1.7"><p>${this.matEsc(e.message)}</p><ul style="margin:8px 0 0 18px">${rows}</ul></div>`,
+          `<div class="u-lh-base"><p>${this.matEsc(e.message)}</p><ul style="margin:8px 0 0 18px">${rows}</ul></div>`,
           this.t('confirm'), () => this.closeModal());
       }
     });

@@ -95,9 +95,9 @@
 [data-theme="dark"] .form-group input,
 [data-theme="dark"] .form-group select,
 [data-theme="dark"] .form-group textarea {
-  background: #0f172a;
-  border-color: #334155;
-  color: #e2e8f0;
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 /* 暗色主题：所有输入类控件的公共底色。
@@ -127,9 +127,9 @@
   opacity: 1;
 }
 [data-theme="dark"] .btn-outline {
-  background: #1e293b;
-  border-color: #334155;
-  color: #cbd5e1;
+  background: var(--card-bg);
+  border-color: var(--border);
+  color: var(--table-cell-fg);
 }
 [data-theme="dark"] .btn-outline:hover {
   background: #334155;
@@ -142,11 +142,11 @@
 }
 [data-theme="dark"] select option {
   background-color: #1e293b;
-  color: #e2e8f0;
+  color: var(--text);
 }
 [data-theme="dark"] select option:checked {
-  background-color: #2563eb;
-  color: #ffffff;
+  background-color: var(--primary-solid);
+  color: var(--on-solid);
 }
 
 /* 暗色主题：Chart.js 文字颜色通过 JS 传入，无需 CSS */

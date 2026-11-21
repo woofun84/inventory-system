@@ -960,7 +960,7 @@ Object.assign(App, {
       <div class="pu-kpi"><small>${this.t('pu_received_qty')}</small><strong>${this.fmtQty(sm.received_qty)}</strong></div>
       <div class="pu-kpi"><small>${this.t('pu_unreceived_qty')}</small><strong>${this.fmtQty(sm.unreceived_qty)}</strong></div>
     </div>
-    <div class="pu-log-meta" style="margin-bottom:12px">${this.docEsc(l.po_no || '')} · ${this.docEsc(l.code || '')} ${this.docEsc(l.material_name || '')} ${this.docEsc(l.material_spec || '')}${l.contract_no_eff ? ' · ' + this.t('pu_contract_filter') + ': ' + this.docEsc(l.contract_no_eff) : ''}</div>`;
+    <div class="pu-log-meta u-mb-3">${this.docEsc(l.po_no || '')} · ${this.docEsc(l.code || '')} ${this.docEsc(l.material_name || '')} ${this.docEsc(l.material_spec || '')}${l.contract_no_eff ? ' · ' + this.t('pu_contract_filter') + ': ' + this.docEsc(l.contract_no_eff) : ''}</div>`;
     let table;
     if (!(d.history || []).length) {
       table = `<div class="pu-empty">${this.t('pu_hist_empty')}</div>`;
@@ -1177,14 +1177,14 @@ Object.assign(App, {
         const recv = Number(l.received_qty || 0);
         const amt = (Number(l.order_qty) || 0) * (Number(l.order_price) || 0);
         return `<tr>
-          <td style="min-width:220px"><select class="pu-line-mat" data-idx="${i}" onchange="App.puEditSet(${i},'code',this.value)">${matOpts(l.code)}</select><div class="line-error-tip" data-pu-tip="${i}"></div></td>
+          <td class="u-min-w-220"><select class="pu-line-mat" data-idx="${i}" onchange="App.puEditSet(${i},'code',this.value)">${matOpts(l.code)}</select><div class="line-error-tip" data-pu-tip="${i}"></div></td>
           <td class="u-min-w-110"><div class="pu-qty-wrap"><input type="number" class="pu-line-qty" data-idx="${i}" step="0.0001" min="${recv}" value="${l.order_qty || ''}" oninput="App.puEditSet(${i},'order_qty',this.value)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
           ${vp ? `<td class="u-min-w-110">${this.canEditPrice()
             ? `<input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}" oninput="App.puEditSet(${i},'order_price',this.value)">`
             : this.fmtMoney(l.order_price)}</td>
           <td class="pu-edit-amt" data-amt="${i}">${this.fmtMoney(amt)}</td>` : ''}
-          <td style="min-width:130px"><input list="pu_e_clist" value="${this.docEsc(l.contract_no || '')}" oninput="App.puEditSet(${i},'contract_no',this.value)"></td>
-          <td style="min-width:140px"><input value="${this.docEsc(l.remarks || '')}" oninput="App.puEditSet(${i},'remarks',this.value)"></td>
+          <td class="u-min-w-130"><input list="pu_e_clist" value="${this.docEsc(l.contract_no || '')}" oninput="App.puEditSet(${i},'contract_no',this.value)"></td>
+          <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.puEditSet(${i},'remarks',this.value)"></td>
           <td class="pu-edit-amt">${recv > 0 ? this.fmtQty(recv) : '—'}</td>
           <td class="text-center">${canEdit && recv <= 0 && (status === 'draft' || lines.length > 1)
             ? `<button type="button" class="pu-edit-del" onclick="App.puEditRemoveRow(${i})">${this.t('in_remove_row')}</button>` : ''}</td>
@@ -1578,7 +1578,7 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('pu_order_qty')} *</label><input id="pu_l_qty" type="number" step="0.0001" min="${recvFloor}" value="${l.order_qty}" oninput="App.clearFieldError('pu_l_qty')">${recvFloor > 0 ? `<div class="pu-mu" style="margin-top:4px">${this.t('pu_received_floor', { received: this.fmtQty(recvFloor) })}</div>` : ''}<div class="form-error" id="pu_l_qty_error"></div></div>
       ${vp ? `<div class="form-group"><label>${this.t('pu_order_price')}</label>${priceEditable
         ? `<input id="pu_l_price" type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}">`
-        : `<div class="pu-readonly" style="padding:7px 0">${this.fmtMoney(l.order_price)}</div>`}</div>` : ''}
+        : `<div class="pu-readonly" class="u-py-1_75">${this.fmtMoney(l.order_price)}</div>`}</div>` : ''}
       <div class="form-group"><label>${this.t('pu_contract_filter')}</label><input id="pu_l_contract" list="pu_l_c_list" value="${this.docEsc(l.contract_no || '')}"><datalist id="pu_l_c_list">${cList}</datalist></div>
       <div class="form-group u-full"><label>${this.t('pu_remarks')}</label><textarea id="pu_l_remarks" rows="2">${this.docEsc(l.remarks || '')}</textarea></div>
     </div>`;
@@ -1682,7 +1682,7 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('pu_sign_date')}</label><input id="pu_c_sign" type="date" value="${this.fmtDate(c.sign_date)}"></div>
       ${showAmount ? `<div class="form-group"><label>${this.t('pu_contract_amount')}</label>${canEditAmount
         ? `<input id="pu_c_amount" type="number" step="0.01" min="0" value="${c.amount || ''}">`
-        : `<div style="padding:7px 0">${this.fmtMoney(c.amount)}</div>`}</div>` : ''}
+        : `<div class="u-py-1_75">${this.fmtMoney(c.amount)}</div>`}</div>` : ''}
       <div class="form-group"><label>${this.t('pu_status')}</label><select id="pu_c_status">${stOpts}</select></div>
       <div class="form-group u-full"><label>${this.t('pu_remarks')}</label><textarea id="pu_c_remarks" rows="2">${this.docEsc(c.remarks || '')}</textarea></div>
     </div>`;

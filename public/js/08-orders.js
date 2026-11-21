@@ -211,7 +211,7 @@ Object.assign(App, {
       <div class="set-op">
         <div class="set-op-main"><b>${this.t('set_auto_freq')}</b><p>${this.t('set_auto_note')}</p></div>
         <div class="set-op-actions">
-          <div class="form-group" style="min-width:130px"><label>${this.t('set_auto_freq')}</label>
+          <div class="form-group u-min-w-130"><label>${this.t('set_auto_freq')}</label>
             <select id="set_auto_mode" onchange="App.onAutoBackupModeChange()">${modeOpts}</select></div>
           <div class="form-group" id="set_auto_time_wrap" style="min-width:120px;${timeStyle}"><label>${this.t('set_auto_time')}</label>
             <input id="set_auto_time" type="time" value="${pad2(s.hour)}:${pad2(s.minute)}"></div>
@@ -333,7 +333,7 @@ Object.assign(App, {
       `<option value="${s}" ${s === curStyle ? 'selected' : ''}>${this.docEsc(styleLabels[s] || s)}</option>`).join('');
     const inputs = this.docNoTypeKeys().map(k => {
       const v = (rules.prefixes && rules.prefixes[k]) || '';
-      return `<div class="form-group" style="min-width:150px"><label>${labels[k] || k}</label>` +
+      return `<div class="form-group u-min-w-150"><label>${labels[k] || k}</label>` +
         `<input id="docno_${k}" value="${this.docEsc(v)}" maxlength="8" ${dis} oninput="App.previewDocNo()"></div>`;
     }).join('');
     const actions = canEdit
@@ -346,7 +346,7 @@ Object.assign(App, {
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">${inputs}
         <div class="form-group u-min-w-110"><label>${this.t('set_docno_pad')}</label>
           <input id="docno_pad" type="number" min="1" max="8" value="${rules.pad}" ${dis} oninput="App.previewDocNo()"></div>
-        <div class="form-group" style="min-width:150px"><label>${this.t('set_docno_date_style')}</label>
+        <div class="form-group u-min-w-150"><label>${this.t('set_docno_date_style')}</label>
           <select id="docno_date_style" ${dis} onchange="App.previewDocNo()">${styleOptions}</select></div>
       </div>
       <p style="color:var(--text-muted);margin:10px 0 6px">${this.t('set_docno_hint')}</p>

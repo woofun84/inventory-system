@@ -788,9 +788,9 @@ Object.assign(App, {
     let dateHtml = '';
     if (dateFilter) {
       dateHtml = `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-        <input id="${dateFilter.fromId}" type="date" style="width:130px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)" onchange="${dateFilter.onChange}" value="${dateFilter.fromVal || ''}">
+        <input id="${dateFilter.fromId}" type="date" class="u-date-filter-input" onchange="${dateFilter.onChange}" value="${dateFilter.fromVal || ''}">
         <span class="u-muted-sm">~</span>
-        <input id="${dateFilter.toId}" type="date" style="width:130px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card-bg);color:var(--text)" onchange="${dateFilter.onChange}" value="${dateFilter.toVal || ''}">
+        <input id="${dateFilter.toId}" type="date" class="u-date-filter-input" onchange="${dateFilter.onChange}" value="${dateFilter.toVal || ''}">
       </div>`;
     }
     return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">

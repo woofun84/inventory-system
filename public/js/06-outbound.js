@@ -1320,7 +1320,7 @@ Object.assign(App, {
     if (lines.length === 0) {
       tbody = this.emptyRow(headers.length, `
         ${this.t('obd_no_lines')}
-        ${this._obCorrection ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
+        ${this._obCorrection ? `<div class="u-warning-mt-2">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
         <div class="u-mt-10">${isDraft ? `<button class="btn btn-primary btn-sm" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>` : ''}</div>
       `, { pad: 26 });
     } else {
@@ -1353,11 +1353,11 @@ Object.assign(App, {
           const remarksInput = `<input class="ob-edit-remarks" data-idx="${i}" value="${l.remarks || ''}" oninput="App._obEditLines[${i}].remarks=this.value">`;
           const delBtn = `<button type="button" class="pu-edit-del" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</button>`;
           return `<tr>
-            <td style="min-width:220px">${codeCell}</td>
-            <td style="min-width:100px">${qtyInput}<div class="line-error-tip" data-ob-qty-tip="${i}"></div></td>
+            <td class="u-min-w-220">${codeCell}</td>
+            <td class="u-min-w-100">${qtyInput}<div class="line-error-tip" data-ob-qty-tip="${i}"></div></td>
             <td class="pu-edit-amt${availCls ? ' ' + availCls : ''} u-fs-xs">${availText}</td>
             ${vp ? `<td class="pu-edit-amt u-muted" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt u-muted" data-line-amount="${i}">${refAmountText}</td>` : ''}
-            <td style="min-width:140px">${remarksInput}</td>
+            <td class="u-min-w-140">${remarksInput}</td>
             <td class="text-center">${delBtn}</td>
           </tr>`;
         } else {
@@ -1597,10 +1597,10 @@ Object.assign(App, {
       `<div class="pu-matfilter" style="margin-bottom:10px">
         <label>${this.t('mat_category')}<select id="ob_batch_cat" onchange="App.obBatchFilter()">${catOpts}</select></label>
         <input id="ob_batch_kw" type="search" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.obBatchFilter()">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted)"><input type="checkbox" id="ob_batch_only" onchange="App.obBatchFilter()"> ${this.t('obd_batch_only_stock')}</label>
+        <label class="u-row-muted"><input type="checkbox" id="ob_batch_only" onchange="App.obBatchFilter()"> ${this.t('obd_batch_only_stock')}</label>
         <span class="pu-mu" id="ob_batch_cnt"></span>
       </div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
+      <div class="table-wrap u-scroll-420"><table><thead><tr>
         <th style="width:34px"><input type="checkbox" id="ob_batch_all" onchange="App.obBatchToggleAll(this.checked)" aria-label="${this.t('obd_batch_select_all')}"></th>
         <th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th>
         <th>${this.t('mat_brand')}</th><th>${this.t('mat_unit')}</th>

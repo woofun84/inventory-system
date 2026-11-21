@@ -441,7 +441,7 @@ Object.assign(App, {
       let diffHtml = '–';
       if (diff !== null) {
         const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
-        diffHtml = `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
+        diffHtml = `<span class="${cls} u-semibold">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
       }
       return `<li class="pu-line">
         <button type="button" class="pu-line-h" data-st="ex" data-id="${l.id}" aria-expanded="${ex}">
@@ -473,7 +473,7 @@ Object.assign(App, {
         if (!has) return '–';
         const diff = Number(r.diff_qty) || 0;
         const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
-        return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>${r.material_unit ? ' ' + this.docEsc(r.material_unit) : ''}`;
+        return `<span class="${cls} u-semibold">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>${r.material_unit ? ' ' + this.docEsc(r.material_unit) : ''}`;
       }, true],
       ['status', this.t('st_status_label'), r => this.stLineStatusBadge(r.status), 'center'],
       ['remarks', this.t('st_remark'), r => this.cellClip(r.remarks)],
@@ -549,7 +549,7 @@ Object.assign(App, {
         <div class="st-adj-c-material"><span class="st-adj-caret" aria-hidden="true">▸</span><strong>${this.docEsc(l.code)}</strong><span class="st-adj-name pu-mu" title="${this.docEsc(l.material_name || '')}">${this.docEsc(l.material_name || '')}</span>${
           hasHist ? `<span class="st-adj-badge" title="${this.t('st_versions')} (${r.versions.length})">${r.versions.length}</span>` : ''
         }</div>
-        <div class="st-adj-c-qty text-right"><span class="${qtyCls}" style="font-weight:600">${adjQtyTxt}</span></div>
+        <div class="st-adj-c-qty text-right"><span class="${qtyCls} u-semibold">${adjQtyTxt}</span></div>
         <div class="st-adj-c-status text-center"><span class="badge ${stCls}">${stTxt}</span></div>
         ${hasHist ? `<div class="st-adj-hist" hidden>${this.stVersionsInline(r.versions)}</div>` : ''}
       </div>`;
@@ -1193,7 +1193,7 @@ Object.assign(App, {
   stDiffCell(diff) {
     if (diff === null || diff === undefined) return '<span class="pu-mu">–</span>';
     const cls = diff > 0 ? 'num-pos' : (diff < 0 ? 'num-neg' : '');
-    return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
+    return `<span class="${cls} u-semibold">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>`;
   },
 
   // 实盘输入即时重算差异 + 行状态（只更新当前行的差异/状态单元格，不重建页面，避免打断输入法）

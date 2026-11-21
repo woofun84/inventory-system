@@ -124,7 +124,7 @@ Object.assign(App, {
         <span class="pu-sep" aria-hidden="true">~</span>
         <input id="ret_f_to" type="date" value="${this.docEsc(s.to)}" aria-label="${this.t('pu_date')}" onchange="App.retApplyFilter()">
       </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted)"><input type="checkbox" id="ret_f_noorigin"${s.noOrigin ? ' checked' : ''} onchange="App.retApplyFilter()"> ${this.t('ret_filter_no_origin')}</label>
+      <label class="u-row-muted"><input type="checkbox" id="ret_f_noorigin"${s.noOrigin ? ' checked' : ''} onchange="App.retApplyFilter()"> ${this.t('ret_filter_no_origin')}</label>
       <button type="button" class="btn btn-outline btn-sm" onclick="App.retClearFilter()">${this.t('pu_clear_filter')}</button>
       <button type="button" class="btn btn-outline btn-sm" aria-pressed="${!!s.dense}" onclick="App.retToggleDense(this)">${this.t('pu_dense')}</button>`;
   },
@@ -166,10 +166,10 @@ Object.assign(App, {
     const rows = types.map((x, i) => {
       const ok = x.always || !!(x.rows && x.rows.length);
       const hint = ok ? x.desc : `${x.desc} — ${reason}`;
-      return `<tr data-ret-new-row="${x.kind}"${ok ? '' : ' style="color:var(--text-muted);cursor:not-allowed"'}>
-          <td style="width:36px"><input type="radio" name="ret_new_type" id="ret_new_${i}" value="${x.kind}"${ok ? '' : ' disabled'}></td>
+      return `<tr data-ret-new-row="${x.kind}"${ok ? '' : ' class="u-muted-disabled"'}>
+          <td class="u-w-36"><input type="radio" name="ret_new_type" id="ret_new_${i}" value="${x.kind}"${ok ? '' : ' disabled'}></td>
           <td><label for="ret_new_${i}" style="cursor:${ok ? 'pointer' : 'not-allowed'}"><b>${x.name}</b>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${hint}</div></label></td></tr>`;
+            <div class="u-muted-xs-mt-0_5">${hint}</div></label></td></tr>`;
     }).join('');
     const opened = this.showModal(this.t('ret_new_doc_title'),
       `<div class="table-wrap" id="ret-new-picker"><table><tbody>${rows}</tbody></table></div>`,
@@ -336,12 +336,12 @@ Object.assign(App, {
       : [48, 190, 120, 250, 150];  // 采购退货=供应商，零星退货=来源单位
     const totalW = colW.reduce((a, b) => a + b, 0);
     const cols = colW.map(w => `<col style="width:${w}px">`).join('');
-    box.innerHTML = `<div class="table-wrap" style="max-height:420px;overflow:auto"><table data-ret-pick style="width:${totalW}px;table-layout:fixed">
+    box.innerHTML = `<div class="table-wrap u-scroll-420"><table data-ret-pick style="width:${totalW}px;table-layout:fixed">
         <colgroup>${cols}</colgroup>
         <thead><tr>
         <th></th><th>${this.t('ret_col_doc_no')}</th><th>${this.t('ret_col_date')}</th>
         <th>${st.partyLabel}</th><th class="text-right">${this.t('ret_col_origin_total')}</th></tr></thead><tbody>
-        ${rows.map((r, i) => `<tr style="cursor:pointer" onclick="App.retPickMark('${this.docEsc(r.doc_no)}')">
+        ${rows.map((r, i) => `<tr class="u-pointer" onclick="App.retPickMark('${this.docEsc(r.doc_no)}')">
           <td><input type="radio" name="ret_pick" id="ret_pick_${i}" value="${this.docEsc(r.doc_no)}"${st.sel === r.doc_no ? ' checked' : ''} onchange="App.retPickMark(this.value)"></td>
           <td><b>${this.docEsc(r.doc_no)}</b></td><td>${this.docEsc(this.fmtDocDate(r.date, r.created_at, r.confirmed_at) || '')}</td>
           <td class="ret-pick-party">${partyCell(r)}</td><td class="text-right"><b>${this.fmtQty(r.total)}</b></td></tr>`).join('')}

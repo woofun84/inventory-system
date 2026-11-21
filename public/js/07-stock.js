@@ -119,7 +119,7 @@ Object.assign(App, {
       </div>
       <div class="pu-kpis" id="q_stock_kpis"></div>
       <div class="pu-split q-ins-split" id="q_stock_split">
-        <section class="pu-list" style="min-width:0">
+        <section class="pu-list u-min-w-0">
           <div class="data-scroll" id="q_stock_scroll"></div>
           <div class="pu-pager" id="q_stock_pager"></div>
         </section>
@@ -863,7 +863,7 @@ Object.assign(App, {
         <div class="pu-filter-inner">
           <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_start')}</label><input id="q_c_start" type="date" onchange="App.qCardFlowReload()"></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_end')}</label><input id="q_c_end" type="date" onchange="App.qCardFlowReload()"></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_type')}</label><select id="q_c_type" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${biz}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_type')}</label><select class="u-plain-control" id="q_c_type" onchange="App.qCardFlowReload()">${biz}</select></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('q_direction')}</label><select id="q_c_dir" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:80px"><option value="">${this.t('stock_all')}</option><option value="in">${this.t('q_dir_in')}</option><option value="out">${this.t('q_dir_out')}</option><option value="adj">${this.t('q_dir_adj')}</option></select></div>
           <label style="display:inline-flex;align-items:center;gap:6px;height:34px;color:var(--text);font-size:13px;white-space:nowrap"><input type="checkbox" id="q_c_voided" style="width:auto;margin:0" onchange="App.qCardFlowReload()"> ${this.t('ledger_show_voided')}</label>
         </div>
@@ -1099,7 +1099,7 @@ Object.assign(App, {
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_d_keyword" autocomplete="off" placeholder="${this.t('q_doc_search_ph')}" aria-label="${this.t('q_doc_search_ph')}" oninput="App.qDocsReload()"></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_type')}</label><select id="q_d_type" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:104px">${types}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_type')}</label><select class="u-plain-control" id="q_d_type" onchange="App.qDocsReload()">${types}</select></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_start')}</label><input id="q_d_start" type="date" onchange="App.qDocsReload()"></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_end')}</label><input id="q_d_end" type="date" onchange="App.qDocsReload()"></div>
@@ -1110,7 +1110,7 @@ Object.assign(App, {
         </div>
       </div>
       <div class="pu-split q-ins-split" id="q_docs_split">
-        <section class="pu-list" style="min-width:0">
+        <section class="pu-list u-min-w-0">
           <div class="pu-kpis" id="q_docs_kpis"></div>
           <div class="data-scroll" id="q_docs_scroll"></div>
           <div class="pu-pager" id="q_docs_pager"></div>
@@ -1441,7 +1441,7 @@ Object.assign(App, {
     const kind = opts.kind || ((type === '采购退货' || type === '零星退货' || type === '领料退库') ? 'returns' : (isSt ? 'stocktake' : source));
     // 分段渲染：单据查询 / 领用人详情卡按页签取用，其余调用方不传 section 时保持整卡输出
     if (opts.section === 'meta') {
-      return `<dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${voidBanner}`;
+      return `<dl class="pu-insp-meta u-mb-10">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${voidBanner}`;
     }
     if (opts.section === 'lines') {
       return `<div class="u-block-title-sm">${this.t('q_doc_lines')}</div>
@@ -1450,19 +1450,19 @@ Object.assign(App, {
     }
     if (opts.section === 'related') {
       return this.qRelatedHtml(d)
-        + (isSt && d.summary ? `<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">${this.t('st_gain')}: ${d.summary.gain_qty} · ${this.t('st_loss')}: ${d.summary.loss_qty}</div>` : '');
+        + (isSt && d.summary ? `<div class="u-muted-xs-mt-10">${this.t('st_gain')}: ${d.summary.gain_qty} · ${this.t('st_loss')}: ${d.summary.loss_qty}</div>` : '');
     }
     const closeBtn = opts.closeBtn === false ? '' : `<button class="btn btn-outline btn-sm" onclick="App.qDocsClose()">${this.t('close')}</button>`;
     const foot = opts.foot === false ? '' : `<div class="pu-insp-foot" style="gap:8px">${opts.footExtra || ''}<button class="btn btn-primary" onclick="App.qOpenModuleDoc('${kind}','${esc(no)}')">${this.t('q_open_module')}</button></div>`;
     return `<div class="pu-insp-head"><div><h2>${esc(no)} ${this.qDocStatusBadge(status)}</h2><small>${this.qDocTypeBadge(type)} · ${esc(this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '')}</small></div><div class="u-row-gap-1">${closeBtn}${opts.headExtra || ''}</div></div>
       <div class="pu-dpanel">
-        <dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
+        <dl class="pu-insp-meta u-mb-10">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
         ${voidBanner}
         <div class="u-block-title-sm">${this.t('q_doc_lines')}</div>
         <div class="table-wrap"><table class="q-flow"><thead>${header}</thead><tbody>${rows}</tbody></table></div>
         ${more}
         ${opts.related === false ? '' : this.qRelatedHtml(d)}
-        ${isSt && d.summary ? `<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">${this.t('st_gain')}: ${d.summary.gain_qty} · ${this.t('st_loss')}: ${d.summary.loss_qty}</div>` : ''}
+        ${isSt && d.summary ? `<div class="u-muted-xs-mt-10">${this.t('st_gain')}: ${d.summary.gain_qty} · ${this.t('st_loss')}: ${d.summary.loss_qty}</div>` : ''}
       </div>
       ${foot}`;
   },
@@ -1486,7 +1486,7 @@ Object.assign(App, {
       </div>
       <div style="margin:0 0 10px;padding:8px 12px;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--text-muted);font-size:12px">${this.t('q_rcv_rule')}</div>
       <div class="pu-split q-ins-split" id="q_rcv_split">
-        <section class="pu-list" style="min-width:0">
+        <section class="pu-list u-min-w-0">
           <div class="data-scroll" id="q_rcv_scroll"></div>
           <div class="pu-pager" id="q_rcv_pager"></div>
         </section>
@@ -1690,7 +1690,7 @@ Object.assign(App, {
       [this.t('q_rcv_returned'), s.returned_qty || 0],
       [this.t('q_rcv_net'), `<strong>${s.net_qty || 0}</strong>`],
     ];
-    return `<dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
+    return `<dl class="pu-insp-meta u-mb-10">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
       <div style="font-size:12px;color:var(--text-muted)">${this.t('q_rcv_rule')}</div>`;
   },
 
@@ -1792,7 +1792,7 @@ Object.assign(App, {
         <div class="q-an-card"><h3>${this.t('q_an_category')}</h3><div id="q_an_cat"></div></div>
         <div class="q-an-card"><h3>${this.t('q_an_trend')}</h3><div id="q_an_trend"></div></div>
       </div>
-      <div class="q-an-card" style="margin-bottom:12px">
+      <div class="q-an-card u-mb-3">
         <h3>${this.t('q_an_alerts')}</h3>
         <div id="q_an_alert_box"></div>
       </div>
