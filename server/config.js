@@ -33,12 +33,17 @@ const DB_PATH = String(process.env.DB_PATH || '').trim()
   ? path.resolve(String(process.env.DB_PATH).trim())
   : path.join(__dirname, '..', 'inventory.db');
 
+// 服务端会话空闲过期（小时）：last_seen 超过该时长即失效，防止关闭浏览器后旧 token 长期可用。
+// 限制在 1~720 小时，非法值回落 12 小时；前端 5 分钟空闲退出仍先于该阈值生效。
+const idleHours = Number(process.env.SESSION_IDLE_HOURS);
+
 module.exports = {
   DB_PATH,
   HOST: process.env.HOST || '0.0.0.0',
   PORT: Number(process.env.PORT) || 4000,
   JWT_SECRET,
   JWT_EXPIRES: '7d',
+  SESSION_IDLE_HOURS: Number.isInteger(idleHours) && idleHours >= 1 && idleHours <= 720 ? idleHours : 12,
   INITIAL_ADMIN_USERNAME: String(process.env.INITIAL_ADMIN_USERNAME || '').trim() || 'admin',
   INITIAL_ADMIN_PASSWORD: String(process.env.INITIAL_ADMIN_PASSWORD || '').trim() || 'admin123',
 };

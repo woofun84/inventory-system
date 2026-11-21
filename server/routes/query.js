@@ -40,33 +40,52 @@ const has = v => text(v) !== '';
 const outParty = a => `TRIM(COALESCE(${a}.destination,'') || CASE WHEN TRIM(COALESCE(${a}.receiver,''))='' THEN '' ELSE ' / ' || ${a}.receiver END)`;
 
 // ==================== 单据查询 ====================
-// 三个来源统一成同一列集合；盘点单状态 confirmed 在此映射为 posted
+// 三个来源统一成同一列集合；盘点单状态 confirmed 在此映射为 posted。
+// 每行的明细数/金额改为按单据一次性聚合后 LEFT JOIN，避免每行触发相关子查询；
+// 外层用 MATERIALIZED CTE 固定结果集，计数、汇总、分页不再各自重算三遍 UNION。
 const DOCS_UNION = `
+  WITH ib_lines AS (
+    SELECT doc_no, COUNT(*) AS line_count, COALESCE(SUM(amount),0) AS amount
+    FROM inbound GROUP BY doc_no
+  ),
+  ob_lines AS (
+    SELECT doc_no, COUNT(*) AS line_count, COALESCE(SUM(cost_amount),0) AS amount
+    FROM outbound GROUP BY doc_no
+  ),
+  st_lines AS (
+    SELECT stocktake_no, COUNT(*) AS line_count
+    FROM stocktake_lines GROUP BY stocktake_no
+  )
   SELECT od.doc_no AS doc_no, od.date AS date, od.txn_type AS doc_type, 'inbound' AS source,
          CASE WHEN od.txn_type = '零星退货'
-           THEN COALESCE((SELECT o.supplier FROM inbound_docs o WHERE o.doc_no = od.origin_doc_no),'')
+           THEN COALESCE(orig.supplier,'')
            ELSE COALESCE(od.supplier,'') END AS party,
          od.status AS status, COALESCE(od.handler,'') AS handler,
          COALESCE(od.origin_doc_no,'') AS origin_doc_no,
-         (SELECT COUNT(*) FROM inbound l WHERE l.doc_no = od.doc_no) AS line_count,
-         (SELECT COALESCE(SUM(l.amount),0) FROM inbound l WHERE l.doc_no = od.doc_no) AS amount,
+         COALESCE(ib.line_count,0) AS line_count,
+         COALESCE(ib.amount,0) AS amount,
          od.created_at AS created_at, od.confirmed_at AS confirmed_at
   FROM inbound_docs od
+  LEFT JOIN ib_lines ib ON ib.doc_no = od.doc_no
+  LEFT JOIN inbound_docs orig ON od.txn_type = '零星退货' AND orig.doc_no = od.origin_doc_no
   UNION ALL
   SELECT od.doc_no, od.date, od.txn_type, 'outbound',
          ${outParty('od')}, od.status, COALESCE(od.handler,''),
          COALESCE(od.origin_doc_no,''),
-         (SELECT COUNT(*) FROM outbound l WHERE l.doc_no = od.doc_no),
-         (SELECT COALESCE(SUM(l.cost_amount),0) FROM outbound l WHERE l.doc_no = od.doc_no),
+         COALESCE(ob.line_count,0), COALESCE(ob.amount,0),
          od.created_at, od.confirmed_at
   FROM outbound_docs od
+  LEFT JOIN ob_lines ob ON ob.doc_no = od.doc_no
   UNION ALL
   SELECT s.stocktake_no, s.date, '盘点单', 'stocktake', '', CASE s.status WHEN 'confirmed' THEN 'posted' ELSE s.status END,
          COALESCE(s.handler,''), '',
-         (SELECT COUNT(*) FROM stocktake_lines l WHERE l.stocktake_no = s.stocktake_no),
+         COALESCE(st.line_count,0),
          NULL,
          s.created_at, s.confirmed_at
-  FROM stocktakes s`;
+  FROM stocktakes s
+  LEFT JOIN st_lines st ON st.stocktake_no = s.stocktake_no`;
+
+const DOCS_CTE = `WITH docs AS MATERIALIZED (${DOCS_UNION}) `;
 
 const DOCS_SORT = {
   date: 'date',
@@ -115,18 +134,20 @@ router.get('/api/query/docs', requirePerm('query', 'view'), (req, res) => {
     ? `${DOCS_SORT[sortKey]} ${dir}, doc_no DESC`
     : 'date DESC, doc_no DESC';
 
-  const base = `FROM (${DOCS_UNION}) x${where.sql}`;
-  const total = db.prepare(`SELECT COUNT(*) AS c ${base}`).get(...where.params).c;
-  const sum = db.prepare(`SELECT COALESCE(SUM(amount),0) AS amount, COUNT(DISTINCT doc_no) AS docs ${base}`).get(...where.params);
-  const rows = db.prepare(`SELECT * ${base} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...where.params, size, offset);
+  const base = `FROM docs x${where.sql}`;
+  // 计数与金额合计共用一次 UNION 物化，少一次全量扫描
+  const meta = db.prepare(`${DOCS_CTE} SELECT COUNT(*) AS c, COALESCE(SUM(amount),0) AS amount,
+    COUNT(DISTINCT doc_no) AS docs ${base}`).get(...where.params);
+  const rows = db.prepare(`${DOCS_CTE} SELECT * ${base} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    .all(...where.params, size, offset);
 
   res.json({
-    total: Number(total || 0),
+    total: Number(meta.c || 0),
     page,
     page_size: size,
     totals: vp
-      ? { amount: sum.amount || 0, docs: Number(sum.docs || 0) }
-      : { docs: Number(sum.docs || 0) },
+      ? { amount: meta.amount || 0, docs: Number(meta.docs || 0) }
+      : { docs: Number(meta.docs || 0) },
     rows: rows.map(r => {
       const row = {
         doc_no: r.doc_no,
@@ -180,9 +201,10 @@ router.get('/api/query/search', requirePerm('query', 'view'), (req, res) => {
   const docKw = kwClause(['doc_no', 'party'], kw, { escape: true });
   const docWhere = `(${docKw.sql})`;
   const docParams = docKw.params;
-  const docBase = `FROM (${DOCS_UNION}) x WHERE ${docWhere}`;
-  const docTotal = db.prepare(`SELECT COUNT(*) AS c ${docBase}`).get(...docParams).c;
-  const docRows = db.prepare(`SELECT * ${docBase} ORDER BY date DESC, doc_no DESC LIMIT ?`).all(...docParams, limit);
+  const docBase = `FROM docs x WHERE ${docWhere}`;
+  const docTotal = db.prepare(`${DOCS_CTE} SELECT COUNT(*) AS c ${docBase}`).get(...docParams).c;
+  const docRows = db.prepare(`${DOCS_CTE} SELECT * ${docBase} ORDER BY date DESC, doc_no DESC LIMIT ?`)
+    .all(...docParams, limit);
 
   // 领用人：与领用人列表同源（正常出库 + 已过账 + 有领用人），只取姓名与单数
   const rcvKw = kwClause(['od.receiver'], kw, { escape: true });

@@ -443,9 +443,9 @@ router.put('/api/settings/backup/auto', requireAdmin, (req, res) => {
   }
 });
 
-router.post('/api/settings/backup/auto/run', requireAdmin, (req, res) => {
+router.post('/api/settings/backup/auto/run', requireAdmin, async (req, res) => {
   try {
-    const r = autoBackupSvc.runNow();
+    const r = await autoBackupSvc.runNow();
     recordOp(req, 'auto-backup', { key: 'audit_detail_auto_backup', params: { file: r.file } });
     res.json({ success: true, ...autoBackupSvc.status(), ranAt: r.at });
   } catch (e) {

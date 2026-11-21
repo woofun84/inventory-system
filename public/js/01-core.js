@@ -4,17 +4,18 @@
  *      因此本文件必须最先加载。
  */
 
-// localStorage 可能被人为污染：解析失败时清空脏值并回落 null，避免整页白屏
+// 登录态只存在会话级存储：关闭浏览器/标签页即失效，刷新页面仍保持。
+// 存储可能被人为污染：解析失败时清空脏值并回落 null，避免整页白屏。
 function readStoredUser() {
-  try { return JSON.parse(localStorage.getItem('user') || 'null'); }
-  catch (_) { localStorage.removeItem('user'); return null; }
+  try { return JSON.parse(sessionStorage.getItem('user') || 'null'); }
+  catch (_) { sessionStorage.removeItem('user'); return null; }
 }
 
 const App = {
   currentPage: 'dashboard',
   params: null,
   user: readStoredUser(),
-  token: localStorage.getItem('token') || '',
+  token: sessionStorage.getItem('token') || '',
   lang: localStorage.getItem('lang') || 'zh',
   theme: localStorage.getItem('theme') || 'light',
   charts: [],
@@ -113,7 +114,13 @@ const App = {
     return text;
   },
 
+  // 旧版本把登录态写进了持久化本地存储，升级后统一清理，避免关浏览器仍保持登录
+  clearLegacyAuth() {
+    try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch (_) { /* 存储不可用时忽略 */ }
+  },
+
   async init() {
+    this.clearLegacyAuth();
     // 未登录 → 跳转登录页
     if (!this.token) { location.href = '/login.html'; return; }
     document.documentElement.setAttribute('data-theme', this.theme);
@@ -121,10 +128,16 @@ const App = {
       // 校验 token 有效性
       const me = await this.api('/api/auth/me');
       this.user = me;
-      localStorage.setItem('user', JSON.stringify(me));
+      sessionStorage.setItem('user', JSON.stringify(me));
     } catch (e) {
-      // 已被其它终端挤下线：保留当前页面，由 handleKicked 弹出提示，不做静默跳转
-      if (this.conn && this.conn.kicked) return;
+      // 已被其它终端挤下线：由 handleKicked 弹出提示，不再静默跳转；
+      // 新开页面时没有"当前页面"可保留，补一层说明页避免弹窗背后空白。
+      if (this.conn && this.conn.kicked) {
+        this.setMain(this.pageWrap('📦 ' + this.t('appName'), '', '',
+          '<div style="padding:40px;text-align:center;color:var(--text-muted)">'
+          + this.docEsc(this.t('kicked_desc')) + '</div>'));
+        return;
+      }
       this.gotoLogin('expired');
       return;
     }
@@ -168,8 +181,9 @@ const App = {
   logout() {
     // 通知服务端撤销本会话（失败不影响本地清理），避免令牌在服务端继续有效
     if (this.revokeSession) this.revokeSession();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    this.clearLegacyAuth();
     location.href = '/login.html';
   },
 
@@ -238,8 +252,8 @@ const App = {
   // 权限检查：can(模块, 操作)
   can(module, action) {
     if (!this.user) return false;
-    // admin 兜底：与后端 priceGranted 一致，即使授权表未展开也不会让管理员丢失 UI
-    if (this.user.role === 'admin') return true;
+    // 权限一律以服务端 /api/auth/me 下发的授权表为准（admin 的授权表由服务端恒定下发全量）。
+    // 不再用本地缓存的 role 兜底，避免本地数据被篡改时出现「界面有入口、接口仍 403」的误导。
     if (!this.user.grants) return false;
     const g = this.user.grants[module];
     return Array.isArray(g) && g.includes(action);
@@ -294,10 +308,10 @@ const App = {
           newPassword: np,
         });
         // 服务端改密后轮换了会话 sid，必须用新 token 替换本地旧 token，否则当前会话也会失效
-        if (res && res.token) { this.token = res.token; localStorage.setItem('token', res.token); }
+        if (res && res.token) { this.token = res.token; sessionStorage.setItem('token', res.token); }
         this.closeModal();
         this.user.must_change_pwd = false;
-        localStorage.setItem('user', JSON.stringify(this.user));
+        sessionStorage.setItem('user', JSON.stringify(this.user));
         this.toast(this.t('pwd_changed'));
         // hashchange 监听在 init() 中已全局注册一次，这里不再重复注册（原来每次改密都叠加一个）
         if (force) { await this.loadParams(); this.router(); }
@@ -657,6 +671,10 @@ const App = {
   },
   refreshTableScrollHints() {
     const narrow = window.innerWidth <= 900;
+    // 宽屏下没有任何表格需要标记：跳过全量 DOM 查询与类名写入，
+    // 只在从窄屏切回宽屏时清一次旧标记，避免大表格渲染时的无效开销。
+    if (!narrow && !this._tblHintNarrow) return;
+    this._tblHintNarrow = narrow;
     const hint = narrow ? this.t('table_hscroll_hint') : '';
     const mark = el => {
       const on = narrow && el.offsetParent !== null && el.scrollWidth > el.clientWidth + 2;

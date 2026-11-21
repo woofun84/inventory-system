@@ -113,8 +113,11 @@
       return r.json().then(function(d) { return { ok: r.ok, data: d }; });
     }).then(function(res) {
       if (!res.ok) { err.textContent = res.data.error || t.fail; btn.disabled = false; btn.textContent = t.btn; return; }
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
+      // 登录态只存当前会话：关闭浏览器窗口后需要重新登录
+      sessionStorage.setItem('token', res.data.token);
+      sessionStorage.setItem('user', JSON.stringify(res.data.user));
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       location.href = '/' + next;
     }).catch(function() {
       // 请求没有响应 = 服务没起来或网络断开，给出区别于「密码错误」的提示

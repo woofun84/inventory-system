@@ -221,8 +221,9 @@ Object.assign(App, {
   gotoLogin(reason) {
     if (this.conn.timer) { clearInterval(this.conn.timer); this.conn.timer = null; }
     const hash = /^#[a-z]+/.test(location.hash) ? location.hash : '';
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    if (this.clearLegacyAuth) this.clearLegacyAuth();
     location.href = '/login.html?reason=' + encodeURIComponent(reason)
       + (hash ? '&next=' + encodeURIComponent(hash) : '');
   },

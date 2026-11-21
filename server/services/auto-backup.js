@@ -14,9 +14,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { Worker } = require('worker_threads');
 const db = require('../db');
 const audit = require('./audit');
-const backupPackage = require('./backup-package');
 
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, '..', '..', 'backups');
 const FILE_NAME = 'auto-backup-latest.zip';
@@ -149,22 +149,32 @@ function isDue(s, now) {
   return !s.last_run_at || s.last_run_at < target.getTime();
 }
 
-// 执行一次覆盖式备份，返回 { file, size, at }
-function runNow() {
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+// 执行一次覆盖式备份，返回 { file, size, at }。
+// 打包放到 worker 线程，主线程只做文件改名/状态写入，避免大库备份时阻塞 HTTP 请求。
+async function runNow() {
+  await fs.promises.mkdir(BACKUP_DIR, { recursive: true });
   const dest = targetFile();
   const tmp = dest + '.tmp';
+  await fs.promises.rm(tmp, { force: true });
   try {
-    fs.rmSync(tmp, { force: true });
-    // 与手动备份同一打包器：DB 快照 + 物料图片 + manifest
-    backupPackage.createPackage(tmp);
-    fs.renameSync(tmp, dest);
-    const stat = fs.statSync(dest);
+    await new Promise((resolve, reject) => {
+      const worker = new Worker(path.join(__dirname, 'backup-worker.js'), { workerData: { dest: tmp } });
+      let settled = false;
+      const done = (fn, value) => { if (!settled) { settled = true; fn(value); } };
+      worker.on('message', msg => {
+        if (msg && msg.ok) done(resolve, msg.result);
+        else done(reject, new Error((msg && msg.error) || '自动备份失败'));
+      });
+      worker.on('error', err => done(reject, err));
+      worker.on('exit', code => { if (code !== 0) done(reject, new Error('备份工作线程异常退出：' + code)); });
+    });
+    await fs.promises.rename(tmp, dest);
+    const stat = await fs.promises.stat(dest);
     const at = Date.now();
     write({ last_run_at: at, last_error: '' });
     return { file: FILE_NAME, size: stat.size, at };
   } catch (e) {
-    fs.rmSync(tmp, { force: true });
+    await fs.promises.rm(tmp, { force: true }).catch(() => {});
     write({ last_error: String(e.message || e) });
     throw e;
   }
@@ -197,14 +207,14 @@ function status() {
 let timer = null;
 let running = false;
 
-function tick() {
+async function tick() {
   if (running) return;
   let s;
   try { s = read(); } catch (e) { return; }
   if (!isDue(s)) return;
   running = true;
   try {
-    const r = runNow();
+    const r = await runNow();
     audit.record({
       username: 'system', name: 'system', role: 'system', module: 'settings', action: 'auto-backup',
       target: r.file, method: 'AUTO', path: '/api/settings/backup/auto',

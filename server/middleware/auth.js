@@ -2,10 +2,10 @@
  * 鉴权中间件 & 用户序列化
  */
 const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../config');
+const { JWT_SECRET, SESSION_IDLE_HOURS } = require('../config');
 const { canViewPrice, canEditPrice, hasGrant } = require('../permissions');
 const { grantsForUser } = require('../services/user-permissions');
-const { getSession } = require('../services/session');
+const { getSession, revokeSession } = require('../services/session');
 const db = require('../db');
 
 // 会话失效的两种情形，前端据 code 区分提示方式
@@ -34,6 +34,13 @@ function requireAuth(req, res, next) {
     const session = getSession(u.id);
     if (!payload.sid || !session) return res.status(401).json(SESSION_REQUIRED);
     if (session.sid !== payload.sid) return res.status(401).json(SESSION_KICKED);
+    // 服务端空闲过期：心跳只在页面打开时刷新 last_seen，关掉浏览器后超过阈值即撤销会话。
+    // datetime('now') 存的是 UTC，末尾补 Z 后按同一时区比较，不额外增加一次 SQL 查询。
+    const lastSeenMs = Date.parse(String(session.last_seen || '').replace(' ', 'T') + 'Z');
+    if (!Number.isFinite(lastSeenMs) || Date.now() - lastSeenMs > SESSION_IDLE_HOURS * 3600 * 1000) {
+      revokeSession(u.id, payload.sid);
+      return res.status(401).json(SESSION_REQUIRED);
+    }
     req.user = u;
     req.sessionSid = payload.sid;
     // 权限按用户解析（角色默认值 + 管理员调整），后续接口统一读 req.grants

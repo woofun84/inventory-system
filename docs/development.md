@@ -36,7 +36,7 @@ better-sqlite3（WAL）→ inventory.db
 | 文件 | 职责 |
 | --- | --- |
 | `server.js` | 入口、中间件顺序、路由挂载、监听与局域网地址打印 |
-| `server/config.js` | 读取 `.env` / 进程环境变量；导出 `DB_PATH`、`HOST`、`PORT`、`JWT_SECRET`、`JWT_EXPIRES`、初始管理员配置 |
+| `server/config.js` | 读取 `.env` / 进程环境变量；导出 `DB_PATH`、`HOST`、`PORT`、`JWT_SECRET`、`JWT_EXPIRES`、`SESSION_IDLE_HOURS`（会话空闲过期小时数，默认 12）、初始管理员配置 |
 | `server/db.js` | SQLite 连接、建表与唯一索引（含物料四字段唯一性预检）、初始管理员与用户默认授权 |
 | `server/permissions.js` | `ROLE_PERMISSIONS`、`MODULES`、`MODULE_ACTIONS`、`actionsOf`、`grantsOf`、`hasGrant`、`canViewPrice`、`canEditPrice` |
 | `server/middleware/auth.js` | `requireAuth`（解析 JWT、校验 `sid` 会话、注入 `req.grants` / `req.canViewPrice`）、`requirePerm`、`publicUser` |
@@ -167,7 +167,7 @@ better-sqlite3（WAL）→ inventory.db
 - `/api/materials` 是单据「添加明细」的基础数据源：任一业务单据模块（inbound / outbound / returns / purchase / stocktake）有 `view` 即可读取，价格仍按 `price.view` 脱敏；否则只有建档编辑权的账号进不了编辑页（与 `/api/suppliers/options` 的放宽方式一致）。
 - 系统日志清空使用独立权限位 `audit:delete`，默认只给管理员；备份、恢复、自动备份、清库、成本差异结转统一使用 `settings:ops` 授权（admin 默认持有、可单独委派），路由内中间件名为 `requireAdmin` 但实际按该授权校验，无授权返回 `FORBIDDEN`。
 - 开发阶段不做历史数据迁移与权限回填，也不保留旧库兼容分支：建表语句一次到位，升级时清库重建；权限默认值以 `ROLE_PERMISSIONS` 当前定义为准，已初始化用户的授权以库中记录为准。
-- `requireAuth` 解析 `Authorization: Bearer <token>`，查库确认用户存在且 `status='active'`，再比对 `user_sessions.sid`：缺 `sid` 或会话已撤销返回 `SESSION_REQUIRED`，`sid` 不一致返回 `SESSION_KICKED`。通过后挂载 `req.user`、`req.sessionSid`、`req.grants`、`req.canViewPrice`。
+- `requireAuth` 解析 `Authorization: Bearer <token>`，查库确认用户存在且 `status='active'`，再比对 `user_sessions.sid`：缺 `sid` 或会话已撤销返回 `SESSION_REQUIRED`，`sid` 不一致返回 `SESSION_KICKED`。随后按 `last_seen` 与 `SESSION_IDLE_HOURS` 判定服务端空闲过期，过期则撤销当前会话并返回 `SESSION_REQUIRED`。通过后挂载 `req.user`、`req.sessionSid`、`req.grants`、`req.canViewPrice`。
 - 用户管理页通过 `GET /api/permissions/catalog` 取模块 / 动作全集与各角色默认值，`PUT /api/users/:id` 提交 `permissions` 时整表覆盖；`users` 模块本身不可勾选，避免非管理员获得用户管理入口。
 - `canViewPrice` / `canEditPrice` 由 `priceGranted` 统一判定：`admin` 恒为真，其余按用户授权表里的 `price:view` / `price:edit` 决定（角色默认值见 `ROLE_PERMISSIONS`）；两项独立、互不蕴含。鉴权中间件把结果挂到 `req.canViewPrice` / `req.canEditPrice`。无价格查看权的接口必须删除价格键（`price`、`amount`、`cost_price`、`cost_amount`、`total_amount`、`unit_cost`、`avg_cost`、`stock_value` 等），不能只依赖前端隐藏；无 `price:edit` 的账号提交价格字段会被写接口拒绝（`PRICE_EDIT_FORBIDDEN`）。
 - 涉及已有库存与单据状态的写路径（过账、更正 / 作废、盘点确认、物料期初修改）统一用 `tx.immediate()`（`BEGIN IMMEDIATE`）：状态守卫、库存 / 可退量 / 超收校验与写流水在同一临界区；新物料建档这类没有并发争用的首次写入仍可用普通事务。`SQLITE_BUSY` 由 `services/errors.js` 转成 `DB_BUSY`。

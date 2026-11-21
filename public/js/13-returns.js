@@ -454,16 +454,21 @@ Object.assign(App, {
     this.retCloseInspector().then(reloaded => { if (!reloaded) this.retRenderList(); });
   },
 
-  // 聚合接口按页返回，这里全量拉取后在前端做筛选/排序/分页，与入库模块口径一致
+  // 聚合接口按页返回，这里全量拉取后在前端做筛选/排序/分页，与入库模块口径一致。
+  // 分页请求按有界并发发出，避免几千条单据时逐页串行等待导致首屏长时间空白。
   async retLoadList() {
     const PAGE = 200;
+    const CONCURRENCY = 4;
     try {
       const first = await this.api('/api/returns/docs?includeHistory=1&page=1&pageSize=' + PAGE);
       let items = (first.items || []).slice();
       const totalPages = Number(first.totalPages || 1);
-      for (let p = 2; p <= totalPages; p++) {
-        const next = await this.api('/api/returns/docs?includeHistory=1&page=' + p + '&pageSize=' + PAGE);
-        items = items.concat(next.items || []);
+      for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+        const batch = [];
+        for (let p = start; p < start + CONCURRENCY && p <= totalPages; p++) batch.push(p);
+        const results = await Promise.all(batch.map(p =>
+          this.api('/api/returns/docs?includeHistory=1&page=' + p + '&pageSize=' + PAGE)));
+        results.forEach(r => { items = items.concat(r.items || []); });
       }
       this._retList = items;
     } catch (e) {

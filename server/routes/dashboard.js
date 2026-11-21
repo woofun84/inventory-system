@@ -9,6 +9,30 @@ const time = require('../services/time');
 
 const router = express.Router();
 
+// 入出库统一取数：本月统计与近 6 个月趋势共用同一口径，避免逐月/逐项重复建语句与全表扫描。
+// 内部别名 amount 用分存储，只有最外层结果列会被定点换算层还原成元。
+const TXN_UNION = `
+  SELECT 'in' AS side, amount, date, status FROM inbound
+  UNION ALL
+  SELECT 'out' AS side, cost_amount AS amount, date, status FROM outbound
+`;
+const MONTH_STMT = db.prepare(`
+  SELECT COALESCE(SUM(CASE WHEN side='in' THEN amount ELSE 0 END),0) AS amount_in,
+         COALESCE(SUM(CASE WHEN side='out' THEN amount ELSE 0 END),0) AS amount_out,
+         COALESCE(SUM(CASE WHEN side='in' THEN 1 ELSE 0 END),0) AS c_in,
+         COALESCE(SUM(CASE WHEN side='out' THEN 1 ELSE 0 END),0) AS c_out
+  FROM (${TXN_UNION}) t
+  WHERE t.date>=? AND t.date<? AND t.status='posted'
+`);
+const TREND_STMT = db.prepare(`
+  SELECT substr(date,1,7) AS ym,
+         COALESCE(SUM(CASE WHEN side='in' THEN amount ELSE 0 END),0) AS amount_in,
+         COALESCE(SUM(CASE WHEN side='out' THEN amount ELSE 0 END),0) AS amount_out
+  FROM (${TXN_UNION}) t
+  WHERE t.date>=? AND t.date<? AND t.status='posted'
+  GROUP BY substr(date,1,7)
+`);
+
 // 成本差异阈值：|累计未结转差异| 超过库存总金额的 5% 时，前端标黄提示。
 // 需要调整口径时只改这一个常量（0.05 = 5%）。
 const COST_VARIANCE_ALERT_RATIO = 0.05;
@@ -19,14 +43,15 @@ router.get('/api/dashboard', requirePerm('dashboard', 'view'), (req, res) => {
   const totalItems = summary.length;
   const totalValue = summary.reduce((s, m) => s + m.stock_value, 0);
 
-  // 本月入库金额
+  // 本月入库金额 / 出库金额 / 笔数：一次扫描同时算出四个指标
   const now = new Date();
   const monthStart = time.toLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthEnd = time.toLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 1));
-  const monthInAmount = db.prepare("SELECT COALESCE(SUM(amount),0) as amount FROM inbound WHERE date>=? AND date<? AND status='posted'").get(monthStart, monthEnd).amount;
-  const monthOutAmount = db.prepare("SELECT COALESCE(SUM(cost_amount),0) as amount FROM outbound WHERE date>=? AND date<? AND status='posted'").get(monthStart, monthEnd).amount;
-  const monthInCount = db.prepare("SELECT COUNT(*) as c FROM inbound WHERE date>=? AND date<? AND status='posted'").get(monthStart, monthEnd).c;
-  const monthOutCount = db.prepare("SELECT COUNT(*) as c FROM outbound WHERE date>=? AND date<? AND status='posted'").get(monthStart, monthEnd).c;
+  const monthStats = MONTH_STMT.get(monthStart, monthEnd);
+  const monthInAmount = monthStats.amount_in;
+  const monthOutAmount = monthStats.amount_out;
+  const monthInCount = monthStats.c_in;
+  const monthOutCount = monthStats.c_out;
 
   // 本月业务构成：一次查询拿到入库侧/出库侧的分组，再在内存里归并为固定六行。
   // 出库侧按 outbound_docs.origin_doc_no 是否为空区分「领料退库（有/无原单）」。
@@ -86,19 +111,21 @@ router.get('/api/dashboard', requirePerm('dashboard', 'view'), (req, res) => {
 
   const alerts = summary.filter(m => m.stock_status === '补货' || m.stock_status === '缺货');
 
-  // 近6个月趋势
+  // 近6个月趋势：一次分组查询覆盖全部月份，空月份补零保持原有 6 行结构
+  const trendStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const trendEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const trendMap = new Map();
+  TREND_STMT.all(time.toLocalDate(trendStart), time.toLocalDate(trendEnd))
+    .forEach(r => trendMap.set(r.ym, r));
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const ms = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const me = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-    const msStr = time.toLocalDate(ms);
-    const meStr = time.toLocalDate(me);
-    const inAmt = db.prepare("SELECT COALESCE(SUM(amount),0) as amount FROM inbound WHERE date>=? AND date<? AND status='posted'").get(msStr, meStr).amount;
-    const outAmt = db.prepare("SELECT COALESCE(SUM(cost_amount),0) as amount FROM outbound WHERE date>=? AND date<? AND status='posted'").get(msStr, meStr).amount;
+    const label = `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}`;
+    const t = trendMap.get(label) || {};
     months.push({
-      label: `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}`,
-      in_amount: Math.round(inAmt * 100) / 100,
-      out_amount: Math.round(outAmt * 100) / 100
+      label,
+      in_amount: Math.round((t.amount_in || 0) * 100) / 100,
+      out_amount: Math.round((t.amount_out || 0) * 100) / 100
     });
   }
 
