@@ -518,7 +518,7 @@ Object.assign(App, {
     const panel = this._msPanel;
     if (!panel) return;
     const esc = v => this.docEsc(v);
-    const t = k => this.t(k);
+    const t = (k, vars) => this.t(k, vars);
     panel.hidden = false;
 
     if (o.hint) {

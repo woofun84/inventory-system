@@ -426,9 +426,9 @@ Object.assign(App, {
     this.qSearchPosition();
   },
 
-  // 候选浮层定位：复刻入库明细物料候选框（msPosition）的自然宽度策略——
-  // 离屏克隆量内容自然宽度，夹在 [搜索框宽, 视口宽-16]，右侧放不下就向内收，
-  // 下方空间不足时向上翻。风格与全项目候选框保持一致。
+  // 候选浮层定位：与入库明细物料候选框（msPosition）同一套视觉，但左边界钉在搜索框左侧，
+  // 不往左扩展覆盖侧边栏、右侧也不顶到屏幕边。宽度按内容自然撑开（离屏探针量自然宽），
+  // 上限为「搜索框左边到视口右边 - 边距」，内容再长也只在面板内滚动/省略。
   qSearchPosition() {
     const panel = document.getElementById('q-search-panel');
     const input = document.getElementById('q_global');
@@ -436,8 +436,11 @@ Object.assign(App, {
     const r = input.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight;
     const margin = 8;
-    const maxW = Math.max(160, vw - margin * 2);
-    // 离屏探针：max-content 量自然宽度；.q-search-probe 下各段不收缩、不省略
+    // 左边界钉在搜索框左侧（搜索框本身就在数据区内，不会压到侧边栏）
+    const left = Math.max(margin, Math.round(r.left));
+    // 最大宽度只算「搜索框左边 → 视口右边」，右侧始终留 margin，不撑满屏幕
+    const maxW = Math.max(160, vw - left - margin);
+    // 离屏探针：max-content 量内容自然宽度；.q-search-probe 下各段不收缩、不省略
     const probe = panel.cloneNode(true);
     probe.classList.add('q-search-probe');
     probe.removeAttribute('hidden');
@@ -445,10 +448,10 @@ Object.assign(App, {
     const chromeDelta = (panel.offsetWidth - panel.clientWidth) - (probe.offsetWidth - probe.clientWidth);
     const natural = Math.ceil(probe.getBoundingClientRect().width) + Math.max(0, chromeDelta);
     probe.remove();
+    // 至少与搜索框同宽；按内容自然撑开；封顶到可用宽度，绝不超过视口右边
     const width = Math.min(Math.max(natural, Math.ceil(r.width)), maxW);
     panel.style.width = width + 'px';
-    const left = Math.min(Math.max(margin, r.left), vw - margin - width);
-    panel.style.left = Math.round(left) + 'px';
+    panel.style.left = left + 'px';
     const maxH = Math.min(460, Math.max(160, vh * 0.6));
     panel.style.maxHeight = maxH + 'px';
     let top = r.bottom + 4;

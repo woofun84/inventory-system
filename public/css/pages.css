@@ -332,6 +332,8 @@
 .pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
 .pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
 .pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+/* 搜索框聚焦：不依赖 .pu-toolbar 祖先，查询中心的 .q-gsearch 也有一致的主色边框 */
+.pu-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-daterange { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .pu-daterange label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pu-daterange input[type=date] { width: 118px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; }
@@ -512,8 +514,9 @@
   color: var(--text);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
 }
-/* 离屏探针：量取候选内容的自然宽度（不换行、不省略），用完即移除 */
-#q-root .q-search-panel.q-search-probe {
+/* 离屏探针：量取候选内容的自然宽度（不换行、不省略），用完即移除。
+   注意：探针 append 到 document.body，不在 #q-root 内，选择器不能带 #q-root 祖先。 */
+.q-search-panel.q-search-probe {
   left: -9999px !important;
   top: 0 !important;
   visibility: hidden;
@@ -525,9 +528,9 @@
   overflow: visible !important;
   scrollbar-gutter: auto;
 }
-#q-root .q-search-panel.q-search-probe .q-search-main,
-#q-root .q-search-panel.q-search-probe .q-search-sub,
-#q-root .q-search-panel.q-search-probe .q-search-code {
+.q-search-panel.q-search-probe .q-search-main,
+.q-search-panel.q-search-probe .q-search-sub,
+.q-search-panel.q-search-probe .q-search-code {
   overflow: visible !important;
   text-overflow: clip !important;
   white-space: nowrap !important;
@@ -617,6 +620,8 @@
 .pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
 .pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
 .pu-search input { width: 100%; height: 34px; padding: 0 12px 0 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+/* 搜索框聚焦：不依赖 .pu-toolbar 祖先，查询中心的 .q-gsearch 也有一致的主色边框 */
+.pu-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-daterange { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .pu-daterange label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pu-daterange input[type=date] { width: 118px; background: transparent; border: 0; color: var(--text); font-size: 13px; font-family: inherit; }

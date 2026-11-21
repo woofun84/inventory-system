@@ -193,7 +193,7 @@ router.get('/api/query/search', requirePerm('query', 'view'), (req, res) => {
     AND (m.status IS NULL OR m.status = '' OR m.status <> '停用')`;
   const matParams = matKw.params;
   const matTotal = db.prepare(`SELECT COUNT(*) AS c FROM materials m WHERE ${matWhere}`).get(...matParams).c;
-  const matRows = db.prepare(`SELECT m.code, m.name, m.spec, m.unit, COALESCE(b.stock_qty,0) AS stock_qty
+  const matRows = db.prepare(`SELECT m.code, m.name, m.spec, m.brand, m.unit, COALESCE(b.stock_qty,0) AS stock_qty
     FROM materials m LEFT JOIN stock_balance b ON b.code = m.code
     WHERE ${matWhere} ORDER BY m.code LIMIT ?`).all(...matParams, limit);
 
@@ -228,6 +228,7 @@ router.get('/api/query/search', requirePerm('query', 'view'), (req, res) => {
           code: r.code,
           name: r.name || '',
           spec: r.spec || '',
+          brand: r.brand || '',
           unit: r.unit || '',
           on_hand: r.stock_qty || 0,
         })),

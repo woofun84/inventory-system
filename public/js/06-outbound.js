@@ -1876,7 +1876,7 @@ Object.assign(App, {
   },
 
   obConfirmCostHtml(sum) {
-    const t = k => this.t(k);
+    const t = (k, vars) => this.t(k, vars);
     return `<div class="ob-confirm-cost">`
       + `<div><span>${t('ob_confirm_recalc')}</span><b>${this.fmtMoney(sum.recalc)}</b></div>`
       + `<div><span>${t('ob_confirm_current')}</span><b>${this.fmtMoney(sum.displayed)}</b></div>`
@@ -1885,7 +1885,7 @@ Object.assign(App, {
   },
 
   obConfirmHtml(sum) {
-    const t = k => this.t(k);
+    const t = (k, vars) => this.t(k, vars);
     const qtyTotal = sum.rows.reduce((s, r) => s + r.qty, 0);
     let html = `<div class="ob-confirm-meta">${t(sum.isReturn ? 'obd_confirm_return_hint' : 'obd_confirm_hint')}</div>`
       + `<div class="ob-confirm-meta">${t('obd_line_count', { n: sum.rows.length })} · ${t(sum.isReturn ? 'ret_qty_stock' : 'out_total_qty')}: ${this.fmtQty(qtyTotal)}</div>`;
