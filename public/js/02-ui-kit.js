@@ -199,6 +199,14 @@ Object.assign(App, {
     return '';
   },
 
+  // 长文本列表单元格：宽度封顶、超出省略，title 悬停看全文；
+  // 用于备注/品牌等容易被长内容撑宽、把表格顶出屏幕的列
+  cellClip(text, maxPx) {
+    const s = String(text == null ? '' : text);
+    const esc = this.docEsc(s);
+    return `<span class="cell-clip"${maxPx ? ` style="max-width:${maxPx}px"` : ''} title="${esc}">${esc}</span>`;
+  },
+
   onSort(tableId, key) {
     const st = this.getTableState(tableId);
     if (st.sortKey === key) {

@@ -220,7 +220,7 @@ Object.assign(App, {
       ['total_amount', this.t('obd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('obd_handler'), r => this.docEsc(r.handler || '')],
       ['status', this.t('obd_status'), r => this.obdStatusBadge(r.status), 'center'],
-      ['remarks', this.t('obd_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('obd_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
@@ -1005,7 +1005,7 @@ Object.assign(App, {
       ['cost_price', this.t('out_cost_price'), r => this.fmtMoney(r.cost_price), true, vp],
       ['cost_amount', this.t('out_cost_amount'), r => this.fmtMoney(r.cost_amount), true, vp],
       ['receiver', this.t(isReturn ? 'out_return_receiver' : 'out_receiver'), r => this.docEsc(r.receiver || '')],
-      ['remarks', this.t('out_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('out_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const st = this.getTableState(tid);
@@ -1969,6 +1969,8 @@ Object.assign(App, {
         try {
           const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
           this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
+          // 单据已过账落库：清除编辑页脏标记，避免随后打开详情时误弹未保存提示
+          this.clearFormDirty();
           // 领料退库是从退货模块发起的，确认后回到退货模块自己的单据，不要跳到出库管理
           if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
         } catch (e) {
@@ -1983,6 +1985,7 @@ Object.assign(App, {
                 try {
                   const r2 = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', { accept_no_basis: true });
                   this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r2.line_count }));
+                  this.clearFormDirty();
                   if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
                 } catch (e2) {
                   this.toast(e2.code === 'NO_BASIS_FORBIDDEN' ? this.t('cost_basis_none_forbidden') : e2.message, 'error');
@@ -2072,6 +2075,7 @@ Object.assign(App, {
         try {
           const r = await self.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm-correction', 'POST', {});
           self._obCorrection = null;
+          self.clearFormDirty();
           if (r.mode === 'void-only') {
             self.toast(self.t('ibd_corr_void_only_done', { no: r.voided_doc_no }), 'success');
             if (isReturnDoc) {
@@ -2136,6 +2140,7 @@ Object.assign(App, {
       try {
         const r = await this.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
         this.toast(this.t(isReturn ? 'obd_confirm_return_ok' : 'obd_confirm_ok', { n: r.line_count }));
+        this.clearFormDirty();
         if (isReturn) this.openReturnDoc(docNo); else await this.openOutboundDoc(docNo);
       } catch (e) {
         if (e.code === 'INSUFFICIENT_STOCK') {

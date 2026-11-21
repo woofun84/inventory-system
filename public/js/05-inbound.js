@@ -232,7 +232,7 @@ Object.assign(App, {
       ['total_amount', this.t('ibd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('ibd_handler'), r => this.docEsc(r.handler || '')],
       ['status', this.t('ibd_status'), r => this.ibdStatusBadge(r.status), 'center'],
-      ['remarks', this.t('ibd_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('ibd_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
@@ -1280,7 +1280,7 @@ Object.assign(App, {
       ['qty', this.docQtyLabel(d.txn_type), r => this.qtyWithUnit(this.qtyAbs(r.qty), r.material_unit), true],
       ['price', this.t('in_price'), r => this.fmtMoney(r.price), true, vp],
       ['amount', this.t('in_total_amount'), r => this.fmtMoney(r.amount), true, vp],
-      ['remarks', this.t('in_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('in_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const st = this.getTableState(tid);
@@ -2456,6 +2456,7 @@ Object.assign(App, {
         const r = await self.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/confirm-correction', 'POST',
           force ? { over_receipt_confirm: true } : {});
         self._ibCorrection = null;
+        self.clearFormDirty();
         if (r.mode === 'void-only') {
           self.toast(self.t('ibd_corr_void_only_done', { no: r.voided_doc_no }), 'success');
           if (isReturnDoc) {
@@ -2671,6 +2672,8 @@ Object.assign(App, {
             const r = await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST',
               force ? { over_receipt_confirm: true } : {});
             this.toast(this.t(isReturn ? 'ibd_confirm_return_ok' : 'ibd_confirm_ok', { n: r.line_count }));
+            // 单据已过账落库：清除编辑页脏标记，避免随后打开详情时误弹「放弃未保存的修改」
+            this.clearFormDirty();
             if (isReturn) {
               this.retState().tab = isMiscReturn ? '零星退货' : '采购退货';
               await this.openReturnDoc(docNo);
@@ -2721,6 +2724,8 @@ Object.assign(App, {
         try {
           const r = await this.api('/api/inbound-docs/' + encodeURIComponent(docNo) + '/confirm', 'POST', {});
           this.toast(this.t(isReturn ? 'ibd_confirm_return_ok' : 'ibd_confirm_ok', { n: r.line_count }));
+          // 单据已过账落库：清除编辑页脏标记，避免随后打开详情时误弹未保存提示
+          this.clearFormDirty();
           if (isReturn) {
             this.retState().tab = d?.txn_type === '零星退货' ? '零星退货' : '采购退货';
             await this.openReturnDoc(docNo);

@@ -593,7 +593,7 @@ Object.assign(App, {
       ['total_qty', this.retQtyLabel({ sub_type: s.tab === 'voided' ? '' : s.tab }), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
       ['total_amount', this.t('ret_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['status', this.t('ret_status'), r => this.retStatusBadge(r.status), 'center'],
-      ['remarks', this.t('ibd_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('ibd_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
@@ -992,6 +992,7 @@ Object.assign(App, {
       try {
         await this.api(url + encodeURIComponent(docNo) + '/confirm', 'POST');
         this.toast(this.t('ret_confirmed'));
+        this.clearFormDirty();
         await this.retLoadList();
         await this.retSelectDoc(docNo, true);
       } catch (e) {

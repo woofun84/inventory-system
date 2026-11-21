@@ -48,7 +48,7 @@ Object.assign(App, {
             ? (this.can('suppliers', 'edit') ? `<span class="action-link" onclick="App.enableSupplier(${s.id})">${this.t('sup_enable')}</span>` : '')
             : (this.can('suppliers', 'delete') ? `<span class="action-link danger" onclick="App.deleteSupplier(${s.id})">${this.t('sup_disable')}</span>` : ''),
         ].join('');
-        return `<tr><td class="text-center">${startIdx + i + 1}</td><td>${nameCell}</td><td>${this.docEsc(s.contact || '')}</td><td>${this.docEsc(s.phone || '')}</td><td>${this.docEsc(s.remarks || '')}</td><td class="text-center">${acts}</td></tr>`;
+        return `<tr><td class="text-center">${startIdx + i + 1}</td><td>${nameCell}</td><td>${this.docEsc(s.contact || '')}</td><td>${this.docEsc(s.phone || '')}</td><td>${this.cellClip(s.remarks)}</td><td class="text-center">${acts}</td></tr>`;
       }).join('');
     }
     document.getElementById('suppliers-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;

@@ -209,7 +209,7 @@ Object.assign(App, {
       ['diff_count', this.t('st_diff'), r => Number(r.diff_count) > 0
         ? `<span class="badge badge-warning">${r.diff_count}</span>`
         : `<span class="pu-mu">0</span>`, true],
-      ['remarks', this.t('st_remark'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('st_remark'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const th = shown.map(c => this.sortTh(c[1], c[0], tid, c[3])).join('');
@@ -476,7 +476,7 @@ Object.assign(App, {
         return `<span class="${cls}" style="font-weight:600">${diff > 0 ? '+' : ''}${this.fmtQty(diff)}</span>${r.material_unit ? ' ' + this.docEsc(r.material_unit) : ''}`;
       }, true],
       ['status', this.t('st_status_label'), r => this.stLineStatusBadge(r.status), 'center'],
-      ['remarks', this.t('st_remark'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('st_remark'), r => this.cellClip(r.remarks)],
     ];
     const st = this.getTableState(tid);
     const sorted = this.sortData(lines, st.sortKey, st.sortDir);
@@ -1615,6 +1615,7 @@ Object.assign(App, {
     try {
       const r = await self.api('/api/stocktakes/' + encodeURIComponent(no) + '/confirm', 'POST', body);
       self.toast(self.t('st_confirm_ok', { n: r.adjusted_count }));
+      self.clearFormDirty();
       await self.openStocktake(no);
     } catch (e) {
       if (e.code === 'STOCK_CHANGED') {

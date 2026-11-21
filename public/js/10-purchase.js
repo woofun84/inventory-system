@@ -672,7 +672,7 @@ Object.assign(App, {
       ['line_status', this.t('pu_line_status'), r => this.puDeliveryBadge(r.line_status)],
       [isPo ? 'contract_no_eff' : 'po_no', isPo ? this.t('pu_contract_filter') : this.t('pu_po_no_filter'),
         r => this.docEsc((isPo ? r.contract_no_eff : r.po_no) || '')],
-      ['remarks', this.t('pu_remarks'), r => this.docEsc(r.remarks || '')],
+      ['remarks', this.t('pu_remarks'), r => this.cellClip(r.remarks)],
     ];
     const shown = cols.filter(c => c[4] !== false);
     const st = this.getTableState('purchase_detail_lines');
@@ -1452,6 +1452,7 @@ Object.assign(App, {
           await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no), 'PUT', Object.assign({}, head, { lines }));
           const r = await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no) + '/confirm', 'POST', {});
           this.toast(this.t('pu_order_confirmed', { n: r.line_count }));
+          this.clearFormDirty();
           delete this._puDetail['orders:' + head.po_no];
           await this.puBackToList(head.po_no);
         } catch (e) {
@@ -1467,6 +1468,7 @@ Object.assign(App, {
       try {
         const r = await this.api('/api/purchase/orders/' + encodeURIComponent(poNo) + '/confirm', 'POST', {});
         this.toast(this.t('pu_order_confirmed', { n: r.line_count }));
+        this.clearFormDirty();
         delete this._puDetail['orders:' + poNo];
         await this.loadPurchaseList();
         await this.puOpen('orders', poNo);
