@@ -332,7 +332,7 @@
 .pu-filter-inner { display: contents; }
 .pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
 .pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
-.pu-search input { width: 100%; height: 34px; padding: 0 var(--space-3) 0 3var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: var(--fs-sm); font-family: inherit; }
+.pu-search input { width: 100%; height: 34px; padding: 0 var(--space-3) 0 var(--space-34); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: var(--fs-sm); font-family: inherit; }
 /* 搜索框聚焦：不依赖 .pu-toolbar 祖先，查询中心的 .q-gsearch 也有一致的主色边框 */
 .pu-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .pu-daterange { display: inline-flex; align-items: center; gap: var(--space-1_5); height: 34px; padding: 0 var(--space-2); background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
@@ -746,7 +746,7 @@ button.pu-kpi { cursor: pointer; }
 .pu-log li { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: var(--space-3); padding-bottom: 14px; }
 .pu-log li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); margin-top: 6px; }
 .pu-log-meta { font-size: var(--fs-xs); color: var(--text-muted); }
-.pu-empty { padding: 2var(--space-2); text-align: center; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: var(--fs-sm); }
+.pu-empty { padding: var(--space-28); text-align: center; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: var(--fs-sm); }
 
 /* --- 关联单据一行式列表（与入库/出库详情共用同一套标记与样式） --- */
 .rel-list { container-type: inline-size; }
@@ -788,7 +788,7 @@ button.pu-kpi { cursor: pointer; }
 /* 详情抽屉内与元信息保持同一左右留白（直接挂在滚动区/抽屉下的提示条） */
 .pu-insp > .ui-note,
 .pu-insp-body > .ui-note { margin: 0 var(--space-4) var(--space-2_5); }
-.ib-empty-draft { padding: 2var(--space-0_5); text-align: center; background: var(--info-bg); border: 1px dashed var(--border); border-radius: 9px; margin: var(--space-3) 0; }
+.ib-empty-draft { padding: var(--space-22); text-align: center; background: var(--info-bg); border: 1px dashed var(--border); border-radius: 9px; margin: var(--space-3) 0; }
 .ib-over-hint-tip { margin-top: 4px; color: var(--warning-fg); font-weight: 600; }
 .ib-qty-over { border-color: var(--danger) !important; box-shadow: 0 0 0 2px var(--danger-ring); }
 .ib-out-scope { color: var(--warning-fg); }
@@ -866,7 +866,7 @@ button.pu-kpi { cursor: pointer; }
 /* 仪表盘「本月业务构成」：沿用采购卡片规范 */
 .comp-type { display: inline-flex; align-items: center; gap: var(--space-2); }
 .comp-total-row td { font-weight: 700; border-top: 2px solid var(--border); }
-.comp-empty { padding: 2var(--space-1_5) var(--space-2_5); text-align: center; color: var(--text-muted); font-size: var(--fs-sm); }
+.comp-empty { padding: var(--space-26) var(--space-2_5); text-align: center; color: var(--text-muted); font-size: var(--fs-sm); }
 .pu-edit-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .pu-edit-sum { display: flex; gap: var(--space-4_5); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-muted); margin-top: 12px; }
 .pu-edit-lines input, .pu-edit-lines select { width: 100%; box-sizing: border-box; padding: 5px var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: var(--fs-sm); font-family: inherit; }

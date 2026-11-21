@@ -161,7 +161,11 @@
   --space-4: 16px;
   --space-4_5: 18px;
   --space-5: 20px;
+  --space-22: 22px;
   --space-6: 24px;
+  --space-26: 26px;
+  --space-28: 28px;
+  --space-34: 34px;
 
   /* 断点约定见 breakpoints.css：1400 / 1024 / 768 / 640 / 480。
      CSS 自定义媒体查询兼容性不足，断点值仍写在 @media 中，
