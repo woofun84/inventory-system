@@ -15,6 +15,17 @@
 .u-mb-2 { margin-bottom: var(--space-2); }
 .u-block-title { font-weight: 600; margin-bottom: var(--space-2); }
 .u-wrap-anywhere { overflow-wrap: anywhere; }
+.u-max-none { max-width: none; }
+.u-fs-xs { font-size: var(--fs-xs); }
+.u-muted { color: var(--text-muted); }
+.u-muted-xxs { font-size: 11px; color: var(--text-muted); }
+.u-block-title-sm { font-weight: 600; margin-bottom: 6px; }
+.u-mt-10 { margin-top: 10px; }
+.u-min-w-110 { min-width: 110px; }
+.u-row-gap-1 { display: flex; gap: var(--space-1); }
+.u-scroll-280 { max-height: 280px; overflow: auto; }
+.u-meta-wrap { font-size: var(--fs-xs); margin-top: var(--space-1); overflow-wrap: anywhere; }
+.u-span-2 { grid-column: span 2; }
 
 /* ========== 卡片 ========== */
 .card {

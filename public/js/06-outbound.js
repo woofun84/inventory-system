@@ -487,7 +487,7 @@ Object.assign(App, {
     const reqMark = this._obNoOrigin ? ' *' : '';
 
     this._obView = 'new';
-    const formHtml = `<div class="form-grid" style="max-width:none">
+    const formHtml = `<div class="form-grid u-max-none">
             <div class="form-group"><label>${this.t('obd_no')}</label><input id="ob_f_no" value="${docNo}" readonly placeholder="${this.t('obd_no_after_save')}"></div>
             <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_f_date" type="date" value="${date}"></div>
             <div class="form-group"><label>${this.t('obd_type')} *</label><select id="ob_f_txn_type">${typeOptions}</select></div>
@@ -554,11 +554,11 @@ Object.assign(App, {
       <td>${this.ibLineLabel(r)}</td>
       <td class="text-right">${this.fmtQty(r.qty)}</td><td class="text-right">${this.fmtQty(r.returned_qty)}</td>
       <td class="text-right"><b>${this.fmtQty(r.remaining)}</b></td>
-      <td style="min-width:110px"><input type="number" step="0.01" min="0.01" max="${r.remaining}" id="ob_pre_qty_${i}" oninput="App.obPreQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
+      <td class="u-min-w-110"><input type="number" step="0.01" min="0.01" max="${r.remaining}" id="ob_pre_qty_${i}" oninput="App.obPreQtyInput(${i}, this)" onpaste="App.qtyPaste(event)"></td>
       ${vp ? `<td class="text-right">${this.fmtMoney(r.cost_price)}</td>` : ''}</tr>`).join('');
     box.innerHTML = `<div class="pu-card">
       <div class="pu-card-title"><span>02</span><div>${this.t('ret_lines_stock')}<small>${this.t('ret_source_preview_hint', { n: usable.length })}</small></div></div>
-      <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>
+      <div class="table-wrap u-scroll-280"><table><thead><tr>
         <th>${this.t('pu_material')}</th>
         <th class="text-right">${this.t('ret_source_orig_qty')}</th><th class="text-right">${this.t('ret_source_returned_qty')}</th>
         <th class="text-right">${this.t('ret_remaining_qty')}</th><th class="text-right">${this.t('ret_qty')}</th>
@@ -1062,7 +1062,7 @@ Object.assign(App, {
       <div>
         <strong>${esc(this.obLogLabel(l.action))}</strong>
         <span class="pu-log-meta">· ${esc(l.name || l.username || l.operator || l.created_by || '')} · ${esc(this.fmtDateTime(l.created_at))}</span>
-        ${detail ? `<div style="font-size:12px;margin-top:4px;overflow-wrap:anywhere">${esc(detail)}</div>` : ''}
+        ${detail ? `<div class="u-meta-wrap">${esc(detail)}</div>` : ''}
       </div>
     </li>`;
     }).join('') + '</ol>';
@@ -1243,8 +1243,8 @@ Object.assign(App, {
           </div>` : '';
         const reqMark = this._obNoOrigin ? ' *' : '';
         const corrField = this._obCorrection ? `<div class="form-group"><label>${this.t('ibd_corr_from')}</label><input value="${this.docEsc(this._obCorrection.original_doc_no)}" readonly></div>` : '';
-        const corrHint = this._obCorrection ? `<div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_confirm_hint')}</div></div>` : '';
-        formEl.innerHTML = `<div class="form-grid" style="max-width:none">
+        const corrHint = this._obCorrection ? `<div class="form-group u-full"><div class="ui-note ui-note--info u-m-0">${this.t('ibd_corr_confirm_hint')}</div></div>` : '';
+        formEl.innerHTML = `<div class="form-grid u-max-none">
           <div class="form-group"><label>${this.t('obd_no')}</label><input value="${this.docEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('obd_date')} *</label><input id="ob_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${this.t('obd_type')}</label><input value="${this.obTypeLabel(d.txn_type)}" readonly></div>
@@ -1258,7 +1258,7 @@ Object.assign(App, {
           ${corrHint}
         </div>`;
       } else {
-        formEl.innerHTML = `<div class="ui-note ui-note--info" style="margin:0">${this.t('obd_posted_hint')}</div>`;
+        formEl.innerHTML = `<div class="ui-note ui-note--info u-m-0">${this.t('obd_posted_hint')}</div>`;
       }
     }
 
@@ -1321,7 +1321,7 @@ Object.assign(App, {
       tbody = this.emptyRow(headers.length, `
         ${this.t('obd_no_lines')}
         ${this._obCorrection ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
-        <div style="margin-top:10px">${isDraft ? `<button class="btn btn-primary btn-sm" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>` : ''}</div>
+        <div class="u-mt-10">${isDraft ? `<button class="btn btn-primary btn-sm" onclick="App.addOutboundEditRow()">+ ${this.t('obd_add_line')}</button>` : ''}</div>
       `, { pad: 26 });
     } else {
       tbody = lines.map((l, i) => {
@@ -1355,8 +1355,8 @@ Object.assign(App, {
           return `<tr>
             <td style="min-width:220px">${codeCell}</td>
             <td style="min-width:100px">${qtyInput}<div class="line-error-tip" data-ob-qty-tip="${i}"></div></td>
-            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
-            ${vp ? `<td class="pu-edit-amt" style="color:var(--text-muted)" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt" style="color:var(--text-muted)" data-line-amount="${i}">${refAmountText}</td>` : ''}
+            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''} u-fs-xs">${availText}</td>
+            ${vp ? `<td class="pu-edit-amt u-muted" title="${this.t('obd_ref_hint')}">${refText}</td><td class="pu-edit-amt u-muted" data-line-amount="${i}">${refAmountText}</td>` : ''}
             <td style="min-width:140px">${remarksInput}</td>
             <td class="text-center">${delBtn}</td>
           </tr>`;
@@ -1366,7 +1366,7 @@ Object.assign(App, {
           return `<tr>
             <td>${this.ibLineLabel(l)}</td>
             <td class="text-right${qtyCls ? ' ' + qtyCls : ''}">${this.fmtQty(qty)}${l.material_unit ? ' ' + this.docEsc(l.material_unit) : ''}</td>
-            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px">${availText}</td>
+            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''} u-fs-xs">${availText}</td>
             ${vp ? `<td class="pu-edit-amt">${refText}</td><td class="pu-edit-amt">${refAmountText}</td>` : ''}
             <td>${l.remarks || ''}</td>
             <td></td>

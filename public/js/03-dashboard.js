@@ -132,9 +132,9 @@ Object.assign(App, {
         const vp = this.priceVisible(d.rows, 'unit_cost');
         const rows = d.rows.map(r => `<tr>
           <td>${this.fmtDate(r.business_date)}</td>
-          <td>${this.docEsc(r.source_doc_id || '-')}${r.source_line_id ? `<br><span style="font-size:11px;color:var(--text-muted)">${this.t('cv_line')} #${r.source_line_id}</span>` : ''}</td>
+          <td>${this.docEsc(r.source_doc_id || '-')}${r.source_line_id ? `<br><span class="u-muted-xxs">${this.t('cv_line')} #${r.source_line_id}</span>` : ''}</td>
           <td>${BIZ_KEY[r.business_type] ? this.t(BIZ_KEY[r.business_type]) : this.docEsc(r.business_type || '-')}</td>
-          <td>${this.docEsc(r.code)}${r.material_name ? `<br><span style="font-size:11px;color:var(--text-muted)">${this.docEsc(r.material_name)}</span>` : ''}</td>
+          <td>${this.docEsc(r.code)}${r.material_name ? `<br><span class="u-muted-xxs">${this.docEsc(r.material_name)}</span>` : ''}</td>
           <td class="text-right">${this.fmtQty(r.qty)}</td>
           ${vp ? `<td class="text-right">${this.fmtQty(r.unit_cost)}</td>
           <td class="text-right">${this.fmtQty(r.avg_cost)}</td>

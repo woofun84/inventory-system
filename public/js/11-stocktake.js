@@ -612,7 +612,7 @@ Object.assign(App, {
       <div>
         <strong>${this.docEsc(this.stLogLabel(l.action))}</strong>
         <span class="pu-log-meta">· ${this.docEsc(l.operator || '')} · ${this.fmtDateTime(l.created_at)}</span>
-        ${detail ? `<div style="font-size:12px;margin-top:4px;overflow-wrap:anywhere">${this.docEsc(detail)}</div>` : ''}
+        ${detail ? `<div class="u-meta-wrap">${this.docEsc(detail)}</div>` : ''}
       </div>
     </li>`;
     }).join('') + `</ol>`;
@@ -807,7 +807,7 @@ Object.assign(App, {
     this.showModal(
       `<h3>${this.t('st_add')}</h3>`,
       `<div class="ui-note ui-note--info">${this.t('st_create_hint')}</div>
-      <div class="form-grid" style="max-width:none">
+      <div class="form-grid u-max-none">
         <div class="form-group"><label>${this.t('st_no')}</label><input value="${this.docEsc(no)}" readonly></div>
         <div class="form-group"><label>${this.t('adj_date')} *</label><input id="st_f_date" type="date" value="${date}" oninput="App.clearFieldError('st_f_date')"><div class="form-error" id="st_f_date_error"></div></div>
         <div class="form-group"><label>${this.t('st_handler')}</label><input id="st_f_handler" value="${this.docEsc(this.user?.name || this.user?.username || '')}"></div>
@@ -1092,7 +1092,7 @@ Object.assign(App, {
         </div>
         <div class="pu-card">
           <div class="pu-card-title"><span>01</span><div>${this.t('st_sec_info')}<small>${this.t('st_head_locked')}</small></div></div>
-          <div class="form-grid" style="max-width:none">
+          <div class="form-grid u-max-none">
             <div class="form-group"><label>${this.t('st_no')}</label><input value="${this.docEsc(d.stocktake_no)}" readonly></div>
             <div class="form-group"><label>${this.t('adj_date')}</label><input value="${this.fmtDate(d.date)}" readonly></div>
             <div class="form-group"><label>${this.t('st_handler')}</label><input value="${this.docEsc(d.handler || '')}" readonly></div>
@@ -1142,8 +1142,8 @@ Object.assign(App, {
         btns.push(`<button class="btn btn-primary" onclick="App.stConfirmFromEdit()">${this.t('st_confirm')}</button>`);
       }
       btnBox.innerHTML = isDraft
-        ? (btns.join('') || `<div class="pu-empty" style="margin:0">${this.t('no_perm_msg')}</div>`)
-        : `<div class="pu-empty" style="margin:0">${this.t('st_confirmed_at')}：${this.fmtDateTime(d.confirmed_at) || '–'}</div>`;
+        ? (btns.join('') || `<div class="pu-empty u-m-0">${this.t('no_perm_msg')}</div>`)
+        : `<div class="pu-empty u-m-0">${this.t('st_confirmed_at')}：${this.fmtDateTime(d.confirmed_at) || '–'}</div>`;
     }
 
     const box = document.getElementById('st-edit-lines');
@@ -1534,7 +1534,7 @@ Object.assign(App, {
     if (raw === '') { this.toast(this.t('st_input_count_hint'), 'error'); return; }
     const count = parseFloat(raw);
     if (isNaN(count) || count < 0) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
-    if (btn) btn.disabled = true;
+    this.setButtonLoading(btn || this._actionButton, true);
     try {
       const r = await this.api('/api/stocktakes/' + encodeURIComponent(no) + '/lines/' + lineId + '/correct', 'POST',
         { count_qty: count });
@@ -1542,7 +1542,7 @@ Object.assign(App, {
       this.closeModal();
       await this.openStocktake(no);
     } catch (e) {
-      if (btn) btn.disabled = false;
+      this.setButtonLoading(btn || this._actionButton, false);
       this.stHandleCorrectError(no, lineId, count, e);
     }
   },
@@ -1558,7 +1558,7 @@ Object.assign(App, {
     this.showModal(
       `<h3>${this.t('st_correct_line')}</h3>`,
       `<div class="ui-note ui-note--info">${this.t('st_correct_hint')}</div>
-      <div class="form-grid" style="max-width:none">
+      <div class="form-grid u-max-none">
         <div class="form-group"><label>${this.t('mat_code')}</label><input value="${this.docEsc(l.code)}" readonly></div>
         <div class="form-group"><label>${this.t('st_book_qty')}</label><input value="${this.fmtQty(l.book_qty)}" readonly></div>
         <div class="form-group"><label>${this.t('st_count_qty')} *</label><input id="st-cf-target" type="number" step="0.01" value="${this.docEsc(l.count_qty)}"></div>
@@ -1572,7 +1572,7 @@ Object.assign(App, {
     const reasonEl = document.getElementById('st-cf-reason');
     const n = el ? parseFloat(el.value) : NaN;
     if (isNaN(n) || n < 0) { this.toast(this.t('st_input_count_hint'), 'error'); return; }
-    if (btn) btn.disabled = true;
+    this.setButtonLoading(btn || this._actionButton, true);
     const body = { count_qty: n };
     if (reasonEl && reasonEl.value.trim()) body.reason = reasonEl.value.trim();
     try {
@@ -1581,7 +1581,7 @@ Object.assign(App, {
       this.stCorrectToast(r);
       await this.stOpen(no);
     } catch (e) {
-      if (btn) btn.disabled = false;
+      this.setButtonLoading(btn || this._actionButton, false);
       this.stHandleCorrectError(no, line.id, n, e);
     }
   },

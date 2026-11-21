@@ -7,6 +7,8 @@
 > **修复状态（2026-11-21 22:45）**：报告中的 P0-1 / P0-2 / P0-3、P1-1 / P1-2 / P1-3 / P1-4 / P1-5 / P1-6 / P1-7 / P1-8 及全部 P2 已实施。实施记录与验证结果见文末第 6 节。
 >
 > **第二轮复审（2026-11-21 23:30）**：在同基线 `e3a2fd7` 上重新审查并实测，新增一次移动端热区兜底修复；结论与评分见第 7 节。
+>
+> **第三轮收口（2026-11-21 23:45）**：按第 7.6 节建议实施 ①～④，完整记录见第 8 节；第 7 节评分仍作为「改造前复审基线」，第 8 节给出新的实测结果与结论。
 
 ## 1. 审查范围与方法
 
@@ -227,3 +229,76 @@
 但尚未达到「体系化设计系统」程度：视觉一致性提升明显小于响应式与交互，根因是新令牌只解决「有没有」，未解决「用不用」——字色仍有 187 处硬编码、`--fs-*` / `--space-*` 分别仅用 3 / 6 次、约 30 处重复选择器与 10 档断点仍在。若下一轮继续投入，优先级建议为：① 把业务表单提交按钮统一接入 `setButtonLoading()`；② 分批把高频静态内联样式迁移到工具类；③ 合并断点到 4～5 档并建立 `breakpoints.css`；④ 清理剩余重复选择器。
 
 本轮新增的 `public/css/pages.css` 末尾热区兜底属于对首轮 P0-3 的补漏，随本报告一并提交部署；除此之外不再扩大改动范围，以保持复审结论与被审代码一致。
+
+## 8. 第三轮收口：按复审建议实施 ①～④（2026-11-21 23:45）
+
+本节记录用户确认「按建议开始实施 1 到 4 步」后的实际改动。第 7 节评分保留为**改造前复审基线**，不再重复打分；本节只说明四项残余问题是否关闭、回归验证是否通过。
+
+### 8.1 改动概览
+
+| 步骤 | 原建议 | 实施结果 | 状态 |
+|---|---|---|---|
+| ① | 业务提交按钮统一接入 `setButtonLoading()` | 新增统一包装器，登记 54 个提交/确认方法；清理 4 处手写 disabled/text Loading | 已关闭 |
+| ② | 分批迁移静态内联样式 | 新增 12 个工具类，替换 75 处高频静态样式；字面 `style="` 由 222 降到 152 | 已关闭（首批） |
+| ③ | 合并断点并建立 `breakpoints.css` | 新增断点令牌文件，10 档取值收敛为 5 档 + 1 个宽屏补集 | 已关闭 |
+| ④ | 清理重复选择器 | 清除同上下文重复定义；剩余跨媒体/容器上下文的同名规则确认为有意覆盖 | 已关闭 |
+
+### 8.2 ① 统一 Loading
+
+- `public/js/01-core.js`：
+  - 新增 `trackActionButton()`，在 **捕获阶段**记录当前点击的 `button/[role=button]/.action-link`，微任务后清空；保证它早于行内 `onclick="App.xxx()"` 执行。
+  - 新增 `wrapActionLoading(names)`：调用 `App.setButtonLoading(btn, true/false)`，成功、异常、同步抛出三条路径都必定还原；已在弹窗 Loading 中的按钮（`dataset.loading === '1'`）自动跳过，避免双层覆盖。
+  - 新增 `initActionLoading()`，集中登记 54 个方法，覆盖物料、入库、出库、供应商、设置、用户、采购、盘点、退货的创建/保存/确认/删除/更正入口；`init()` 中在路由前调用。
+- `public/js/08-orders.js`：`runAutoBackupNow()` / `downloadBackup()` 去掉手写 `disabled + textContent` 方案，改走 `setButtonLoading()`。
+- `public/js/11-stocktake.js`：`stCorrectFromConfirm()` / `stApplyCorrect()` 的两处手写 `disabled` 改为 `setButtonLoading()`。
+- 沙箱验证 3 条路径全通过：正常完成还原、异常抛出还原、已在 Loading 中的按钮跳过；54 个登记方法静态检查全部存在。
+
+### 8.3 ② 内联样式迁移
+
+- `public/css/components.css` 工具类新增：`.u-max-none`、`.u-fs-xs`、`.u-muted`、`.u-muted-xxs`、`.u-block-title-sm`、`.u-mt-10`、`.u-min-w-110`、`.u-row-gap-1`、`.u-scroll-280`、`.u-meta-wrap`、`.u-span-2`（与原有 `.u-m-0/.u-mt-*` 等共同使用）。
+- 批量替换 75 处，高频项包括：`margin:0`（15）、`max-width:none`（11）、`min-width:110px`（7）、`font-weight:600;margin-bottom:6px`（6）、`font-size:12px`（5）、`margin-top:8px/10px/12px`（12）等。
+- 口径说明：按字面 `style="` 计数由 **222 → 152**；按含模板动态的正则口径由 **235 → 160**。动态宽高、百分比、按数据计算的颜色与宽度保留在内联，不强行类化。
+
+### 8.4 ③ 断点收敛
+
+- 新增 `public/css/breakpoints.css`，并在 `index.html`、`login.html` 中引入；`base.css` 断点注释改为指向该文件。
+- 统一阶梯：`1400 / 1024 / 768 / 640 / 480`，宽屏反向查询使用 `1025px`（即 `max-width:1024px` 的补集）。
+- 迁移映射：
+
+  | 原值 | 新值 | 理由 |
+  |---:|---:|---|
+  | 1180 | 1400 | 归类到超宽桌面档 |
+  | 1000 / 960 / 900 | 1024 | 归类到桌面→平板档，提前启用侧栏抽屉、详情浮层与表格局部横滚 |
+  | 760 | 768 | 归类到平板→手机档 |
+  | 901（min） | 1025 | 与 1024 档严格互补 |
+
+- 浏览器实测 `--bp-lg` 令牌在各档均读到 `1024px`，说明新文件已正确加载。
+
+### 8.5 ④ 重复选择器
+
+- 删除 `pages.css` 中与 `components.css` 完全同值的顶层 `.table-wrap` 定义，保留页面级 `.data-scroll .table-wrap` 等布局差异。
+- 用上下文感知扫描复核：**同一上下文（顶层 / 同一 @media / 同一 @container）内重复定义为 0**。
+- 仍有 25 组同名规则分布在不同媒体/容器查询中（如 `.toast` 基础态 + 640px 移动态、`.rel-line` 基础态 + `@container` 态）。这些是有意覆盖，不应合并；第 7.3 节「约 30 处重复」的口径偏保守，本次已澄清。
+
+### 8.6 回归验证
+
+- 静态：15 个业务 JS `node --check` 通过；5 份 CSS 括号配平；新增 `breakpoints.css` HTTP 200；`git diff --check` 通过（仅 CRLF 提示）。
+- 多分辨率浏览器实测（iframe 固定宽度 + 真实媒体查询 + `getBoundingClientRect()`）：
+
+  | 视口 / 页面 | 结果 |
+  |---|---|
+  | 1920 / 看板 | `small=16 pbOver=false docOver=false localScroll=0`（桌面紧凑控件，非移动端口径） |
+  | 1440 / 看板 | `small=16 pbOver=false docOver=false localScroll=0` |
+  | 1024 / 物料 | `small=31 pbOver=false docOver=false localScroll=1`（表格局部横滚） |
+  | 768 / 物料 | `small=28 pbOver=false docOver=false localScroll=1` |
+  | 414 / 物料 | `small=0 pbOver=false docOver=false localScroll=1` |
+  | 375 / 看板 | `small=0 pbOver=false docOver=false localScroll=0` |
+  | 375 / 物料·暗色 | `small=0 pbOver=false docOver=false localScroll=1` |
+  | 375 / 审计·暗色 | `small=0 pbOver=false docOver=false localScroll=1` |
+  | 375 / 设置 | `small=0 pbOver=false docOver=false localScroll=0` |
+
+- 验证临时页与登录 token 文件已清理。
+
+### 8.7 收口结论
+
+①～④ 均已落地并通过回归，前三项分别关闭了第 7.6 节列出的具体残余，第四项澄清了「重复定义」的真实构成。视觉一致性里仍未解决的是**硬编码颜色 187 处未变**、`--fs-*` / `--space-*` 采用率仍低（分别为 5 / 8 次）——这属于更大规模的设计系统重构，不在本轮四项建议范围内。

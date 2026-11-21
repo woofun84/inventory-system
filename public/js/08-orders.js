@@ -62,7 +62,7 @@ Object.assign(App, {
   async editSupplier(id) {
     let s = { name: '', contact: '', phone: '', remarks: '' };
     if (id) { const data = await this.api('/api/suppliers'); s = data.find(d => d.id === id) || s; }
-    this.showModal(`<h3>${id ? this.t('sup_edit') : this.t('sup_add')}</h3>`, `<div class="form-grid"><div class="form-group" style="grid-column:span 2"><label>${this.t('sup_name')} *</label><input id="s_name" value="${this.docEsc(s.name)}" oninput="App.clearFieldError('s_name')"><div class="form-error" id="s_name_error"></div></div><div class="form-group"><label>${this.t('sup_contact')}</label><input id="s_contact" value="${this.docEsc(s.contact || '')}"></div><div class="form-group"><label>${this.t('sup_phone')}</label><input id="s_phone" value="${this.docEsc(s.phone || '')}"></div><div class="form-group" style="grid-column:span 2"><label>${this.t('sup_remarks')}</label><input id="s_remarks" value="${this.docEsc(s.remarks || '')}"></div></div>`, id ? this.t('save') : this.t('add'), async () => {
+    this.showModal(`<h3>${id ? this.t('sup_edit') : this.t('sup_add')}</h3>`, `<div class="form-grid"><div class="form-group u-span-2"><label>${this.t('sup_name')} *</label><input id="s_name" value="${this.docEsc(s.name)}" oninput="App.clearFieldError('s_name')"><div class="form-error" id="s_name_error"></div></div><div class="form-group"><label>${this.t('sup_contact')}</label><input id="s_contact" value="${this.docEsc(s.contact || '')}"></div><div class="form-group"><label>${this.t('sup_phone')}</label><input id="s_phone" value="${this.docEsc(s.phone || '')}"></div><div class="form-group u-span-2"><label>${this.t('sup_remarks')}</label><input id="s_remarks" value="${this.docEsc(s.remarks || '')}"></div></div>`, id ? this.t('save') : this.t('add'), async () => {
       if (!this.validateForm({ s_name: [{rule:'required'}] })) return;
       const body = { name: document.getElementById('s_name').value.trim(), contact: document.getElementById('s_contact').value.trim(), phone: document.getElementById('s_phone').value.trim(), remarks: document.getElementById('s_remarks').value.trim() };
       try { await this.api('/api/suppliers' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', body); this.closeModal(); this.toast(id ? this.t('updated') : this.t('added')); this.renderSuppliers(); } catch (e) { this.toast(e.message, 'error'); }
@@ -119,7 +119,7 @@ Object.assign(App, {
         html += this.renderDangerPanel();
       } else {
         html += `<div class="pu-card"><div class="pu-card-title"><span>!</span><div>${this.t('set_backup_title')}</div></div>
-          <p class="set-note" style="margin:0">${this.t('set_admin_only')}</p></div>`;
+          <p class="set-note u-m-0">${this.t('set_admin_only')}</p></div>`;
       }
       document.getElementById('settings-content').innerHTML = html;
       if (data.docNoRules) this.previewDocNo();
@@ -276,8 +276,8 @@ Object.assign(App, {
   },
 
   async runAutoBackupNow(btn) {
-    const oldText = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = this.t('set_auto_running'); }
+    // 统一走 App.setButtonLoading：spinner + disabled + aria-busy，异常时也必定还原
+    this.setButtonLoading(btn || this._actionButton, true);
     try {
       const r = await this.api('/api/settings/backup/auto/run', 'POST', {});
       this.toast(this.t('set_auto_done', { file: r.file || '' }));
@@ -285,7 +285,7 @@ Object.assign(App, {
     } catch (e) {
       this.toast(e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = oldText; }
+      this.setButtonLoading(btn || this._actionButton, false);
     }
   },
 
@@ -344,7 +344,7 @@ Object.assign(App, {
       <div class="pu-card-title"><span>04</span><div>${this.t('set_docno_title')}</div></div>
       <p style="color:var(--text-muted);margin-bottom:10px">${this.t('set_docno_desc')}</p>
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">${inputs}
-        <div class="form-group" style="min-width:110px"><label>${this.t('set_docno_pad')}</label>
+        <div class="form-group u-min-w-110"><label>${this.t('set_docno_pad')}</label>
           <input id="docno_pad" type="number" min="1" max="8" value="${rules.pad}" ${dis} oninput="App.previewDocNo()"></div>
         <div class="form-group" style="min-width:150px"><label>${this.t('set_docno_date_style')}</label>
           <select id="docno_date_style" ${dis} onchange="App.previewDocNo()">${styleOptions}</select></div>
@@ -352,7 +352,7 @@ Object.assign(App, {
       <p style="color:var(--text-muted);margin:10px 0 6px">${this.t('set_docno_hint')}</p>
       <div style="color:var(--text-muted);margin-bottom:6px">${this.t('set_docno_preview')}</div>
       <div id="docno_preview" data-date="${today}" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-      <div style="margin-top:12px">${actions}</div>
+      <div class="u-mt-3">${actions}</div>
     </div>`;
   },
 
@@ -416,9 +416,8 @@ Object.assign(App, {
 
   // 下载一致性快照（带鉴权头，用 fetch 取 blob 再触发下载）
   async downloadBackup(btn) {
-    btn = btn || document.getElementById('set_backup_btn');
-    const oldText = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = this.t('loading'); }
+    btn = btn || document.getElementById('set_backup_btn') || this._actionButton;
+    this.setButtonLoading(btn, true);
     try {
       const res = await fetch('/api/settings/backup/download', { headers: { Authorization: 'Bearer ' + this.token } });
       if (res.status === 401) { await this.handleUnauthorized(res); return; }
@@ -439,7 +438,7 @@ Object.assign(App, {
     } catch (e) {
       this.toast(e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = oldText; }
+      this.setButtonLoading(btn, false);
     }
   },
 
@@ -498,7 +497,7 @@ Object.assign(App, {
       // 旧 .db 备份不含图片：恢复后图片为空，界面必须明确提示，不能让人误以为图片丢了
       const okKey = data.legacy ? 'set_restore_ok_legacy' : 'set_restore_ok';
       this.showModal(`<h3>${this.t('set_restore_ok_title')}</h3>`,
-        `<p class="set-note" style="margin:0">${this.t(okKey, { name: data.backupFile || '', images: data.images || 0 })}</p>`,
+        `<p class="set-note u-m-0">${this.t(okKey, { name: data.backupFile || '', images: data.images || 0 })}</p>`,
         this.t('close'), () => { this.closeModal(); location.reload(); });
     } catch (e) { this.toast(e.message, 'error'); }
   },
@@ -526,14 +525,14 @@ Object.assign(App, {
         localStorage.setItem('login_notice', JSON.stringify({ username: data.username, password: data.password }));
         this.showModal(`<h3>${this.t('set_reset_done_title')}</h3>`,
           `<p class="set-note">${this.t('set_reset_done_msg', { username: this.docEsc(data.username), password: this.docEsc(data.password) })}</p>
-           <p class="set-note" style="margin:0">${this.t('set_backup_file', { name: this.docEsc(data.backupFile || '') })}</p>`,
+           <p class="set-note u-m-0">${this.t('set_backup_file', { name: this.docEsc(data.backupFile || '') })}</p>`,
           this.t('close'), () => { this.closeModal(); this.logout(); });
         this.toast(this.t('set_reset_ok'));
         setTimeout(() => this.logout(), 5000);
         return;
       }
       this.showModal(`<h3>${this.t('set_clear_ok')}</h3>`,
-        `<p class="set-note" style="margin:0">${this.t('set_backup_file', { name: this.docEsc(data.backupFile || '') })}</p>`,
+        `<p class="set-note u-m-0">${this.t('set_backup_file', { name: this.docEsc(data.backupFile || '') })}</p>`,
         this.t('close'), () => { this.closeModal(); this.renderSettings(); });
     } catch (e) { this.toast(e.message, 'error'); }
   },
@@ -553,7 +552,7 @@ Object.assign(App, {
     try {
       const r = await this.api('/api/settings/cost-variance/settle', 'POST', {});
       this.showModal(`<h3>${this.t('set_cv_done_title')}</h3>`,
-        `<p class="set-note" style="margin:0">${this.t('set_cv_done_msg', {
+        `<p class="set-note u-m-0">${this.t('set_cv_done_msg', {
           n: r.settled_count,
           amount: this.fmtMoney(r.settled_total),
           batch: r.batch_no || '-',

@@ -117,13 +117,7 @@
 
 /* 表格基础视觉统一在 components.css 定义一份，这里只保留页面级布局差异 */
 
-/* 表格外层 */
-.table-wrap {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: auto;
-    border-radius: 6px;
-}
+/* 表格外层：基础视觉已统一到 components.css（唯一定义），这里只保留页面级布局差异 */
 
 /* 数据页面内：滚动由 .data-scroll 负责，table-wrap 不创建滚动上下文，让 thead sticky 正常生效 */
 .data-scroll .table-wrap {
@@ -148,7 +142,7 @@
 /* 窄屏：滚动容器保留触摸惯性；表格本身保持 table-layout:auto，
    内容（nowrap）撑开表格后由外层横向滚动，列不会被压扁。
    固定布局的宽表（库存查询、物料流水）在 JS 里单独给出 px 列宽与 min-width。 */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .table-wrap {
         -webkit-overflow-scrolling: touch;
     }
@@ -374,7 +368,7 @@
 .st-new-rows .pu-empty { padding: 18px 12px; }
 .st-new-mat-table { min-width: 560px; }
 .st-load-stat { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
-@media (max-width: 760px) { .st-load-cat-list { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .st-load-cat-list { grid-template-columns: 1fr; } }
 /* 详情栏顶部动作条：录入实盘 / 只显示未盘 / 批量填 0 与列表同屏可见 */
 .st-insp-actions { position: static; padding: 0 16px 10px; margin: 0; border-bottom: 1px solid var(--border); }
 .st-insp-actions .btn { padding: 4px 10px; font-size: 12px; }
@@ -552,7 +546,7 @@
 #q-root .q-search-item .q-search-sub { color: var(--text-muted); }
 #q-root .q-search-item .q-search-meta { flex: 0 0 auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 #q-root .q-search-item .badge { font-size: 11px; }
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   #q-root .q-global-bar { flex-wrap: wrap; }
   #q-root .q-gsearch { flex: 1 1 100%; max-width: none; }
 }
@@ -603,7 +597,7 @@
     justify-content: flex-end;
 }
 /* 窄屏：按钮满宽，避免与筛选栏挤在同一行 */
-@media (max-width: 960px) {
+@media (max-width: 1024px) {
     #ret-head-actions {
         width: 100%;
     }
@@ -654,7 +648,7 @@ button.pu-kpi { cursor: pointer; }
    thead 仍以页面为滚动参照），保证数据区与详情卡之间始终保留 16px 间距 */
 .pu-split.open > .pu-list { overflow-x: clip; }
 /* 宽屏由整页纵向滚动、表头 sticky 依赖 page-body；窄屏改由 .data-scroll 自己滚动 */
-@media (min-width: 901px) {
+@media (min-width: 1025px) {
   .pu-split .data-scroll { overflow: visible; }
 }
 .pu-insp { position: sticky; top: 0; max-height: calc(100vh - 140px); overflow: hidden; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
@@ -690,7 +684,7 @@ button.pu-kpi { cursor: pointer; }
 /* 原单选择弹窗：表格固定列宽，容器预留 10px 竖向滚动条槽位（模态宽度已含此余量），
    竖条出现/消失都不会挤掉表格宽度、不会误触发横向滚动条；窄屏不需要预留 */
 #ret-pick-table .table-wrap { scrollbar-gutter: stable; }
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     #ret-pick-table .table-wrap { scrollbar-gutter: auto; }
 }
 
@@ -937,7 +931,7 @@ button.pu-kpi { cursor: pointer; }
 @media (max-width: 1400px) {
   .pu-split.open { grid-template-columns: minmax(0, 1fr) 420px; }
 }
-@media (max-width: 1000px) {
+@media (max-width: 1024px) {
   /* 详情改为浮层，列表保留在底层，不丢失筛选与滚动位置 */
   .pu-split.open:not(.wide):not(.q-ins-split) { grid-template-columns: minmax(0, 1fr); }
   .pu-split.open:not(.wide):not(.q-ins-split) .pu-list { display: block; }
@@ -957,7 +951,7 @@ button.pu-kpi { cursor: pointer; }
    来源：qInsCss() / qFlowCss(id) / qCardFlowCss()、库存查询板块与库存分析板块
    拼在 innerHTML 里的 <style> 段。此前这些 <style> 随内容进入 body，靠「后出现」
    压过 <head> 里的静态表；改为静态加载后，本段必须排在 .pu-* 段与上方
-   @media(max-width:1400px/1000px) 的 .pu-split.open 规则之后，
+   @media(max-width:1400px/1024px) 的 .pu-split.open 规则之后，
    用相同权重 + 同等顺序还原 .q-ins-split.wide 对两栏布局的覆盖，不靠提高权重。
    作用域：#q-root 内的 .q-ins-* 布局壳，以及 #q_docs_scroll / #q_rcv_scroll /
    #q_an_alert_box / #q_card_flow_scroll / #q_stock_scroll / #q_stock_insp /
@@ -1065,7 +1059,7 @@ button.pu-kpi { cursor: pointer; }
 #q-analysis .q-an-class dd { margin: 0; text-align: right; }
 #q-analysis .q-an-note { font-size: 12px; color: var(--text-muted); margin: 6px 0 10px; }
 #q-analysis .q-an-scroll { max-height: 420px; overflow: auto; }
-@media (max-width: 1180px) {
+@media (max-width: 1400px) {
   #q-analysis .q-an-class { grid-template-columns: repeat(2, 1fr); }
 }
 

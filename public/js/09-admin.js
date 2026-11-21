@@ -63,7 +63,7 @@ Object.assign(App, {
       <div class="form-group"><label>${this.t('user_name')}</label><input id="u_name" value="${this.docEsc(u.name || '')}"></div>
       <div class="form-group"><label>${this.t('user_role')} *</label><select id="u_role" onchange="App.onUserRoleChange(this.value)">${roleOpts}</select></div>
       <div class="form-group"><label>${this.t('user_status')}</label><select id="u_status">${statusOpts}</select></div>
-      <div class="form-group u-full"><label>${this.t('user_password')} ${id ? `<span style="font-size:11px;color:var(--text-muted)">(${this.t('user_password_hint')})</span>` : '*'}</label><input id="u_password" type="password" ${id ? 'placeholder="' + this.t('user_password_hint') + '"' : ''} oninput="App.clearFieldError('u_password')"><div class="form-error" id="u_password_error"></div></div>
+      <div class="form-group u-full"><label>${this.t('user_password')} ${id ? `<span class="u-muted-xxs">(${this.t('user_password_hint')})</span>` : '*'}</label><input id="u_password" type="password" ${id ? 'placeholder="' + this.t('user_password_hint') + '"' : ''} oninput="App.clearFieldError('u_password')"><div class="form-error" id="u_password_error"></div></div>
       ${this.renderPermMatrix(catalog, grants, u.role === 'admin')}
     </div>`, this.t('save'), async () => {
       const body = {

@@ -702,7 +702,7 @@ Object.assign(App, {
       <div>
         <strong>${this.puActionLabel(l.action)}</strong>
         <span class="pu-log-meta">· ${this.docEsc(l.name || l.username || '')} · ${this.fmtDateTime(l.created_at)}</span>
-        ${detailOf(l) ? `<div style="font-size:12px;margin-top:4px;overflow-wrap:anywhere">${this.docEsc(detailOf(l))}</div>` : ''}
+        ${detailOf(l) ? `<div class="u-meta-wrap">${this.docEsc(detailOf(l))}</div>` : ''}
       </div>
     </li>`).join('') + '</ol>';
   },
@@ -1003,7 +1003,7 @@ Object.assign(App, {
   async puConfirmDelete(title, msg, doDelete, doneMsg) {
     // 删除属破坏性操作：走统一确认弹窗，确认键为红色
     this.confirmDialog(this.docEsc(title),
-      `<p style="margin:0">${msg}</p><p class="pu-mu" style="margin:8px 0 0;font-size:12px">${this.t('pu_delete_hint')}</p>`,
+      `<p class="u-m-0">${msg}</p><p class="pu-mu" style="margin:8px 0 0;font-size:12px">${this.t('pu_delete_hint')}</p>`,
       async () => {
         let undo;
         try { undo = await doDelete(); } catch (e) { this.toast(e.message, 'error'); return; }
@@ -1105,7 +1105,7 @@ Object.assign(App, {
     const supList = this.puSupplierOptionsHtml(lk.suppliers);
     const cList = (lk.contracts || []).map(x => `<option value="${this.docEsc(x.contract_no)}"></option>`).join('');
     const msOpts = ['', '已关闭', '已取消'].map(v => `<option value="${v}" ${po.manual_status === v ? 'selected' : ''}>${v ? this.puManualLabel(v) : this.t('pu_manual_none')}</option>`).join('');
-    box.innerHTML = `<div class="form-grid" style="max-width:none">
+    box.innerHTML = `<div class="form-grid u-max-none">
       <div class="form-group"><label>${this.t('pu_po_no_filter')}</label><input id="pu_e_no" value="${this.docEsc(po.po_no || '')}" ${isNew ? `placeholder="${this.t('pu_po_no_manual_ph')}"` : 'readonly'}></div>
       <div class="form-group"><label>${this.t('pu_date')} *</label><input id="pu_e_date" type="date" value="${this.fmtDate(po.date)}"></div>
       <div class="form-group"><label>${this.t('pu_supplier')}</label><input id="pu_e_supplier" list="pu_e_sup" value="${this.docEsc(po.supplier || '')}"><datalist id="pu_e_sup">${supList}</datalist></div>
@@ -1170,7 +1170,7 @@ Object.assign(App, {
     if (!lines.length) {
       tbody = this.emptyRow(colCount, `
         ${this.t('pu_no_lines')}
-        ${canEdit ? `<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="App.puEditAddRow()">+ ${this.t('pu_add_line')}</button></div>` : ''}
+        ${canEdit ? `<div class="u-mt-10"><button class="btn btn-primary btn-sm" onclick="App.puEditAddRow()">+ ${this.t('pu_add_line')}</button></div>` : ''}
       `, { pad: 26 });
     } else {
       tbody = lines.map((l, i) => {
@@ -1178,8 +1178,8 @@ Object.assign(App, {
         const amt = (Number(l.order_qty) || 0) * (Number(l.order_price) || 0);
         return `<tr>
           <td style="min-width:220px"><select class="pu-line-mat" data-idx="${i}" onchange="App.puEditSet(${i},'code',this.value)">${matOpts(l.code)}</select><div class="line-error-tip" data-pu-tip="${i}"></div></td>
-          <td style="min-width:110px"><div class="pu-qty-wrap"><input type="number" class="pu-line-qty" data-idx="${i}" step="0.0001" min="${recv}" value="${l.order_qty || ''}" oninput="App.puEditSet(${i},'order_qty',this.value)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
-          ${vp ? `<td style="min-width:110px">${this.canEditPrice()
+          <td class="u-min-w-110"><div class="pu-qty-wrap"><input type="number" class="pu-line-qty" data-idx="${i}" step="0.0001" min="${recv}" value="${l.order_qty || ''}" oninput="App.puEditSet(${i},'order_qty',this.value)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
+          ${vp ? `<td class="u-min-w-110">${this.canEditPrice()
             ? `<input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}" oninput="App.puEditSet(${i},'order_price',this.value)">`
             : this.fmtMoney(l.order_price)}</td>
           <td class="pu-edit-amt" data-amt="${i}">${this.fmtMoney(amt)}</td>` : ''}
@@ -1570,7 +1570,7 @@ Object.assign(App, {
       </div>`;
     // 已到货行的数量下限：前端给出输入约束与提示，服务端仍做最终校验
     const recvFloor = Number(l.received_qty || 0);
-    const body = `<div class="form-grid" style="max-width:none">
+    const body = `<div class="form-grid u-max-none">
       <div class="form-group u-full"><label>${this.t('pu_material')} *</label>
         ${matFilter}
         <select id="pu_l_code" ${isEdit ? 'disabled' : ''}>${matOpts}</select>
@@ -1675,7 +1675,7 @@ Object.assign(App, {
     const supList = this.puSupplierOptionsHtml(suppliers);
     const stOpts = [['active', this.t('pu_status_active')], ['closed', this.t('pu_status_closed_c')]]
       .map(([v, label]) => `<option value="${v}" ${(c.status || 'active') === v ? 'selected' : ''}>${label}</option>`).join('');
-    const body = `<div class="form-grid" style="max-width:none">
+    const body = `<div class="form-grid u-max-none">
       <div class="form-group"><label>${this.t('pu_contract_no')} *</label><input id="pu_c_no" value="${this.docEsc(c.contract_no)}" ${isEdit ? 'readonly' : ''} oninput="App.clearFieldError('pu_c_no')"><div class="form-error" id="pu_c_no_error"></div></div>
       <div class="form-group"><label>${this.t('pu_contract_name')}</label><input id="pu_c_name" value="${this.docEsc(c.name || '')}"></div>
       <div class="form-group"><label>${this.t('pu_supplier')}</label><input id="pu_c_supplier" list="pu_c_sup_list" value="${this.docEsc(c.supplier || '')}"><datalist id="pu_c_sup_list">${supList}</datalist></div>

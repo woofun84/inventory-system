@@ -343,11 +343,11 @@ Object.assign(App, {
       const remain = Math.abs(Number(r.available) || 0);
       return '<tr>' +
         '<td>' + this.docEsc(r.code) + '</td><td>' + this.docEsc(r.material_name || '') + '</td><td>' + this.docEsc(r.material_spec || '') + '</td>' +
-        '<td style="font-size:12px">' + this.docEsc(r.doc_no || '') + '</td>' +
+        '<td class="u-fs-xs">' + this.docEsc(r.doc_no || '') + '</td>' +
         '<td class="text-right">' + this.fmtQty(orig) + '</td>' +
         '<td class="text-right">' + this.fmtQty(Math.max(0, orig - remain)) + '</td>' +
         '<td class="text-right"><b>' + this.fmtQty(remain) + '</b></td>' +
-        '<td style="min-width:110px"><input type="number" step="0.01" min="0.01" max="' + remain +
+        '<td class="u-min-w-110"><input type="number" step="0.01" min="0.01" max="' + remain +
         '" id="ib_pre_qty_' + i + '" oninput="App.ibPreQtyInput(' + i + ', this)" onpaste="App.qtyPaste(event)"></td>' +
         (vp ? '<td class="text-right">' + this.fmtMoney(r.price) + '</td>' : '') +
         '</tr>';
@@ -355,7 +355,7 @@ Object.assign(App, {
     box.innerHTML = '<div class="pu-card">' +
       '<div class="pu-card-title"><span>02</span><div>' + this.t(isMisc ? 'ret_lines_misc' : 'ret_lines_purchase') +
       '<small>' + this.t('ret_source_preview_hint', { n: usable.length }) + '</small></div></div>' +
-      '<div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>' +
+      '<div class="table-wrap u-scroll-280"><table><thead><tr>' +
       '<th>' + this.t('mat_code') + '</th><th>' + this.t('mat_name') + '</th><th>' + this.t('mat_spec') + '</th>' +
       '<th>' + this.t('ret_source_doc') + '</th>' +
       '<th class="text-right">' + this.t('ret_source_orig_qty') + '</th>' +
@@ -493,7 +493,7 @@ Object.assign(App, {
         </div>
         <div class="pu-card">
           <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
-          <div class="form-grid" style="max-width:none">
+          <div class="form-grid u-max-none">
             <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_f_no" value="${docNo}" readonly></div>
             <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_f_date" type="date" value="${date}"></div>
             ${typeField}
@@ -894,13 +894,13 @@ Object.assign(App, {
     }
     box.innerHTML = `<div class="pu-card">
       <div class="pu-card-title"><span>02</span><div>${this.t('pu_next_add_lines')}<small>${this.t('ibd_next_add_lines_hint', { n: pending.length })}</small></div></div>
-      <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr>
+      <div class="table-wrap u-scroll-280"><table><thead><tr>
         <th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th>${this.t('mat_spec')}</th>
         <th>${this.t('in_contract')}</th><th class="text-right">${this.t('pu_order_qty')}</th>
         <th class="text-right">${this.t('pu_received_qty')}</th><th class="text-right">${this.t('pu_unreceived_qty')}</th>
       </tr></thead><tbody>${pending.map(l => `<tr>
         <td>${this.docEsc(l.code)}</td><td>${this.docEsc(l.material_name || '')}</td><td>${this.docEsc(l.material_spec || '')}</td>
-        <td style="font-size:12px">${this.docEsc(l.contract_no_eff || '')}</td>
+        <td class="u-fs-xs">${this.docEsc(l.contract_no_eff || '')}</td>
         <td class="text-right">${this.fmtQty(l.order_qty)}</td>
         <td class="text-right">${this.fmtQty(l.received_qty)}</td>
         <td class="text-right"><b>${this.fmtQty(l.unreceived_qty)}</b></td>
@@ -1310,7 +1310,7 @@ Object.assign(App, {
       <div>
         <strong>${this.docEsc(this.ibLogLabel(l.action))}</strong>
         <span class="pu-log-meta">· ${this.docEsc(l.name || l.username || l.operator || l.created_by || '')} · ${this.fmtDateTime(l.created_at)}</span>
-        ${detail ? `<div style="font-size:12px;margin-top:4px;overflow-wrap:anywhere">${this.docEsc(detail)}</div>` : ''}
+        ${detail ? `<div class="u-meta-wrap">${this.docEsc(detail)}</div>` : ''}
       </div>
     </li>`;
     }).join('') + '</ol>';
@@ -1684,7 +1684,7 @@ Object.assign(App, {
     if (formEl) {
       if (this._ibCorrection) {
         const corr = this._ibCorrection;
-        formEl.innerHTML = `<div class="form-grid" style="max-width:none">
+        formEl.innerHTML = `<div class="form-grid u-max-none">
           <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.docEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_date')}</label><input id="ib_e_date" type="date" value="${this.fmtDate(corr.originalDate || d.date)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_type')}</label><input id="ib_e_type" value="${this.docEsc(typeLabel)}" readonly></div>
@@ -1694,7 +1694,7 @@ Object.assign(App, {
           <div class="form-group"><label>${this.t('in_po_no')}</label><input value="${this.docEsc(d.po_no || '')}" readonly></div>
           <div class="form-group"><label>${this.t('in_contract')}</label><input value="${this.docEsc(d.contract_no || '')}" readonly></div>
           <div class="form-group u-full"><label>${this.t('ibd_remarks')}</label><textarea id="ib_e_remarks" rows="2">${this.docEsc(d.remarks || '')}</textarea></div>
-          <div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ibd_corr_prefill_hint')}</div></div>
+          <div class="form-group u-full"><div class="ui-note ui-note--info u-m-0">${this.t('ibd_corr_prefill_hint')}</div></div>
         </div>`;
       } else if (isDraft) {
         // 字段排布与采购编辑页一致：单据号(只读) → 日期 → 类型(只读) → 供应商/来源单位 → 经手人 → [采购单号 → 合同号] → 备注(整行)
@@ -1714,8 +1714,8 @@ Object.assign(App, {
             <div class="form-group"><label>${this.t('ibd_source_refs')}</label><input id="ib_e_source_refs" value="${this.docEsc(this.ibSourceRefsText())}" readonly></div>`;
         }
         const lockHint = linked
-          ? `<div class="form-group u-full"><div class="ui-note ui-note--info" style="margin:0">${this.t('ret_line_origin_locked')}</div></div>` : '';
-        formEl.innerHTML = `<div class="form-grid" style="max-width:none">
+          ? `<div class="form-group u-full"><div class="ui-note ui-note--info u-m-0">${this.t('ret_line_origin_locked')}</div></div>` : '';
+        formEl.innerHTML = `<div class="form-grid u-max-none">
           <div class="form-group"><label>${this.t('ibd_no')}</label><input id="ib_e_no" value="${this.docEsc(d.doc_no)}" readonly></div>
           <div class="form-group"><label>${this.t('ibd_date')} *</label><input id="ib_e_date" type="date" value="${this.fmtDate(d.date)}"></div>
           <div class="form-group"><label>${isReturn ? this.t('ibd_doc_type') : this.t('ibd_type')}</label><input id="ib_e_type" value="${this.docEsc(typeLabel)}" readonly></div>
@@ -1817,7 +1817,7 @@ Object.assign(App, {
       tbody = this.emptyRow(colCount, `
         ${this.t('ibd_no_lines')}
         ${isCorr ? `<div style="margin-top:8px;color:var(--warning-fg)">${this.t('ibd_corr_void_only_hint')}</div>` : ''}
-        ${isDraft && !linked ? `<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
+        ${isDraft && !linked ? `<div class="u-mt-10"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
       `, { pad: 26 });
     } else {
       tbody = lines.map((l, i) => {
@@ -1883,7 +1883,7 @@ Object.assign(App, {
             <td>${this.ibLineLabel(l)}</td>
             <td${qty < 0 ? ' class="num-neg"' : ''}>${this.fmtQty(qty)}${l.material_unit ? ' ' + this.docEsc(l.material_unit) : ''}</td>
             ${vp ? `<td>${this.fmtMoney(l.price)}</td><td class="pu-edit-amt">${this.fmtMoney(amt)}</td>` : ''}
-            <td style="font-size:12px">${contract}</td>
+            <td class="u-fs-xs">${contract}</td>
             <td>${l.remarks || ''}</td>
             ${corrUnrecCell}
             <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}"${isCorr ? ` title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${availText}</td>

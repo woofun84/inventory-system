@@ -509,7 +509,7 @@ Object.assign(App, {
     const tabs = (o.tabs || []).map(t => `<button type="button" class="pu-dtab" role="tab" aria-selected="${o.active === t.k}" onclick="App.qInsTab('${board}','${t.k}')">${t.label}${t.n != null ? ` ${t.n}` : ''}</button>`).join('');
     return `<div class="pu-insp-head">
         <div><h2>${o.title}${o.badge ? ' ' + o.badge : ''}</h2>${o.sub ? `<small>${o.sub}</small>` : ''}</div>
-        <div style="display:flex;gap:4px">
+        <div class="u-row-gap-1">
           <button type="button" class="btn btn-outline btn-sm" title="${this.t(o.expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qInsExpand('${board}')">${this.icon(o.expanded ? 'restore' : 'maximize', 'icon--tool')}</button>
           <button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qInsClose('${board}')">${this.icon('close', 'icon--tool')}</button>
         </div>
@@ -679,7 +679,7 @@ Object.assign(App, {
     const headExtra = `<button type="button" class="btn btn-outline btn-sm" title="${this.t(expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qCardDocExpand()">${this.icon(expanded ? 'restore' : 'maximize', 'icon--tool')}</button>`
       + `<button type="button" class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qCardDocClose()">${this.icon('close', 'icon--tool')}</button>`;
     if (!d) {
-      return `<div class="pu-insp-head"><div><h2>${esc(no || '–')}</h2></div><div style="display:flex;gap:4px">${headExtra}</div></div><div class="pu-dpanel">${this.emptyState(this.t('q_no_data'))}</div>`;
+      return `<div class="pu-insp-head"><div><h2>${esc(no || '–')}</h2></div><div class="u-row-gap-1">${headExtra}</div></div><div class="pu-dpanel">${this.emptyState(this.t('q_no_data'))}</div>`;
     }
     return this.qDocPanel(src, d, {
       closeBtn: false,
@@ -948,11 +948,11 @@ Object.assign(App, {
     const items = [];
     if (detail.origin_doc_no) items.push({ doc_no: detail.origin_doc_no, type: this.t('q_source_doc'), status: '', src: this.qDocSourceOf(detail.origin_doc_no) });
     (detail.related_returns || []).forEach(x => items.push({ doc_no: x.doc_no, type: x.txn_type ? this.qDocTypeLabel(x.txn_type) : this.t('q_related_docs'), status: x.status, src: srcOf(x) }));
-    if (!items.length) return `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">${this.t('q_related_docs')}</div><div class="u-muted-sm">${this.t('q_no_related')}</div></div>`;
-    return `<div style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">${this.t('q_related_docs')}</div>
+    if (!items.length) return `<div class="u-mt-3"><div class="u-block-title-sm">${this.t('q_related_docs')}</div><div class="u-muted-sm">${this.t('q_no_related')}</div></div>`;
+    return `<div class="u-mt-3"><div class="u-block-title-sm">${this.t('q_related_docs')}</div>
       ${items.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0">
         <button class="pu-lk" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'${x.src}'})">${esc(x.doc_no)}</button>
-        <small style="color:var(--text-muted)">${esc(x.type)}</small>
+        <small class="u-muted">${esc(x.type)}</small>
         ${x.status ? this.qDocStatusBadge(x.status) : ''}
       </div>`).join('')}</div>`;
   },
@@ -1379,7 +1379,7 @@ Object.assign(App, {
       if (st.expanded) {
         const ps = this.getTableState(tid);
         body = this.qDocPanel(sc, d, { section: 'lines', maxLines: 0, rows: this.paginate(lines, ps.page, ps.pageSize) })
-          + (lines.length > ps.pageSize ? `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, lines.length)}</div>` : '');
+          + (lines.length > ps.pageSize ? `<div class="pu-pager u-mt-2">${this.puPagerHtml(tid, lines.length)}</div>` : '');
       } else {
         body = this.qDocPanel(sc, d, { section: 'lines', maxLines: 5 })
           + (lines.length > 5 ? `<button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('docs','lines')">${this.t('q_view_all_count', { n: lines.length })}</button>` : '');
@@ -1444,7 +1444,7 @@ Object.assign(App, {
       return `<dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${voidBanner}`;
     }
     if (opts.section === 'lines') {
-      return `<div style="font-weight:600;margin-bottom:6px">${this.t('q_doc_lines')}</div>
+      return `<div class="u-block-title-sm">${this.t('q_doc_lines')}</div>
         <div class="table-wrap"><table class="q-flow"><thead>${header}</thead><tbody>${rows}</tbody></table></div>
         ${more}`;
     }
@@ -1454,11 +1454,11 @@ Object.assign(App, {
     }
     const closeBtn = opts.closeBtn === false ? '' : `<button class="btn btn-outline btn-sm" onclick="App.qDocsClose()">${this.t('close')}</button>`;
     const foot = opts.foot === false ? '' : `<div class="pu-insp-foot" style="gap:8px">${opts.footExtra || ''}<button class="btn btn-primary" onclick="App.qOpenModuleDoc('${kind}','${esc(no)}')">${this.t('q_open_module')}</button></div>`;
-    return `<div class="pu-insp-head"><div><h2>${esc(no)} ${this.qDocStatusBadge(status)}</h2><small>${this.qDocTypeBadge(type)} · ${esc(this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '')}</small></div><div style="display:flex;gap:4px">${closeBtn}${opts.headExtra || ''}</div></div>
+    return `<div class="pu-insp-head"><div><h2>${esc(no)} ${this.qDocStatusBadge(status)}</h2><small>${this.qDocTypeBadge(type)} · ${esc(this.fmtDocDate(d.date, d.created_at, d.confirmed_at) || '')}</small></div><div class="u-row-gap-1">${closeBtn}${opts.headExtra || ''}</div></div>
       <div class="pu-dpanel">
         <dl class="pu-insp-meta" style="margin:0 0 10px">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
         ${voidBanner}
-        <div style="font-weight:600;margin-bottom:6px">${this.t('q_doc_lines')}</div>
+        <div class="u-block-title-sm">${this.t('q_doc_lines')}</div>
         <div class="table-wrap"><table class="q-flow"><thead>${header}</thead><tbody>${rows}</tbody></table></div>
         ${more}
         ${opts.related === false ? '' : this.qRelatedHtml(d)}
@@ -1705,7 +1705,7 @@ Object.assign(App, {
     else {
       const ps = this.getTableState(tid);
       shown = this.paginate(rows, ps.page, ps.pageSize);
-      if (rows.length > ps.pageSize) pager = `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, rows.length)}</div>`;
+      if (rows.length > ps.pageSize) pager = `<div class="pu-pager u-mt-2">${this.puPagerHtml(tid, rows.length)}</div>`;
     }
     const body = shown.length ? shown.map(x => `<tr${x.status === 'voided' ? ' class="is-voided"' : ''}>
         <td><button class="pu-lk${x.status === 'voided' ? ' is-voided' : ''}" onclick="App.qCardDocOpen('${esc(x.doc_no)}',{source:'outbound'})">${esc(x.doc_no)}</button></td>
@@ -1716,7 +1716,7 @@ Object.assign(App, {
       </tr>`).join('') : `${this.emptyRow(vp ? 5 : 4, this.t('q_no_data'), { cls: 'text-center' })}`;
     const more = limit && rows.length > limit
       ? `<button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('receivers','docs')">${this.t('q_view_all_count', { n: rows.length })}</button>` : '';
-    return `<div style="font-weight:600;margin-bottom:6px">${this.t('q_rcv_docs_title')}</div>
+    return `<div class="u-block-title-sm">${this.t('q_rcv_docs_title')}</div>
       <div class="table-wrap"><table class="q-flow"><thead><tr><th>${this.t('ledger_doc')}</th><th>${this.t('ledger_date')}</th><th class="text-right">${this.t('q_qty')}</th>${vp ? `<th class="text-right">${this.t('ledger_amount')}</th>` : ''}<th class="text-center">${this.t('ledger_status')}</th></tr></thead><tbody>${body}</tbody></table></div>${more}${pager}`;
   },
 
@@ -1730,7 +1730,7 @@ Object.assign(App, {
     else {
       const ps = this.getTableState(tid);
       shown = this.paginate(mats, ps.page, ps.pageSize);
-      if (mats.length > ps.pageSize) pager = `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, mats.length)}</div>`;
+      if (mats.length > ps.pageSize) pager = `<div class="pu-pager u-mt-2">${this.puPagerHtml(tid, mats.length)}</div>`;
     }
     const body = shown.length ? shown.map(m => `<tr>
         <td>${esc(m.code)}</td>
@@ -1740,7 +1740,7 @@ Object.assign(App, {
       </tr>`).join('') : `${this.emptyRow(vp ? 4 : 3, this.t('q_no_data'), { cls: 'text-center' })}`;
     const more = limit && mats.length > limit
       ? `<button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('receivers','mats')">${this.t('q_view_all_count', { n: mats.length })}</button>` : '';
-    return `<div style="font-weight:600;margin-bottom:6px">${this.t('q_tab_materials')}</div>
+    return `<div class="u-block-title-sm">${this.t('q_tab_materials')}</div>
       <div class="table-wrap"><table class="q-flow"><thead><tr><th>${this.t('mat_code')}</th><th>${this.t('mat_name')}</th><th class="text-right">${this.t('q_qty')}</th>${vp ? `<th class="text-right">${this.t('ledger_amount')}</th>` : ''}</tr></thead><tbody>${body}</tbody></table></div>${more}${pager}`;
   },
 
@@ -1898,7 +1898,7 @@ Object.assign(App, {
         <select id="q_an_days" onchange="App.qAnStDays(this.value)">${this.qAnDaysOptions(st.days)}</select>
         <input id="q_an_days_custom" type="number" min="1" max="3650" value="${isFixed ? '' : Number(st.days)}" placeholder="${this.t('q_an_days')}" style="width:90px;${isFixed ? 'display:none' : ''}" onchange="App.qAnStCustom(this.value)">
         <span class="pu-sep"></span>
-        <span class="q-an-note" style="margin:0">${this.t('q_an_rule_stagnant')}</span>
+        <span class="q-an-note u-m-0">${this.t('q_an_rule_stagnant')}</span>
       </div></div>
       <div class="pu-kpis" id="q_an_st_kpis"></div>
       <div id="q_an_st_table"></div>`;
@@ -1996,7 +1996,7 @@ Object.assign(App, {
         ${this.sortTh(this.t('q_an_col_days'), 'sort_days', tid, true)}
         <th class="text-center">${this.t('q_an_col_bucket')}</th>
       </tr></thead><tbody>${body}</tbody></table></div>
-      ${rows.length ? `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, rows.length)}</div>` : ''}`;
+      ${rows.length ? `<div class="pu-pager u-mt-2">${this.puPagerHtml(tid, rows.length)}</div>` : ''}`;
   },
 
   // ---------- ABC 分类 ----------
@@ -2017,7 +2017,7 @@ Object.assign(App, {
           ${['A', 'B', 'C', 'N'].map(c => `<option value="${c}"${st.cls === c ? ' selected' : ''}>${this.t('q_an_class_' + c.toLowerCase())}</option>`).join('')}
         </select>
         <span class="pu-sep"></span>
-        <span class="q-an-note" style="margin:0">${this.t('q_an_rule_abc')}</span>
+        <span class="q-an-note u-m-0">${this.t('q_an_rule_abc')}</span>
       </div></div>
       <div class="q-an-class" id="q_an_abc_cards"></div>
       <div id="q_an_abc_table"></div>`;
@@ -2120,7 +2120,7 @@ Object.assign(App, {
         ${this.sortTh(this.t('q_an_stock_qty'), 'on_hand', tid, true)}
         ${vp ? this.sortTh(this.t('q_an_stock_amount'), 'stock_value', tid, true) : ''}
       </tr></thead><tbody>${body}</tbody></table></div>
-      ${rows.length ? `<div class="pu-pager" style="margin-top:8px">${this.puPagerHtml(tid, rows.length)}</div>` : ''}`;
+      ${rows.length ? `<div class="pu-pager u-mt-2">${this.puPagerHtml(tid, rows.length)}</div>` : ''}`;
   },
 
   // ---------- 库存周转率 ----------
@@ -2131,7 +2131,7 @@ Object.assign(App, {
         <label for="q_an_turn_range">${this.t('q_an_range')}</label>
         <select id="q_an_turn_range" onchange="App.qAnTurnRange(this.value)">${this.qAnRangeOptions(st.range)}</select>
         <span class="pu-sep"></span>
-        <span class="q-an-note" style="margin:0">${this.t('q_an_rule_turnover')}</span>
+        <span class="q-an-note u-m-0">${this.t('q_an_rule_turnover')}</span>
       </div></div>
       <div class="pu-kpis" id="q_an_turn_kpis"></div>
       <div id="q_an_turn_note"></div>

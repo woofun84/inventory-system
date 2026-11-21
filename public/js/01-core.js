@@ -122,6 +122,75 @@ const App = {
     try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch (_) { /* 存储不可用时忽略 */ }
   },
 
+  // 记录当前点击的触发按钮，供统一 Loading 包装器使用。
+  // 用捕获阶段保证它早于行内 onclick（App.xxx()）执行；微任务结束后清空，避免异步回调误用。
+  trackActionButton() {
+    document.addEventListener('click', e => {
+      const t = e.target;
+      this._actionButton = t && t.closest ? t.closest('button,[role="button"],.action-link') : null;
+      queueMicrotask(() => { this._actionButton = null; });
+    }, true);
+  },
+
+  // 统一给提交/确认类方法套 Loading：disabled + spinner + aria-busy，异常或完成后必定还原。
+  // 已在弹窗确认流程中的按钮（dataset.loading=1）跳过，避免与 showModal 自己的 Loading 互相覆盖。
+  wrapActionLoading(names) {
+    (names || []).forEach(name => {
+      const fn = this[name];
+      if (typeof fn !== 'function' || fn.__actionLoadingWrapped) return;
+      const wrapped = function (...args) {
+        const btn = App._actionButton;
+        if (!btn || btn.dataset.loading === '1') return fn.apply(this, args);
+        App.setButtonLoading(btn, true);
+        let r;
+        try {
+          r = fn.apply(this, args);
+        } catch (e) {
+          App.setButtonLoading(btn, false);
+          throw e;
+        }
+        if (r && typeof r.then === 'function') {
+          return r.then(
+            v => { App.setButtonLoading(btn, false); return v; },
+            e => { App.setButtonLoading(btn, false); throw e; }
+          );
+        }
+        App.setButtonLoading(btn, false);
+        return r;
+      };
+      wrapped.__actionLoadingWrapped = true;
+      this[name] = wrapped;
+    });
+  },
+
+  // 业务提交/确认入口清单：新增异步提交方法时在这里登记即可，无需逐个改模板。
+  initActionLoading() {
+    this.wrapActionLoading([
+      // 物料
+      'submitMaterialBatch', 'submitMaterialImport', 'deleteMaterial',
+      // 入库
+      'createInboundDoc', 'loadInboundCorrectionPending', 'ibDoConfirmCorrection',
+      'ibDoSaveDraft', 'ibDoConfirmFromEdit', 'confirmInboundDoc', 'deleteInboundDoc',
+      // 出库
+      'createOutboundDoc', 'fillOutboundOriginLines', 'saveOutboundDraft',
+      'obConfirmStockData', 'confirmOutboundDocFromEdit', 'confirmOutboundCorrection',
+      'confirmOutboundDoc', 'deleteOutboundDoc',
+      // 供应商 / 系统设置 / 用户
+      'deleteSupplier', 'enableSupplier', 'saveAutoBackup', 'toggleAutoBackup',
+      'runAutoBackupNow', 'downloadBackup', 'saveDocNoRules', 'doRestore', 'doClear',
+      'confirmSettleVariance', 'doSettleVariance', 'addParam', 'deleteParam', 'deleteUser',
+      // 采购
+      'puCreateOrder', 'puSaveOrderDraft', 'puConfirmOrder', 'puConfirmOrderDirect',
+      'puReceive', 'deletePurchaseOrder', 'deletePurchaseLine', 'deleteContract',
+      // 盘点
+      'stBulkZero', 'createStocktake', 'saveStocktakeCounts', 'stConfirmFromEdit',
+      'doStocktakeAddLines', 'removeStocktakeLine', 'confirmStocktake', 'stConfirmWithDiffs',
+      'stCorrectFromConfirm', 'stApplyCorrect', 'doConfirmStocktake', 'deleteStocktake',
+      // 退货
+      'retConfirm', 'retDelete'
+    ]);
+  },
+
   async init() {
     this.clearLegacyAuth();
     // 未登录 → 跳转登录页
@@ -147,6 +216,9 @@ const App = {
     // 启动界面空闲锁屏（5 分钟无操作返回登录页，属前端界面保护；
     // 与服务端 SESSION_IDLE_HOURS 会话过期是两层独立机制，见 README）
     this.startIdleTimer();
+    // 统一按钮 Loading：捕获点击来源 → 包装业务提交方法（02-ui-kit.js 的 setButtonLoading）
+    this.trackActionButton();
+    this.initActionLoading();
     // 启动连接监视与登录会话心跳（14-connection.js）
     if (this.startConnectionWatch) this.startConnectionWatch();
     await this.loadParams();
@@ -302,7 +374,7 @@ const App = {
         <div class="form-error" id="cp_old_error"></div>
       </div>
       <div class="form-group u-full">
-        <label>${this.t('new_password')} * <span style="font-size:11px;color:var(--text-muted)">(${this.t('pwd_min_len')})</span></label>
+        <label>${this.t('new_password')} * <span class="u-muted-xxs">(${this.t('pwd_min_len')})</span></label>
         <input id="cp_new" type="password" oninput="App.clearFieldError('cp_new')">
         <div class="form-error" id="cp_new_error"></div>
       </div>
