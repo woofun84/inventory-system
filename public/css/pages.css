@@ -84,11 +84,12 @@
   /* head-actions + filter-toggle 同行等宽，视觉统一不割裂 */
   .pu-head-actions > .btn,
   .filter-toggle { flex: 1 1 0; justify-content: center; }
-  /* 分页器极限紧凑：隐藏 "每页 N 条" select 标签文字，只留下拉 */
+  /* 分页器极限紧凑：只留 ‹ 当前页/总页数 › + 每页下拉，数字页码整段隐藏
+     （当前位置由 .pu-pager-pageinfo 表达，首尾仍可经箭头逐级到达） */
   .pu-pager label { font-size: 10px; }
   .pu-pager label::before { content: ''; display: none; }
   .pu-pager label select { height: 24px; padding: 0 4px; font-size: 11px; }
-  .pu-pager .pu-pager-gap { display: none; } /* 隐藏省略号 */
+  .pu-pager-nums { display: none; }
 }
 
 /* ===== 移动端触控热区：视觉尺寸保持不变，命中区统一 ≥44×44px ===== */

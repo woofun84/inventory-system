@@ -274,28 +274,23 @@ Object.assign(App, {
         : `onclick="App.onPage('${tableId}',${target})"`;
       return `<button type="button" class="btn btn-outline btn-sm${active ? ' active' : ''}" ${act}${disabled ? ' disabled' : ''}>${label}</button>`;
     };
+    // 数字页码窗口尽量窄：首页 + 当前页 + 末页，最多 3 个按钮 + 省略号。
+    // 页码指示「4 / 43 页」始终显示，小屏隐藏数字后仍可知当前位置并可首尾跳转。
+    // 包进 .pu-pager-nums，供窄屏 CSS 整段隐藏。
     let nums = '';
-    // 可见数字页码控制在最多 5 个（首页 + 当前页±1 + 末页），避免页码条过长。
-    // 当前页靠近两端时窗口向内收缩，始终保证 5 个以内且首尾可达。
-    if (tp <= 5) {
+    if (tp <= 3) {
       for (let i = 1; i <= tp; i++) nums += pgBtn(i, i, i === page, false);
     } else {
-      let pStart = Math.max(2, page - 1), pEnd = Math.min(tp - 1, page + 1);
-      // 窗口固定占 3 个中间位：靠左/靠右时平移窗口，保证中间始终 3 个
-      if (page <= 2) { pStart = 2; pEnd = 4; }
-      else if (page >= tp - 1) { pStart = tp - 3; pEnd = tp - 1; }
-      // 首页
-      nums += pgBtn(1, 1, false, false);
-      if (pStart > 2) nums += `<span class="pu-pager-gap">…</span>`;
-      for (let i = pStart; i <= pEnd; i++) nums += pgBtn(i, i, i === page, false);
-      if (pEnd < tp - 1) nums += `<span class="pu-pager-gap">…</span>`;
-      // 末页
-      nums += pgBtn(tp, tp, false, false);
+      nums += pgBtn(1, 1, page === 1, false);
+      if (page > 2) nums += `<span class="pu-pager-gap">…</span>`;
+      if (page > 1 && page < tp) nums += pgBtn(page, page, true, false);
+      if (page < tp - 1) nums += `<span class="pu-pager-gap">…</span>`;
+      nums += pgBtn(tp, tp, page === tp, false);
     }
     return `<span class="pu-pager-pageinfo">${page} / ${tp} ${this.t('page')}</span>
       <label class="pu-pager-sz">${this.t('pageSize')} <select${selAttr}>${sizes.map(n => `<option value="${n}"${n === st.pageSize ? ' selected' : ''}>${n === 0 ? this.t('all') : n}</option>`).join('')}</select></label>
       ${pgBtn(page - 1, '‹', false, all || page <= 1)}
-      ${nums}
+      <span class="pu-pager-nums">${nums}</span>
       ${pgBtn(page + 1, '›', false, all || page >= tp)}`;
   },
 
