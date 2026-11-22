@@ -211,7 +211,7 @@ Object.assign(App, {
         + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],
       ['destination', this.t('obd_destination'), r => this.docEsc(r.destination || '')],
       ['line_count', this.t('obd_lines'), r => r.line_count || 0, true],
-      ['total_qty', this.obState().tab === '正常出库' ? this.t('obd_qty') : this.t('obd_qty_mixed'), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
+      ['total_qty', this.t('obd_qty'), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
       ['total_amount', this.t('obd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('obd_handler'), r => this.docEsc(r.handler || '')],
       ['status', this.t('obd_status'), r => this.obdStatusBadge(r.status), 'center'],

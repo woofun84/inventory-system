@@ -580,7 +580,7 @@ Object.assign(App, {
         + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],
       ['party', s.tab === '零星退货' ? this.t('ret_source_unit') : this.t('ret_party'), r => this.docEsc(r.party || '-')],
       ['line_count', this.t('ret_lines'), r => r.line_count || 0, true],
-      ['total_qty', this.retQtyLabel({ sub_type: s.tab === 'voided' ? '' : s.tab }), r => this.qtyCell(r.direction === 'in' ? r.total_qty : -r.total_qty), true],
+      ['total_qty', this.retQtyLabel({ sub_type: s.tab === 'voided' ? '' : s.tab }), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
       ['total_amount', this.t('ret_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['status', this.t('ret_status'), r => this.retStatusBadge(r.status), 'center'],
       ['remarks', this.t('ibd_remarks'), r => this.cellClip(r.remarks)],

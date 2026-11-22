@@ -223,7 +223,7 @@ Object.assign(App, {
       ['txn_type', this.t('ibd_type'), r => this.ibTypeBadge(r.txn_type), 'center'],
       ['supplier', this.t('ibd_supplier'), r => this.docEsc(r.supplier || '')],
       ['line_count', this.t('ibd_lines'), r => r.line_count || 0, true],
-      ['total_qty', this.t('ibd_qty'), r => this.qtyCell(r.total_qty), true],
+      ['total_qty', this.t('ibd_qty'), r => this.fmtQty(this.qtyAbs(r.total_qty)), true],
       ['total_amount', this.t('ibd_amount'), r => this.fmtMoney(r.total_amount), true, vp],
       ['handler', this.t('ibd_handler'), r => this.docEsc(r.handler || '')],
       ['status', this.t('ibd_status'), r => this.ibdStatusBadge(r.status), 'center'],
