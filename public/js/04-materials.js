@@ -22,7 +22,10 @@ Object.assign(App, {
       </div>
       <div class="pu-head-actions">${addBtn}</div>
     </div>`;
-    this.setMain(this.pageWrap(this.icon('tag', 'icon--title') + ' ' + this.t('mat_title'), this.t('mat_desc'), '', `<div id="materials-content" class="data-page">${toolbar}<div class="data-scroll" id="materials-scroll"></div><div class="pu-pager" id="materials-pager"></div></div>`));
+    // 页头右侧：有查询权限时给出「实时库存」入口，明示实时库存与流水在查询中心（方案B职责互跳）
+    const headRight = this.can('query', 'view')
+      ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.gotoPage('query')">${this.t('q_goto_stock')} →</button>` : '';
+    this.setMain(this.pageWrap(this.icon('tag', 'icon--title') + ' ' + this.t('mat_title'), this.t('mat_desc'), headRight, `<div id="materials-content" class="data-page">${toolbar}<div class="data-scroll" id="materials-scroll"></div><div class="pu-pager" id="materials-pager"></div></div>`));
     try {
       this._materialsData = await this.api('/api/materials');
       this._tableRenderers = this._tableRenderers || {};

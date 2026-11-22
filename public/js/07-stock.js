@@ -25,7 +25,10 @@ Object.assign(App, {
       if (code) this._qCardPending = { code, expanded: true };
     }
     this.qBoard = board;
-    this.setMain(this.pageWrap(this.icon('search', 'icon--title') + ' ' + this.t('q_title'), this.t('q_desc'), '', `<div id="q-root" class="data-page">
+    // 页头右侧：有物料查看权限时给出「物料档案」入口，明示主数据维护在另一页（方案B职责互跳）
+    const headRight = this.can('materials', 'view')
+      ? `<button type="button" class="btn btn-outline btn-sm q-head-link" onclick="App.gotoPage('materials')">${this.t('q_goto_materials')} →</button>` : '';
+    this.setMain(this.pageWrap(this.icon('search', 'icon--title') + ' ' + this.t('q_title'), this.t('q_desc'), headRight, `<div id="q-root" class="data-page">
       <div class="data-toolbar q-global-bar">
         <nav id="q-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('q_title')}"></nav>
         <div class="q-gsearch"><div class="pu-search">
@@ -106,6 +109,7 @@ Object.assign(App, {
 
   qBoardStock(panel) {
     panel.innerHTML = `<div id="q-stock">
+      <div class="q-role-hint">${this.t('q_stock_hint')}</div>
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_keyword" placeholder="${this.t('quick_filter_ph')}" oninput="App.qStockFilter()"></div>
@@ -265,7 +269,12 @@ Object.assign(App, {
       ['on_hand', this.t('stock_on_hand'), true], ['min_stock', this.t('stock_min'), true],
       ['stock_status', this.t('mat_status'), 'center']
     ];
-    let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid, h[2])).join('');
+    let thHtml = headers.map(h => {
+      const th = this.sortTh(h[1], h[0], tid, h[2]);
+      if (h[0] === 'on_hand') return th.replace('class="', 'class="q-live-col ');
+      if (h[0] === 'brand') return th.replace('class="', 'class="q-static-col ');
+      return th;
+    }).join('');
     const colCount = headers.length;
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
@@ -274,7 +283,7 @@ Object.assign(App, {
       tbody = pageData.map(m => {
         // 编码作为 onclick 的字符串参数：先 JSON 字符串化，再做 HTML 属性转义
         const codeArg = this.docEsc(JSON.stringify(String(m.code == null ? '' : m.code)));
-        return `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen(${codeArg})"><td class="cell-code">${this.docEsc(m.code)}</td><td class="q-ell" title="${esc(m.name)}">${this.docEsc(m.name)}</td><td class="q-ell" title="${esc(m.spec)}">${this.docEsc(m.spec || '')}</td><td>${this.docEsc(m.category)}</td><td class="q-ell" title="${esc(m.brand)}">${this.docEsc(m.brand || '')}</td><td>${this.docEsc(m.unit)}</td><td class="text-right"><strong>${this.docEsc(m.on_hand)}</strong></td><td class="text-right">${this.docEsc(m.min_stock)}</td><td class="text-center">${this.statusBadge(m.stock_status)}</td></tr>`;
+        return `<tr class="pu-row" data-key="${this.docEsc(m.code)}" onclick="App.qCardOpen(${codeArg})"><td class="cell-code">${this.docEsc(m.code)}</td><td class="q-ell" title="${esc(m.name)}">${this.docEsc(m.name)}</td><td class="q-ell" title="${esc(m.spec)}">${this.docEsc(m.spec || '')}</td><td>${this.docEsc(m.category)}</td><td class="q-ell q-static-col" title="${esc(m.brand)}">${this.docEsc(m.brand || '')}</td><td>${this.docEsc(m.unit)}</td><td class="text-right q-live-col"><strong>${this.docEsc(m.on_hand)}</strong></td><td class="text-right">${this.docEsc(m.min_stock)}</td><td class="text-center">${this.statusBadge(m.stock_status)}</td></tr>`;
       }).join('');
     }
     const kpis = [[this.t('stock_types'), sorted.length], ...(vp ? [[this.t('stock_total_value'), this.fmtMoney(totalValue)]] : []), [this.t('stock_alerts'), alerts]];
@@ -844,7 +853,16 @@ Object.assign(App, {
       : '';
     return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${imageRow}
       <dl class="pu-insp-meta q-card-meta q-card-stock">${stats.map(k => `<div><dt>${k[0]}</dt><dd class="q-num">${k[1]}</dd></div>`).join('')}</dl>
-      <div class="q-card-month">${this.t('q_month_in_qty')} <strong class="num-pos">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong class="num-warn">−${io.out}</strong></div>`;
+      <div class="q-card-month">${this.t('q_month_in_qty')} <strong class="num-pos">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong class="num-warn">−${io.out}</strong></div>
+      ${this.can('materials', 'create') ? `<div class="q-card-edit"><button type="button" class="btn btn-outline btn-sm" onclick="App.qEditMaterial()">${this.t('q_edit_material')} →</button></div>` : ''}`;
+  },
+
+  // 从实时库存详情卡跳物料档案编辑：先切页再打开弹窗（editMaterial 自行拉取最新数据）
+  async qEditMaterial() {
+    const code = this._qCard && this._qCard.key;
+    if (!code) return;
+    await this.gotoPage('materials');
+    return this.editMaterial(code);
   },
 
   qCardFlowPanel() {
