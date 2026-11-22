@@ -6,6 +6,7 @@
  * 只读请求（GET）不记录，避免噪音。
  */
 const { record, summarize } = require('../services/audit');
+const { clientIp } = require('../utils/client-ip');
 const db = require('../db');
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -113,8 +114,9 @@ function auditMiddleware(req, res, next) {
         target: req.auditTarget || pickTarget(segs, body),
         method: req.method,
         path: req.originalUrl.split('?')[0],
-        ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+        ip: clientIp(req),
         status: res.statusCode,
+        level: 'info', source: 'user',
         detail: (action === 'login' || action === 'change-password') ? '' : summarize(body),
       });
     } catch (e) {

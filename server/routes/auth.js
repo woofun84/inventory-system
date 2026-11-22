@@ -8,19 +8,40 @@ const db = require('../db');
 const { JWT_SECRET, JWT_EXPIRES } = require('../config');
 const { publicUser } = require('../middleware/auth');
 const { issueSession, getSession, touchSession, revokeSession, rotateSession } = require('../services/session');
+const audit = require('../services/audit');
+const { clientIp } = require('../utils/client-ip');
 
 const router = express.Router();
+
+function authAudit(req, action, detail, status, target) {
+  audit.record({
+    user_id: (req.user || {}).id || null,
+    username: (req.user || {}).username || String((req.body || {}).username || ''),
+    name: (req.user || {}).name || '', role: (req.user || {}).role || '',
+    module: 'auth', action, target: target || '', method: req.method,
+    path: req.originalUrl.split('?')[0], ip: clientIp(req), status,
+    detail,
+  });
+  req.skipGenericAudit = true;
+}
 
 router.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: '请输入用户名和密码' });
   try {
     const u = db.prepare('SELECT * FROM users WHERE username=?').get(String(username).trim());
-    if (!u) return res.status(401).json({ error: '用户名或密码错误' });
-    if (!bcrypt.compareSync(String(password), u.password_hash)) {
+    if (!u) {
+      authAudit(req, 'login-failed', { key: 'audit_detail_login_failed', params: { target: String(username).trim(), reason: 'not-found' } }, 401, String(username).trim());
       return res.status(401).json({ error: '用户名或密码错误' });
     }
-    if (u.status !== 'active') return res.status(403).json({ error: '账号已被停用，请联系管理员' });
+    if (!bcrypt.compareSync(String(password), u.password_hash)) {
+      authAudit(req, 'login-failed', { key: 'audit_detail_login_failed', params: { target: u.username, reason: 'bad-password' } }, 401, u.username);
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+    if (u.status !== 'active') {
+      authAudit(req, 'login-failed', { key: 'audit_detail_login_failed', params: { target: u.username, reason: 'disabled' } }, 403, u.username);
+      return res.status(403).json({ error: '账号已被停用，请联系管理员' });
+    }
     db.prepare("UPDATE users SET last_login=datetime('now') WHERE id=?").run(u.id);
     // 单终端登录：新会话的 sid 覆盖旧会话，先前那台终端的 token 立刻失效
     const sid = issueSession(u, req);
@@ -51,6 +72,7 @@ router.get('/api/auth/session', (req, res) => {
 // 主动退出：只撤销当前 sid 的会话，旧标签页不会误删新会话
 router.post('/api/auth/logout', (req, res) => {
   revokeSession(req.user.id, req.sessionSid);
+  authAudit(req, 'logout', { key: 'audit_detail_logout' }, 200, req.user.username);
   res.json({ ok: true });
 });
 
@@ -62,6 +84,7 @@ router.post('/api/auth/change-password', (req, res) => {
   try {
     const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
     if (!bcrypt.compareSync(String(oldPassword), u.password_hash)) {
+      authAudit(req, 'password-change-failed', { key: 'audit_detail_pwd_change_failed' }, 400, u.username);
       return res.status(400).json({ error: '原密码不正确' });
     }
     db.prepare('UPDATE users SET password_hash=?, must_change_pwd=0 WHERE id=?')
@@ -72,6 +95,7 @@ router.post('/api/auth/change-password', (req, res) => {
       { id: req.user.id, username: u.username, role: u.role, sid },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
+    authAudit(req, 'change-password', { key: 'audit_detail_change_pwd' }, 200, u.username);
     res.json({ success: true, token });
   } catch (e) {
     console.error('[auth] change-password failed:', e);

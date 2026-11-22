@@ -32,6 +32,7 @@ const materialImages = require('../services/material-images');
 const { seedGrants } = require('../services/user-permissions');
 const { hasGrant } = require('../permissions');
 const { INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD } = require('../config');
+const { clientIp } = require('../utils/client-ip');
 
 const router = express.Router();
 
@@ -99,6 +100,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// 清库前先写独立留痕（这些操作会抹掉 audit_logs，链尾必须落到日志表之外）
+function evidence(req, event, extra) {
+  return audit.appendEvidence({
+    event, actor: req.user ? req.user.username : '', ip: clientIp(req),
+    head: audit.chainHead(), ...extra,
+  });
+}
+
 function recordOp(req, action, detail) {
   const u = req.user || {};
   audit.record({
@@ -111,7 +120,7 @@ function recordOp(req, action, detail) {
     target: '',
     method: req.method,
     path: req.originalUrl.split('?')[0],
-    ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+    ip: clientIp(req),
     status: 200,
     detail,
   });
@@ -380,6 +389,7 @@ router.post('/api/settings/backup/restore', requireAdmin,
       imagesSwapped = false;
 
       const restoredImages = referencedImages.length;
+      evidence(req, 'restore', { backup: backupName });
       recordOp(req, 'restore', { key: 'audit_detail_restore', params: { file: backupName, images: restoredImages } });
       res.json({
         success: true,
@@ -498,6 +508,7 @@ router.post('/api/settings/data/clear-business', requireAdmin, (req, res) => {
   let backupName = '';
   try {
     backupName = autoBackup('inventory-before-clear');
+    evidence(req, 'clear-business', { backup: backupName });
     const tx = db.transaction(() => {
       BUSINESS_TABLES.forEach(t => db.exec(`DELETE FROM ${q(t)}`));
       // 物料档案保留时，期初数量仍属于档案属性：清完业务后按档案重出「期初结存」流水，
@@ -529,6 +540,7 @@ router.post('/api/settings/data/reset', requireAdmin, (req, res) => {
   let backupName = '';
   try {
     backupName = autoBackup('inventory-before-reset');
+    evidence(req, 'reset', { backup: backupName });
     const tx = db.transaction(() => {
       // 先删子表（用户级权限、登录会话）再删 users，避免留下孤儿授权行
       USER_PERM_TABLES.concat(SESSION_TABLES).forEach(t => db.exec(`DELETE FROM ${q(t)}`));

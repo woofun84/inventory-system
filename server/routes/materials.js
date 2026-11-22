@@ -10,6 +10,7 @@ const { syncOpeningLedger, hasNonOpeningLedger } = require('../services/costing'
 const units = require('../services/units');
 const audit = require('../services/audit');
 const materialImages = require('../services/material-images');
+const { clientIp } = require('../utils/client-ip');
 
 const router = express.Router();
 
@@ -199,7 +200,7 @@ function auditCreated(req, m) {
     user_id: u.id || null, username: u.username || '', name: u.name || '', role: u.role || '',
     module: 'materials', action: 'create', target: m.code,
     method: req.method, path: req.originalUrl.split('?')[0],
-    ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+    ip: clientIp(req),
     status: 200, detail: audit.summarize(m),
   });
 }
@@ -210,7 +211,7 @@ function auditImage(req, action, code) {
     user_id: u.id || null, username: u.username || '', name: u.name || '', role: u.role || '',
     module: 'materials', action, target: code,
     method: req.method, path: req.originalUrl.split('?')[0],
-    ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+    ip: clientIp(req),
     status: 200,
     detail: { key: 'audit_detail_material_image', params: { action: action === 'image-upload' ? 'upload' : 'delete' } },
   });
@@ -384,7 +385,7 @@ router.post('/api/materials/batch', requirePerm('materials', 'create'), requireP
       name: (req.user || {}).name || '', role: (req.user || {}).role || '',
       module: 'materials', action: 'create', target: '',
       method: req.method, path: req.originalUrl.split('?')[0],
-      ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+      ip: clientIp(req),
       status: 400, detail: audit.summarize({ failed: badRows.length, lines: badRows.map(r => r.line) }),
     });
     return res.status(400).json(batchRowPayload(badRows));
@@ -540,7 +541,7 @@ router.put('/api/materials/:code', requirePerm('materials', 'edit'), requirePric
         target: newCode,
         method: 'PUT',
         path: req.originalUrl.split('?')[0],
-        ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+        ip: clientIp(req),
         status: 200,
         detail: JSON.stringify({ code: newCode, old_code: oldCode }),
       });

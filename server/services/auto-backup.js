@@ -218,7 +218,8 @@ async function tick() {
     audit.record({
       username: 'system', name: 'system', role: 'system', module: 'settings', action: 'auto-backup',
       target: r.file, method: 'AUTO', path: '/api/settings/backup/auto',
-      status: 200, detail: { key: 'audit_detail_auto_backup', params: { file: r.file } },
+      status: 200, level: 'info', source: 'system',
+      detail: { key: 'audit_detail_auto_backup', params: { file: r.file } },
     });
     console.log(`自动备份完成: ${r.file} (${r.size} bytes)`);
   } catch (e) {

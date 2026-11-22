@@ -30,6 +30,7 @@ const {
 const docno = require('../services/docno');
 const { maskRows, requirePriceEdit } = require('../services/price-mask');
 const { kwClause, kwClauseExpr } = require('../utils/search');
+const { clientIp } = require('../utils/client-ip');
 
 const router = express.Router();
 
@@ -262,7 +263,7 @@ function recordModifyAudit(req, poNo, detail) {
     target: poNo,
     method: req.method,
     path: req.originalUrl.split('?')[0],
-    ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+    ip: clientIp(req),
     status: 200,
     detail: detail || '表头与明细未发生变化',
   });
@@ -760,7 +761,7 @@ function recordPriceSyncAudit(req, poNo, result, changes) {
     target: poNo,
     method: req.method,
     path: req.originalUrl.split('?')[0],
-    ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+    ip: clientIp(req),
     status: 200,
     detail: JSON.stringify({
       source: 'purchase',

@@ -22,6 +22,8 @@ try {
 const { HOST, PORT } = config;
 const { requireAuth } = require('./server/middleware/auth');
 const { auditMiddleware } = require('./server/middleware/audit');
+const audit = require('./server/services/audit');
+const { clientIp } = require('./server/utils/client-ip');
 
 // 加载数据库（执行迁移）
 require('./server/db');
@@ -91,7 +93,8 @@ app.get('/api/health', (req, res) => {
 // ==================== 路由挂载 ====================
 // 以下 /api 接口需要登录（login 单独放行）
 app.use('/api', (req, res, next) => {
-  if (req.path === '/auth/login') return next();
+  // login 与前端异常采样上报免鉴权（上报只收类型+消息，服务端限流，不碰业务数据）
+  if (req.path === '/auth/login' || req.path === '/client-errors') return next();
   return requireAuth(req, res, next);
 });
 
@@ -118,6 +121,30 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ==================== 运行期异常入库 ====================
+// 全局错误中间件（必须放在所有路由之后）：5xx 写一条 error 级审计，前端日志页可追溯。
+function recordServerError(err, req, level) {
+  try {
+    const u = req && req.user ? req.user : {};
+    const msg = String((err && err.message) || err || 'unknown error').slice(0, 400);
+    audit.record({
+      user_id: u.id || null, username: u.username || '', name: u.name || '', role: u.role || '',
+      module: 'system', action: level === 'fatal' ? 'fatal-error' : 'server-error',
+      target: req && req.path ? String(req.path).slice(0, 120) : '',
+      method: req ? req.method || '' : '', path: req ? String(req.originalUrl || req.path || '').split('?')[0].slice(0, 160) : '',
+      ip: req ? clientIp(req) : '', status: level === 'fatal' ? 500 : ((err && err.status) || 500),
+      level, source: 'system',
+      detail: { key: level === 'fatal' ? 'audit_detail_fatal_error' : 'audit_detail_server_error', params: { msg } },
+    });
+  } catch (e) { console.error('[audit] 异常入库失败:', e.message); }
+}
+app.use((err, req, res, next) => {
+  recordServerError(err, req, 'error');
+  console.error('[server] unhandled error:', err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  res.status((err && err.status) || 500).json({ error: '服务器内部错误，请稍后重试' });
+});
+
 // ==================== 局域网地址探测 ====================
 function getLanIPs() {
   const ips = [];
@@ -132,6 +159,18 @@ function getLanIPs() {
   }
   return ips;
 }
+
+// 进程级兜底：只在 stderr 之外多写一条审计，随后按 Node 推荐做法退出，交给 systemd 重启。
+process.on('uncaughtException', err => {
+  console.error('[fatal] uncaughtException:', err && err.stack ? err.stack : err);
+  recordServerError(err, null, 'fatal');
+  process.exit(1);
+});
+process.on('unhandledRejection', reason => {
+  console.error('[fatal] unhandledRejection:', reason);
+  recordServerError(reason instanceof Error ? reason : new Error(String(reason)), null, 'fatal');
+  process.exit(1);
+});
 
 app.listen(PORT, HOST, () => {
   const lan = getLanIPs();

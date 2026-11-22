@@ -11,6 +11,7 @@ const { requirePerm } = require('../middleware/auth');
 const { createDocPermissions } = require('../middleware/doc-permission');
 const { hasGrant } = require('../permissions');
 const { kwClause } = require('../utils/search');
+const { clientIp } = require('../utils/client-ip');
 const {
   validateOutboundStock,
   getAvailableStock,
@@ -588,7 +589,7 @@ router.post('/api/outbound-docs/:docNo/confirm', requireDocAction('post'), (req,
         audit.record({
           user_id: req.user?.id ?? null, username: req.user?.username || '', name: req.user?.name || '',
           role: req.user?.role || '', module: 'outbound', action: 'accept_no_basis', target: docNo,
-          method: req.method, path: req.originalUrl, ip: req.ip, status: 200,
+          method: req.method, path: req.originalUrl, ip: clientIp(req), status: 200,
           detail: { key: 'audit_detail_accept_no_basis', params: { doc: docNo, n: lines.length } },
         });
       }
@@ -894,7 +895,7 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requireCorrectionAct
       audit.record({
         user_id: req.user?.id ?? null, username: req.user?.username || '', name: req.user?.name || '',
         role: req.user?.role || '', module: 'outbound', action: 'void', target: orig.doc_no,
-        method: req.method, path: req.originalUrl, ip: req.ip, status: 200,
+        method: req.method, path: req.originalUrl, ip: clientIp(req), status: 200,
         detail: JSON.stringify(auditDetail)
       });
       if (reopen) {

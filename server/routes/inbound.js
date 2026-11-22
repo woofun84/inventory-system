@@ -9,6 +9,7 @@ const { createDocPermissions } = require('../middleware/doc-permission');
 const { hasGrant } = require('../permissions');
 const { grantsForUser } = require('../services/user-permissions');
 const { kwClause } = require('../utils/search');
+const { clientIp } = require('../utils/client-ip');
 const {
   getAvailableStock,
   validateInboundReturnStock,
@@ -1390,7 +1391,7 @@ router.post('/api/inbound-docs/:docNo/confirm-correction', requireCorrectionActi
       audit.record({
         user_id: req.user?.id ?? null, username: req.user?.username || '', name: req.user?.name || '',
         role: req.user?.role || '', module: 'inbound', action: 'void', target: orig.doc_no,
-        method: req.method, path: req.originalUrl, ip: req.ip, status: 200,
+        method: req.method, path: req.originalUrl, ip: clientIp(req), status: 200,
         detail: JSON.stringify(auditDetail)
       });
       if (reopen) {

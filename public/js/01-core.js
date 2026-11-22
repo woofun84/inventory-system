@@ -103,6 +103,15 @@ const App = {
               }).filter(Boolean).join(sep)
               : v;
           });
+          // 登录失败原因：结构化码 → 中英文案（避免界面露出 not-found 等原始值）
+          if (o.key === 'audit_detail_login_failed' && params.reason) {
+            const reasonKey = {
+              'not-found': 'audit_reason_not_found',
+              'bad-password': 'audit_reason_bad_password',
+              'disabled': 'audit_reason_disabled',
+            }[params.reason];
+            if (reasonKey) params.reason = this.t(reasonKey);
+          }
           const out = this.t(o.key, params);
           return out === o.key ? '' : out;
         }
@@ -197,8 +206,26 @@ const App = {
     ]);
   },
 
+  // 前端运行异常采样上报（仅错误类型+消息，10% 采样，不收请求体/令牌）
+  initClientErrorReport() {
+    const send = (type, message) => {
+      try {
+        if (Math.random() > 0.1) return;
+        const body = JSON.stringify({ type: String(type || 'error').slice(0, 40), message: String(message || '').slice(0, 300) });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/client-errors', new Blob([body], { type: 'application/json' }));
+        } else {
+          fetch('/api/client-errors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+        }
+      } catch (_) { /* 上报永远不能影响业务 */ }
+    };
+    window.addEventListener('error', e => send('window.error', e && e.message));
+    window.addEventListener('unhandledrejection', e => send('unhandledrejection', e && e.reason && (e.reason.message || e.reason)));
+  },
+
   async init() {
     this.clearLegacyAuth();
+    this.initClientErrorReport();
     // 未登录 → 跳转登录页
     if (!this.token) { location.href = '/login.html'; return; }
     document.documentElement.setAttribute('data-theme', this.theme);

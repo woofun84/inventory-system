@@ -7,6 +7,7 @@ const costing = require('../services/costing');
 const { requirePerm } = require('../middleware/auth');
 const { hasGrant } = require('../permissions');
 const { kwClause } = require('../utils/search');
+const { clientIp } = require('../utils/client-ip');
 const {
   genStocktakeNo,
   getAvailableStock,
@@ -705,7 +706,7 @@ router.post('/api/stocktakes/:no/confirm', requirePerm('stocktake', 'post'), (re
       audit.record({
         user_id: req.user?.id ?? null, username: req.user?.username || '', name: req.user?.name || '',
         role: req.user?.role || '', module: 'stocktake', action: 'accept_no_basis', target: st.stocktake_no,
-        method: req.method, path: req.originalUrl, ip: req.ip, status: 200,
+        method: req.method, path: req.originalUrl, ip: clientIp(req), status: 200,
         detail: { key: 'audit_detail_accept_no_basis', params: { doc: st.stocktake_no, n: adjustedCount } },
       });
     }

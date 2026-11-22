@@ -8,8 +8,21 @@ const { requirePerm } = require('../middleware/auth');
 const { ROLE_PERMISSIONS, actionsOf, grantsOf } = require('../permissions');
 const { GRANTABLE_MODULES, normalizeGrants, grantsForUser, writeGrants } = require('../services/user-permissions');
 const { revokeAllSessions } = require('../services/session');
+const audit = require('../services/audit');
+const { clientIp } = require('../utils/client-ip');
 
 const router = express.Router();
+
+// 用户管理的关键动作单独写结构化审计（旧值 → 新值），并跳过通用中间件避免重复。
+function userAudit(req, action, detail, target) {
+  const u = req.user || {};
+  audit.record({
+    user_id: u.id || null, username: u.username || '', name: u.name || '', role: u.role || '',
+    module: 'users', action, target: target || '', method: req.method,
+    path: req.originalUrl.split('?')[0], ip: clientIp(req), status: 200, detail,
+  });
+  req.skipGenericAudit = true;
+}
 
 const USER_COLS = 'id,username,name,role,status,must_change_pwd,last_login,created_at';
 
@@ -49,6 +62,7 @@ router.post('/api/users', requirePerm('users', 'create'), (req, res) => {
       return info.lastInsertRowid;
     })();
     const u = db.prepare(`SELECT ${USER_COLS} FROM users WHERE id=?`).get(id);
+    userAudit(req, 'create', { key: 'audit_detail_user_create', params: { target: u.username, role: u.role } }, u.username);
     res.json(userOut(u));
   } catch (e) {
     console.error('[users] create failed:', e);
@@ -71,6 +85,7 @@ router.put('/api/users/:id', requirePerm('users', 'edit'), (req, res) => {
     }
     const roleChanged = !!role && role !== u.role;
     const effectiveRole = role || u.role;
+    const before = { name: u.name, role: u.role, status: u.status, grants: grantsForUser(u) };
     db.transaction(() => {
       if (name !== undefined) db.prepare('UPDATE users SET name=? WHERE id=?').run(String(name).trim(), id);
       if (role) db.prepare('UPDATE users SET role=? WHERE id=?').run(role, id);
@@ -99,6 +114,23 @@ router.put('/api/users/:id', requirePerm('users', 'edit'), (req, res) => {
       }
     })();
     const out = db.prepare(`SELECT ${USER_COLS} FROM users WHERE id=?`).get(id);
+    // 逐项写「旧值 → 新值」：角色、状态、权限、密码（只记是否被重置，绝不记值）
+    if (roleChanged) userAudit(req, 'role-change', { key: 'audit_detail_user_role', params: { target: u.username, old: u.role, new: effectiveRole } }, u.username);
+    if (status && status !== before.status) userAudit(req, 'status-change', { key: 'audit_detail_user_status', params: { target: u.username, old: before.status, new: status } }, u.username);
+    if (password) userAudit(req, 'password-reset', { key: 'audit_detail_user_pwd_reset', params: { target: u.username } }, u.username);
+    const afterGrants = userOut(out).grants;
+    if (JSON.stringify(before.grants) !== JSON.stringify(afterGrants)) {
+      const changed = [];
+      Object.keys({ ...before.grants, ...afterGrants }).forEach(m => {
+        const a = (before.grants[m] || []).join(',');
+        const b = (afterGrants[m] || []).join(',');
+        if (a !== b) changed.push(m + ': ' + (a || '—') + ' → ' + (b || '—'));
+      });
+      userAudit(req, 'permission-change', { key: 'audit_detail_user_perms', params: { target: u.username, changes: changed.join('；') || '—' } }, u.username);
+    }
+    if (!req.skipGenericAudit) {
+      userAudit(req, 'update', { key: 'audit_detail_user_update', params: { target: u.username, name: out.name } }, u.username);
+    }
     res.json(userOut(out));
   } catch (e) {
     console.error('[users] update failed:', e);
@@ -117,6 +149,7 @@ router.delete('/api/users/:id', requirePerm('users', 'delete'), (req, res) => {
   }
   db.prepare('DELETE FROM users WHERE id=?').run(id);
   revokeAllSessions(id);
+  userAudit(req, 'delete', { key: 'audit_detail_user_delete', params: { target: u.username, role: u.role } }, u.username);
   res.json({ success: true });
 });
 

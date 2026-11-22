@@ -9,9 +9,15 @@
   const escHtml = v => App.docEsc(v);
 
   // 可审计模块（与后端 middleware/audit.js 的 PATH_MODULE 取值一致）
-  const AUDIT_MODULES = ['auth', 'users', 'materials', 'suppliers', 'inbound', 'outbound', 'returns', 'purchase', 'stocktake', 'settings'];
-  // 动作码（与后端 middleware/audit.js 产生/记录的动作一致）
-  const AUDIT_ACTIONS = ['login', 'create', 'update', 'delete', 'confirm', 'void', 'load', 'change-password', 'price-recalc'];
+  const AUDIT_MODULES = ['auth', 'users', 'materials', 'suppliers', 'inbound', 'outbound', 'returns', 'purchase', 'stocktake', 'settings', 'audit', 'system', 'lines'];
+  // 动作码（含各模块手写埋点与新增的安全/运维事件）
+  const AUDIT_ACTIONS = [
+    'login', 'login-failed', 'logout', 'create', 'update', 'delete', 'confirm', 'void', 'load',
+    'change-password', 'change-password-failed', 'password-reset', 'role-change', 'status-change',
+    'permission-change', 'price-recalc', 'backup', 'restore', 'reset', 'clear-business',
+    'auto-backup', 'auto-backup-settings', 'cost-variance-settle', 'export',
+    'server-error', 'fatal-error', 'client-error', 'accept-no-basis', 'image-upload', 'image-delete',
+  ];
 
   Object.assign(App, {
     // 把本地 Date 转成 UTC 字符串（用于给后端传时间边界）
@@ -329,6 +335,8 @@
         [this.t('audit_col_result'), ok ? this.t('audit_ok') : this.t('audit_fail') + ' ' + (r.status || '')],
         [this.t('audit_col_ip'), r.ip || '—'],
       ];
+      if (!ok) meta.push([this.t('audit_err_code'), String(r.status || '—')]);
+      if (r.level && r.level !== 'info') meta.push([this.t('audit_reason_label'), escHtml(r.level) + (r.source ? ' / ' + escHtml(r.source) : '')]);
       const metaHtml = `<dl class="audit-kv">${meta.map(([k, v]) =>
         `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')}</dl>`;
       let content;
@@ -351,7 +359,8 @@
       this._tableRenderers = this._tableRenderers || {};
       this._tableRenderers['audit'] = () => this.loadAuditLogs();
 
-      this.setMain(this.pageWrap(this.icon('audit', 'icon--title') + ' ' + this.t('nav_audit'), this.t('audit_desc'), '', `
+      this.setMain(this.pageWrap(this.icon('audit', 'icon--title') + ' ' + this.t('nav_audit'),
+        `${escHtml(this.t('audit_desc'))} <span class="u-muted-sm">${escHtml(this.t('audit_tip'))}</span>`, '', `
         <div class="data-page">
           <div class="data-toolbar">${this.renderAuditToolbar()}</div>
           <div class="data-scroll" id="audit-scroll"></div>
@@ -372,27 +381,112 @@
         <select id="audit_filter_action" style="${sel}" onchange="App.onAuditFilter()">${actOpts}</select>
         <input id="audit_filter_kw" placeholder="${this.t('audit_filter_ph')}" value="${escHtml(f.keyword)}" style="${sel};flex:1;min-width:180px;max-width:320px" oninput="App.onAuditFilter()">
         ${this.dateRangeHtml({ fromId: 'audit_filter_from', toId: 'audit_filter_to', fromVal: f.from, toVal: f.to, onChange: 'App.onAuditFilter()', label: this.t('ledger_date') })}
+        <button class="btn btn-outline btn-sm" onclick="App.auditQuickRange(7)">${this.t('audit_quick_7d')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.auditQuickRange(30)">${this.t('audit_quick_30d')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.auditQuickRange(0)">${this.t('audit_quick_all')}</button>
         <button class="btn btn-outline btn-sm" onclick="App.resetAuditFilter()">${this.t('audit_reset')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.exportAuditLogs(this)">${this.t('audit_export_btn')}</button>
+        <button class="btn btn-outline btn-sm" onclick="App.verifyAuditChain(this)">${this.t('audit_verify_btn')}</button>
         ${this.can('audit', 'delete')
           ? `<button class="btn btn-danger-outline btn-sm" onclick="App.confirmClearAuditLogs()">${this.t('audit_clear_btn')}</button>`
           : ''}
       </div>`;
     },
 
-    // 清空全部日志：破坏性二次确认（危险 intent），后端同样只允许管理员
+    // 快捷时间区间（近 N 天 / 全部）
+    auditQuickRange(days) {
+      const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      this._auditFilter.from = days > 0 ? fmt(new Date(Date.now() - (days - 1) * 86400000)) : '';
+      this._auditFilter.to = days > 0 ? fmt(new Date()) : '';
+      this.getTableState('audit').page = 1;
+      this.renderAuditLogs();
+    },
+
+    // 当前筛选条件 → query string（导出与列表共用）
+    auditQuery() {
+      const st = this.getTableState('audit');
+      const f = this._auditFilter || {};
+      const q = new URLSearchParams();
+      q.set('page', st.page); q.set('pageSize', st.pageSize > 0 ? st.pageSize : 200);
+      if (f.module) q.set('module', f.module);
+      if (f.action) q.set('action', f.action);
+      if (f.keyword) q.set('keyword', f.keyword);
+      if (f.from) q.set('fromUtc', this.auditDayStartUtc(f.from));
+      if (f.to) q.set('toUtc', this.auditDayEndUtc(f.to));
+      return q;
+    },
+
+    // 导出当前筛选结果（带鉴权头，按已有下载范式触发浏览器保存）
+    async exportAuditLogs(btn) {
+      btn = btn || this._actionButton;
+      this.setButtonLoading(btn, true);
+      try {
+        const res = await fetch('/api/audit-logs/export?' + this.auditQuery().toString(), {
+          headers: { Authorization: 'Bearer ' + this.token },
+        });
+        if (res.status === 401) { await this.handleUnauthorized(res); return; }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((this.lang === 'en' && err.error_en) ? err.error_en : (err.error || this.t('requestFailed')));
+        }
+        const blob = await res.blob();
+        const cd = res.headers.get('Content-Disposition') || '';
+        const m = /filename="?([^";]+)"?/i.exec(cd);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = m ? m[1] : 'audit-logs.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        this.toast(this.t('audit_export_done', { n: this._auditData && this._auditData.total || 0 }));
+      } catch (e) {
+        this.toast(e.message, 'error');
+      } finally { this.setButtonLoading(btn, false); }
+    },
+
+    // 哈希链完整性校验
+    async verifyAuditChain(btn) {
+      btn = btn || this._actionButton;
+      this.setButtonLoading(btn, true);
+      try {
+        const r = await this.api('/api/audit-logs/verify');
+        this.toast(r.ok ? this.t('audit_verify_ok', { n: r.checked, legacy: r.legacy || 0 })
+          : this.t('audit_verify_bad', { id: r.brokenId }), r.ok ? 'success' : 'error');
+      } catch (e) { this.toast(e.message, 'error'); }
+      finally { this.setButtonLoading(btn, false); }
+    },
+
+    // 清空全部日志：二次确认 + 输入确认短语（破坏性操作，后端校验 admin + 短语）
     confirmClearAuditLogs() {
-      this.confirmDialog(
-        this.t('audit_clear_confirm_title'),
-        this.t('audit_clear_confirm_msg'),
-        () => this.doClearAuditLogs(),
-        null,
-        'danger',
-      );
+      if (!this.can('audit', 'delete')) { this.toast(this.t('audit_verify_need_admin'), 'error'); return; }
+      const overlay = document.createElement('div');
+      overlay.className = 'confirm-overlay';
+      overlay.innerHTML = `<div class="confirm-box" role="dialog" aria-modal="true">
+        <div class="confirm-icon confirm-icon--warn">${this.icon('alert')}</div>
+        <div class="confirm-title">${this.t('audit_clear_confirm_title')}</div>
+        <div class="confirm-msg">${this.t('audit_clear_confirm_msg')}<div style="margin-top:10px">${this.t('audit_clear_phrase_hint')}</div>
+          <input id="audit-clear-phrase" type="text" autocomplete="off" style="margin-top:6px;width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:5px;background:var(--card-bg);color:var(--text)">
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-outline" id="audit-clear-cancel">${this.t('cancel')}</button>
+          <button class="btn btn-danger" id="audit-clear-ok">${this.t('confirm')}</button>
+        </div></div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      document.getElementById('audit-clear-cancel').onclick = close;
+      document.getElementById('audit-clear-ok').onclick = () => {
+        const phrase = (document.getElementById('audit-clear-phrase') || {}).value || '';
+        if (String(phrase).trim() !== '清空日志') { this.toast(this.t('audit_clear_phrase_bad'), 'error'); return; }
+        close();
+        this.doClearAuditLogs();
+      };
+      const input = document.getElementById('audit-clear-phrase');
+      if (input) { input.focus(); input.onkeydown = e => { if (e.key === 'Enter') document.getElementById('audit-clear-ok').click(); }; }
     },
 
     async doClearAuditLogs() {
       try {
-        const data = await this.api('/api/audit-logs', 'DELETE');
+        const data = await this.api('/api/audit-logs', 'DELETE', { confirm: '清空日志' });
         // 日志已清空：重置筛选并回到第一页，避免停在已无数据的页码/筛选条件上
         this._auditFilter = { module: '', action: '', keyword: '', from: '', to: '' };
         this.getTableState('audit').page = 1;
@@ -424,14 +518,7 @@
     async loadAuditLogs() {
       const st = this.getTableState('audit');
       const f = this._auditFilter;
-      const q = new URLSearchParams();
-      q.set('page', st.page);
-      q.set('pageSize', st.pageSize > 0 ? st.pageSize : 200);
-      if (f.module) q.set('module', f.module);
-      if (f.action) q.set('action', f.action);
-      if (f.keyword) q.set('keyword', f.keyword);
-      if (f.from) q.set('fromUtc', this.auditDayStartUtc(f.from));
-      if (f.to) q.set('toUtc', this.auditDayEndUtc(f.to));
+      const q = this.auditQuery();
       try {
         this._auditData = await this.api('/api/audit-logs?' + q.toString());
         this.renderAuditTable();
@@ -457,9 +544,10 @@
             ? `<div class="audit-detail-cell" title="${escHtml(summary)}" onclick="App.showAuditDetail(${Number(r.id)})">${escHtml(summary)}</div>`
             : '<span class="audit-nil">—</span>';
           const ok = Number(r.status) < 400;
+          const reason = ok ? '' : String(this.logDetailText(r) || '').slice(0, 200);
           const resultCell = ok
             ? `<span class="badge badge-success">${this.t('audit_ok')}</span>`
-            : `<span class="badge badge-danger">${this.t('audit_fail')} ${escHtml(r.status)}</span>`;
+            : `<span class="badge badge-danger" title="${escHtml(reason || this.t('audit_err_code') + ': ' + r.status)}">${this.t('audit_fail')} ${escHtml(r.status)}</span>`;
           const roleCell = r.role ? this.roleLabel(r.role) : '';
           return `<tr>
             <td class="u-nowrap">${this.fmtDateTime(r.created_at, true)}</td>

@@ -477,11 +477,28 @@ function initSchema() {
       ip TEXT DEFAULT '',
       status INTEGER DEFAULT 200,
       detail TEXT DEFAULT '',
-      detail_json TEXT DEFAULT ''
+      detail_json TEXT DEFAULT '',
+      level TEXT DEFAULT 'info',
+      source TEXT DEFAULT 'user',
+      prev_hash TEXT DEFAULT '',
+      hash TEXT DEFAULT ''
     )`);
+    // 存量库补列（审计字段是唯一允许追加迁移的例外：日志是一等证据，不能因升级丢弃）
+    const auditCols = new Set(db.prepare('PRAGMA table_info(audit_logs)').all().map(c => c.name));
+    for (const [col, decl] of [
+      ['level', "TEXT DEFAULT 'info'"], ['source', "TEXT DEFAULT 'user'"],
+      ['prev_hash', "TEXT DEFAULT ''"], ['hash', "TEXT DEFAULT ''"],
+    ]) {
+      if (!auditCols.has(col)) {
+        db.exec(`ALTER TABLE audit_logs ADD COLUMN ${col} ${decl}`);
+        console.log(`迁移: audit_logs 增加 ${col} 列`);
+      }
+    }
     db.exec("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)");
     db.exec("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(username)");
     db.exec("CREATE INDEX IF NOT EXISTS idx_audit_module ON audit_logs(module)");
+    db.exec('CREATE INDEX IF NOT EXISTS idx_audit_module_action ON audit_logs(module,action)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_audit_chain ON audit_logs(id,hash,prev_hash)');
     if (newAuditLogs) console.log('建表: 系统审计日志表');
   } catch (e) { console.error('建表失败 审计日志表:', e); throw e; }
 

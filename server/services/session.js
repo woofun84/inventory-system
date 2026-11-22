@@ -10,14 +10,10 @@
  */
 const crypto = require('crypto');
 const db = require('../db');
+const { clientIp } = require('../utils/client-ip');
 
 function newSid() {
   return crypto.randomBytes(24).toString('hex');
-}
-
-function clientIp(req) {
-  return String(req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress) || '')
-    .split(',')[0].trim().slice(0, 64);
 }
 
 function clientUa(req) {
