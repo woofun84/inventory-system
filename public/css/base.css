@@ -30,13 +30,27 @@
   --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1);
   --sidebar-bg: #1e293b;
   --sidebar-text: #cbd5e1;
-  --sidebar-active-bg: #2563eb;
-  --sidebar-active-text: #ffffff;
+  --sidebar-active-bg: rgba(37, 99, 235, 0.22);
+  --sidebar-active-text: #bfdbfe;
   --sidebar-hover-bg: #334155;
   /* 侧边栏前景色：独立于页面正文色，避免亮色主题下深底浅字失效 */
   --sidebar-fg: #e2e8f0;
   --sidebar-fg-muted: #94a3b8;
-  --sidebar-section-fg: #94a3b8;
+  --sidebar-section-fg: #b6c5d8;
+  /* 侧栏层次化：分区卡头色条 / 分隔线 / 选中指示条 / 图标容器底色 */
+  --sidebar-section-bar: #60a5fa;
+  --sidebar-section-border: rgba(255, 255, 255, 0.10);
+  --sidebar-active-bar: #60a5fa;
+  --sidebar-icon-bg: rgba(148, 163, 184, 0.10);
+  --sidebar-icon-active-bg: #3b82f6;
+  --sidebar-icon-active-fg: #ffffff;
+  --sidebar-logo-bg: rgba(96, 165, 250, 0.16);
+  --sidebar-logo-fg: #93c5fd;
+  --sidebar-sub-fg: #94a3b8;
+  --sidebar-avatar-bg: #3b82f6;
+  --sidebar-avatar-fg: #ffffff;
+  --sidebar-user-card-bg: rgba(255, 255, 255, 0.04);
+  --sidebar-user-card-border: rgba(255, 255, 255, 0.08);
   --radius: 10px;
   --radius-sm: 6px;
   --sidebar-w: 200px;
@@ -281,16 +295,47 @@ body {
   min-width: 0;
   overflow: hidden;
 }
-.sidebar-header h1 {
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2_5);
+  min-width: 0;
+  width: 100%;
+}
+/* logo 装进圆角块，成为品牌锚点；与文字形成第一层视觉落差 */
+.sidebar-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-logo-bg);
+  color: var(--sidebar-logo-fg);
+}
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.sidebar-brand-name {
   font-size: var(--fs-lg);
   color: var(--on-solid);
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  line-height: 1.25;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.sidebar-header h1 span:last-child {
+.sidebar-brand-sub {
+  font-size: var(--fs-xxs);
+  color: var(--sidebar-sub-fg);
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -313,18 +358,47 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-1_5);
-  padding: var(--space-2) var(--space-2_5);
-  background: var(--sidebar-bg);
-  border-top: 1px solid var(--border);
+  margin: var(--space-2);
+  padding: var(--space-2);
+  background: var(--sidebar-user-card-bg);
+  border: 1px solid var(--sidebar-user-card-border);
+  border-radius: var(--radius);
   min-height: 48px;
   min-width: 0;
   box-sizing: border-box;
+}
+/* 头像圆：让底部用户区从信息条变成有重心的身份卡 */
+.sidebar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--sidebar-avatar-bg);
+  color: var(--sidebar-avatar-fg);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1;
 }
 .sidebar-user-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+/* 卡内两个操作按钮压到最小，给姓名/角色留出空间，避免 200px 侧栏溢出 */
+.sidebar-user .tool-btn-sm {
+  padding: var(--space-1) var(--space-1_25);
+  background: transparent;
+  border-color: transparent;
+  color: var(--sidebar-fg-muted);
+}
+.sidebar-user .tool-btn-sm:hover {
+  background: var(--sidebar-hover-bg);
+  border-color: transparent;
+  color: var(--on-solid);
 }
 .sidebar-user-name {
   font-size: var(--fs-sm);
@@ -343,27 +417,47 @@ body {
 }
 
 .nav-section-label {
-  padding: var(--space-3_5) var(--space-2_5) var(--space-1_5);
+  position: relative;
+  margin-top: var(--space-2);
+  padding: var(--space-2_5) var(--space-2_5) var(--space-1_5) var(--space-3_5);
   font-size: var(--fs-xxs);
   line-height: 1.4;
   color: var(--sidebar-section-fg);
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 分区之间的细分隔线；色条用 ::before 贴在左侧 */
+  border-top: 1px solid var(--sidebar-section-border);
 }
-.nav-section-label:first-child { padding-top: 2px; }
+.nav-section-label:first-child {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 0;
+}
+.nav-section-label::before {
+  content: '';
+  position: absolute;
+  left: var(--space-1_5);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--sidebar-section-bar);
+}
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2_5);
+  gap: var(--space-2);
   width: 100%;
-  padding: 9px var(--space-2_5);
+  padding: var(--space-1_75) var(--space-2);
   margin-bottom: 2px;
   border: 0;
+  border-left: 3px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--sidebar-text);
@@ -371,7 +465,7 @@ body {
   font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -381,18 +475,29 @@ body {
   background: var(--sidebar-hover-bg);
   color: var(--on-solid);
 }
+/* 焦点式选中：弱化的半透明底 + 左侧指示条，而非整块实心蓝 */
 .nav-item.active {
   background: var(--sidebar-active-bg);
+  border-left-color: var(--sidebar-active-bar);
   color: var(--sidebar-active-text);
   font-weight: 600;
 }
+/* 图标装进 24px 圆角容器，成为条目内的二级锚点 */
 .nav-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-icon-bg);
+  color: var(--sidebar-text);
+}
+.nav-item:hover .nav-icon { color: var(--on-solid); }
+.nav-item.active .nav-icon {
+  background: var(--sidebar-icon-active-bg);
+  color: var(--sidebar-icon-active-fg);
 }
 
 /* ========== 右侧主内容 ========== */

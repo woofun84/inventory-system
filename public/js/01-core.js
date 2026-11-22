@@ -738,7 +738,7 @@ const App = {
         { key: 'audit', icon: 'audit', label: this.t('nav_audit') },
       ]}
     ];
-    let html = `<div class="sidebar"><div class="sidebar-header"><h1>${this.icon('box', 'icon--logo')}<span>${this.t('appName')}</span></h1></div><div class="sidebar-nav">`;
+    let html = `<div class="sidebar"><div class="sidebar-header"><div class="sidebar-brand"><span class="sidebar-brand-logo">${this.icon('box', 'icon--logo')}</span><span class="sidebar-brand-text"><span class="sidebar-brand-name">${this.t('appName')}</span><span class="sidebar-brand-sub">${this.t('nav_header_sub')}</span></span></div></div><div class="sidebar-nav">`;
     nav.forEach(s => {
       // 按权限过滤
       const visibleItems = s.items.filter(item => this.can(item.key, 'view'));
@@ -753,9 +753,12 @@ const App = {
     // 底部用户信息栏
     if (this.user) {
       const roleLabel = this.roleLabel(this.user.role);
+      const displayName = this.docEsc(this.user.name || this.user.username || '');
+      const initial = this.docEsc(String(this.user.name || this.user.username || '?').trim().charAt(0).toUpperCase() || '?');
       html += `<div class="sidebar-user">
+        <span class="sidebar-avatar" aria-hidden="true">${initial}</span>
         <div class="sidebar-user-info">
-          <span class="sidebar-user-name">${this.docEsc(this.user.name || this.user.username)}</span>
+          <span class="sidebar-user-name">${displayName}</span>
           <span class="sidebar-user-role">${roleLabel}</span>
         </div>
         <button class="tool-btn tool-btn-sm" onclick="App.showChangePwdModal(false)" title="${this.t('change_password')}" aria-label="${this.t('change_password')}">${this.icon('key', 'icon--tool')}</button>

@@ -29,13 +29,27 @@
   --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.4);
   --sidebar-bg: #0f172a;
   --sidebar-text: #94a3b8;
-  --sidebar-active-bg: #1d4ed8;
-  --sidebar-active-text: #ffffff;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.22);
+  --sidebar-active-text: #bfdbfe;
   --sidebar-hover-bg: #1e293b;
   --sidebar-fg: #e2e8f0;
   --sidebar-fg-muted: #94a3b8;
-  --sidebar-section-fg: #8b9cb3;
+  --sidebar-section-fg: #b6c5d8;
   --sidebar-divider: rgba(255, 255, 255, 0.14);
+  /* 层次化令牌：暗色调色板下的对应值 */
+  --sidebar-section-bar: #60a5fa;
+  --sidebar-section-border: rgba(255, 255, 255, 0.08);
+  --sidebar-active-bar: #60a5fa;
+  --sidebar-icon-bg: rgba(148, 163, 184, 0.10);
+  --sidebar-icon-active-bg: #3b82f6;
+  --sidebar-icon-active-fg: #ffffff;
+  --sidebar-logo-bg: rgba(96, 165, 250, 0.14);
+  --sidebar-logo-fg: #93c5fd;
+  --sidebar-sub-fg: #64748b;
+  --sidebar-avatar-bg: #2563eb;
+  --sidebar-avatar-fg: #ffffff;
+  --sidebar-user-card-bg: rgba(255, 255, 255, 0.04);
+  --sidebar-user-card-border: rgba(255, 255, 255, 0.08);
 
   /* ===== 语义状态色 ===== */
   --success-bg: rgba(34,197,94,0.15);
