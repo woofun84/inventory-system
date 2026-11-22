@@ -904,15 +904,10 @@ Object.assign(App, {
     box.innerHTML = html;
   },
 
-  retFocusEnd(id) {
-    const el = document.getElementById(id);
-    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
-  },
-
   retLineSearch(v) {
     this.retState().lq = v;
     this.retRenderLinesBody();
-    this.retFocusEnd('ret_lqi');
+    this.focusEnd('ret_lqi');
   },
 
   retToggleEx(id) {

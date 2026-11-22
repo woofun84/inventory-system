@@ -285,7 +285,7 @@ Object.assign(App, {
         s.lq = e.target.value;
         // 组词过程中不重绘：重绘会重建输入框，打断中文输入法
         if (e.isComposing || this._obLqComposing) return;
-        this.obRenderLinesPanel(); this.ibFocusEnd('ob_lqi');
+        this.obRenderLinesPanel(); this.focusEnd('ob_lqi');
       }
     });
 
@@ -297,7 +297,7 @@ Object.assign(App, {
       this._obLqComposing = false;
       if (this.currentPage !== 'outbound') return;
       this.obState().lq = e.target.value;
-      this.obRenderLinesPanel(); this.ibFocusEnd('ob_lqi');
+      this.obRenderLinesPanel(); this.focusEnd('ob_lqi');
     });
 
     document.addEventListener('change', e => {
@@ -1052,7 +1052,7 @@ Object.assign(App, {
   obLogsPanel(logs) {
     const list = Array.isArray(logs) ? logs : [];
     if (!list.length) return `<div class="pu-empty">${this.t('st_log_empty')}</div>`;
-    const esc = value => this.docEsc(value);
+    const esc = this.docEsc.bind(this);
     return `<ol class="pu-log">` + list.map(l => {
       const detail = this.logDetailText(l);
       return `<li>

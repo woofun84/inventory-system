@@ -270,7 +270,7 @@ Object.assign(App, {
     let tbody = '';
     if (pageData.length === 0) { tbody = this.emptyRow(colCount); }
     else {
-      const esc = v => this.docEsc(v == null ? '' : v);
+      const esc = this.docEsc.bind(this);
       tbody = pageData.map(m => {
         // 编码作为 onclick 的字符串参数：先 JSON 字符串化，再做 HTML 属性转义
         const codeArg = this.docEsc(JSON.stringify(String(m.code == null ? '' : m.code)));
@@ -404,7 +404,7 @@ Object.assign(App, {
       this.qSearchPosition();
       return;
     }
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const head = (label, group) => `<div class="q-search-ghead">${label}<span class="q-search-count">${this.t('q_search_total', { n: group.total })}${group.total > group.rows.length ? ' · ' + this.t('q_search_top', { n: group.rows.length }) : ''}</span></div>`;
     const item = (kind, key, source, main, meta) => `<div class="q-search-item" data-kind="${kind}" data-key="${esc(key)}"${source ? ` data-source="${esc(source)}"` : ''} onclick="App.qSearchGo(this)"><span class="q-search-main">${main}</span><span class="q-search-meta">${meta}</span></div>`;
     let html = '';
@@ -680,7 +680,7 @@ Object.assign(App, {
   qCardDocHtml(board, d, src) {
     const st = this.qInsState(board);
     const expanded = !!(st && st.docExpanded);
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const no = (d && (src === 'stocktake' ? d.stocktake_no : d.doc_no)) || (st && st.docNo) || '';
     const kind = src === 'returns' ? 'returns' : (src === 'stocktake' ? 'stocktake' : src);
     const headExtra = `<button type="button" class="btn btn-outline btn-sm" title="${this.t(expanded ? 'pu_collapse' : 'pu_expand')}" onclick="App.qCardDocExpand()">${this.icon(expanded ? 'restore' : 'maximize', 'icon--tool')}</button>`
@@ -809,7 +809,7 @@ Object.assign(App, {
     const d = this._qCardData || {};
     const m = d.material || {};
     const row = (this._stockData || []).find(x => x.code === (this._qCard && this._qCard.key)) || {};
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const status = row.stock_status || m.status || '';
     // 无价格权限时服务端不下发 close_amount / close_avg
     const vp = 'closing_amount' in d;
@@ -893,7 +893,7 @@ Object.assign(App, {
   },
 
   qDocStatusBadge(st) {
-    return `<span class="badge ${this.docStatusMeta(st).cls}">${this.qDocStatusLabel(st)}</span>`;
+    return this.badgeHtml(this.docStatusMeta(st).cls, this.qDocStatusLabel(st));
   },
 
   qDocTypeLabel(type) {
@@ -946,7 +946,7 @@ Object.assign(App, {
   // 点击在同页开单据小卡，不跳页
   qRelatedHtml(detail) {
     if (!detail) return '';
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const srcOf = x => {
       if (x && (x.txn_type === '采购退货' || x.txn_type === '零星退货' || x.txn_type === '领料退库')) return 'returns';
       return this.qDocSourceOf(x && x.doc_no);
@@ -979,7 +979,7 @@ Object.assign(App, {
     const st = this.getTableState(tid);
     // 无价格权限时台账行不带 price / amount / balance_amount / balance_avg
     const vp = 'closing_amount' in d;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const from = document.getElementById('q_c_start')?.value || '';
     const to = document.getElementById('q_c_end')?.value || '';
     const btype = document.getElementById('q_c_type')?.value || '';
@@ -1260,7 +1260,7 @@ Object.assign(App, {
     // 无价格权限时 totals 里没有 amount；单据卡复用同一判定
     const vp = 'amount' in (d.totals || {});
     this._qPriceOn = vp;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const cols = [
       { key: 'doc_no', label: this.t('ledger_doc'), clip: 'q-h-w-doc' },
       { key: 'doc_type', label: this.t('q_doc_type'), align: 'center', tight: true },
@@ -1410,7 +1410,7 @@ Object.assign(App, {
   // opts：{closeBtn, headExtra, maxLines, related, foot, footExtra, kind}，供物料卡右侧单据卡复用
   qDocPanel(source, d, opts) {
     opts = opts || {};
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const isSt = source === 'stocktake';
     const isRet = source === 'returns';
     const no = isSt ? d.stocktake_no : d.doc_no;
@@ -1606,7 +1606,7 @@ Object.assign(App, {
     if (!data || !document.getElementById('q_rcv_scroll')) return;
     const tid = 'receivers';
     const { st, vp, sorted } = this.qReceiversRows();
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const pageData = this.paginate(sorted, st.page, st.pageSize);
 
     const cols = [
@@ -1697,7 +1697,7 @@ Object.assign(App, {
     const vp = 'amount' in s;
     const st = this._qRcvCard || {};
     const row = (this._qRcvData || []).find(x => x.receiver === st.key) || {};
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const meta = [
       [this.t('out_receiver'), esc(st.key)],
       [this.t('q_rcv_docs'), s.doc_count || 0],
@@ -1715,7 +1715,7 @@ Object.assign(App, {
   qRcvDocsHtml(rows, limit) {
     // 详情汇总里没有 amount 即无价格权限（rows 可能为空，统一看 summary）
     const vp = 'amount' in (((this._qRcvCardData || {}).summary) || {});
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const tid = 'qrcv_docs';
     let shown = rows;
     let pager = '';
@@ -1740,7 +1740,7 @@ Object.assign(App, {
 
   qRcvMatsHtml(mats, limit) {
     const vp = 'amount' in (((this._qRcvCardData || {}).summary) || {});
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const tid = 'qrcv_mats';
     let shown = mats;
     let pager = '';
@@ -1815,7 +1815,7 @@ Object.assign(App, {
         <div id="q_an_alert_box"></div>
       </div>
     </div>`;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     let dash = null; let stock = [];
     try {
       const out = await Promise.all([this.api('/api/dashboard'), this.api('/api/stock-summary').catch(() => [])]);
@@ -1988,7 +1988,7 @@ Object.assign(App, {
     const ps = this.getTableState(tid);
     if (!ps.sortKey) { ps.sortKey = 'sort_days'; ps.sortDir = 'desc'; }
     const vp = 'stock_value' in (st.data.summary || {});
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const rows = st.data.rows.map(r => ({ ...r, sort_days: r.days_idle == null ? 99999 : r.days_idle }));
     const sorted = this.sortData(rows, ps.sortKey, ps.sortDir);
     const shown = this.paginate(sorted, ps.page, ps.pageSize);
@@ -2112,7 +2112,7 @@ Object.assign(App, {
     const ps = this.getTableState(tid);
     // 无价格权限时没有 out_amount / share / cum_share / stock_value
     const vp = 'total_amount' in st.data;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     let rows = st.data.rows;
     if (st.cls) rows = rows.filter(r => r.abc === st.cls);
     const sorted = this.sortData(rows, ps.sortKey, ps.sortDir);
@@ -2218,7 +2218,7 @@ Object.assign(App, {
     const box = document.getElementById('q_an_turn_cat');
     if (!box || !d) return;
     const vp = 'out_cost' in d;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const rows = d.categories || [];
     const body = rows.length ? rows.map(c => `<tr>
         <td>${esc(c.category || this.t('q_an_uncategorized'))}</td>
@@ -2242,7 +2242,7 @@ Object.assign(App, {
     const ps = this.getTableState(tid);
     if (!ps.sortKey) { ps.sortKey = 'turns'; ps.sortDir = 'asc'; }
     const vp = 'out_cost' in d;
-    const esc = v => this.docEsc(v == null ? '' : v);
+    const esc = this.docEsc.bind(this);
     const rows = this.sortData(d.slowest || [], ps.sortKey, ps.sortDir);
     const cols = vp ? 6 : 4;
     const body = rows.length ? rows.map(r => `<tr class="q-row" onclick="App.qAlertOpen('${esc(r.code)}')">

@@ -38,6 +38,12 @@ const App = {
   // 统一图标：全项目只通过此入口取 SVG，避免各处混用 emoji
   icon(name, cls) { return window.appIcon ? window.appIcon(name, cls) : ''; },
 
+  // 聚焦输入框并把光标移到末尾（各业务模块统一调用，避免重复实现）
+  focusEnd(id) {
+    const el = document.getElementById(id);
+    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+  },
+
   // 角色标签：字典缺失时回落原始值，避免界面出现 role_xxx 这类原始 key
   // 回落值来自数据（role 字段），插入 innerHTML 前必须转义
   roleLabel(role) {
@@ -1048,7 +1054,7 @@ const App = {
   statusBadge(status) {
     const map = { '正常': this.t('st_normal'), '补货': this.t('st_restock'), '缺货': this.t('st_out'), '停用': this.t('mat_stopped'), '已到货': this.t('st_arrived'), '未到货': this.t('st_not_arrived'), '部分到货': this.t('st_partial'), '无明细': this.t('st_no_detail'), '已关闭': this.t('po_status_closed'), '已取消': this.t('po_status_cancelled') };
     const clsMap = { '正常': 'success', '补货': 'warning', '缺货': 'danger', '停用': 'muted', '已到货': 'success', '未到货': 'warning', '部分到货': 'info', '无明细': 'muted', '已关闭': 'muted', '已取消': 'muted' };
-    return `<span class="badge badge-${clsMap[status] || 'muted'}">${map[status] || this.docEsc(status)}</span>`;
+    return this.badgeHtml(`badge-${clsMap[status] || 'muted'}`, map[status] || this.docEsc(status));
   },
 
 };

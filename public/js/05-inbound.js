@@ -1311,11 +1311,6 @@ Object.assign(App, {
     }).join('') + '</ol>';
   },
 
-  ibFocusEnd(id) {
-    const el = document.getElementById(id);
-    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
-  },
-
   // ========== 事件委托 ==========
   ibBindEvents() {
     if (this._ibBound) return;
@@ -1350,7 +1345,7 @@ Object.assign(App, {
         s.lq = e.target.value;
         // 组词过程中不重绘：重绘会重建输入框，导致中文输入法组词被打断
         if (e.isComposing || this._ibLqComposing) return;
-        this.ibRenderLinesBody(); this.ibFocusEnd('ib_lqi');
+        this.ibRenderLinesBody(); this.focusEnd('ib_lqi');
       } else if (e.target.id === 'ib_mat_kw') {
         this._ibMatKw = e.target.value;
         this.ibRefreshMatOptions();
@@ -1365,7 +1360,7 @@ Object.assign(App, {
       this._ibLqComposing = false;
       if (this.currentPage !== 'inbound') return;
       this.ibState().lq = e.target.value;
-      this.ibRenderLinesBody(); this.ibFocusEnd('ib_lqi');
+      this.ibRenderLinesBody(); this.focusEnd('ib_lqi');
     });
 
     document.addEventListener('change', e => {
@@ -2235,24 +2230,10 @@ Object.assign(App, {
   },
 
   // 行内校验：红框 + 行首提示，不再只弹 toast
-  ibClearLineErrors() {
-    document.querySelectorAll('#ib-edit-lines .line-error-tip.show').forEach(el => {
-      el.classList.remove('show'); el.textContent = '';
-    });
-    document.querySelectorAll('#ib-edit-lines .ib-edit-qty.error').forEach(el => el.classList.remove('error'));
-  },
+  ibClearLineErrors() { this.clearLineErrors('#ib-edit-lines', '.ib-edit-qty'); },
 
   ibShowLineError(idx, msg) {
-    this.ibClearLineErrors();
-    const tip = document.querySelector(`#ib-edit-lines [data-ib-tip="${idx}"]`);
-    if (tip) { tip.textContent = msg || ''; tip.classList.add('show'); }
-    const inp = document.querySelector(`#ib-edit-lines .ib-edit-qty[data-idx="${idx}"]`);
-    if (inp) {
-      inp.classList.add('error');
-      inp.focus();
-      if (inp.scrollIntoView) inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
-    this.toast(msg, 'error');
+    this.showLineError('#ib-edit-lines', '.ib-edit-qty', 'data-ib-tip', idx, msg, true);
   },
 
   ibValidateEditLines() {

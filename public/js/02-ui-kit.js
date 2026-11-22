@@ -161,12 +161,15 @@ Object.assign(App, {
     return `<span class="badge badge-info">${this.t('doc_revision', { n: Number(m[1]) })}</span>`;
   },
 
+  // 徽标基元：统一 <span class="badge ..."> 结构，调用方只传类名与已转义/已国际化的标签
+  badgeHtml(cls, label) { return `<span class="badge ${cls}">${label}</span>`; },
+
   // 单据状态徽标：kind 决定「状态 → i18n 键」映射，各模块原有映射与兜底规则保持不变
   // kind: ibd 入库 / obd 出库 / pu_order 采购单 / pu_contract 合同 / st 盘点 / ret 退货
   docStatusBadge(kind, status) {
     if (kind === 'pu_contract') {
       const active = !status || status === 'active';
-      return `<span class="badge badge-${active ? 'success' : 'muted'}"><span aria-hidden="true">${active ? '●' : '■'}</span>&nbsp;${active ? this.t('pu_status_active') : this.t('pu_status_closed_c')}</span>`;
+      return this.badgeHtml(`badge-${active ? 'success' : 'muted'}`, `<span aria-hidden="true">${active ? '●' : '■'}</span>&nbsp;${active ? this.t('pu_status_active') : this.t('pu_status_closed_c')}`);
     }
     const maps = {
       ibd: { draft: 'ibd_status_draft', posted: 'ibd_status_posted', voided: 'ibd_status_voided' },
@@ -177,9 +180,9 @@ Object.assign(App, {
     };
     const label = (maps[kind] || {})[status];
     const cls = this.docStatusMeta(status).cls;
-    if (label) return `<span class="badge ${cls}">${this.t(label)}</span>`;
+    if (label) return this.badgeHtml(cls, this.t(label));
     // 未映射状态：采购单沿用「已确认」，其余按原文显示
-    return `<span class="badge ${cls}">${kind === 'pu_order' ? this.t('pu_status_posted') : this.docEsc(status)}</span>`;
+    return this.badgeHtml(cls, kind === 'pu_order' ? this.t('pu_status_posted') : this.docEsc(status));
   },
 
   // 生成可排序的表头：align=true/'right' 数字列右对齐，'center' 状态/类型/操作列居中，
@@ -570,7 +573,7 @@ Object.assign(App, {
     this.msEnsurePanel();
     const panel = this._msPanel;
     if (!panel) return;
-    const esc = v => this.docEsc(v);
+    const esc = this.docEsc.bind(this);
     const t = (k, vars) => this.t(k, vars);
     panel.hidden = false;
 
@@ -780,7 +783,7 @@ Object.assign(App, {
   // 全项目唯一的日期区间筛选结构：标签 + 起止日期 + 分隔号，统一走 .pu-daterange，
   // 焦点环由外层 chip 绘制，内部原生 date 不再叠蓝边；所有列表/查询/审计页共用。
   dateRangeHtml({ fromId, toId, fromVal = '', toVal = '', onChange = '', label = '', sep = '~' }) {
-    const esc = v => this.docEsc(v == null ? '' : String(v));
+    const esc = this.docEsc.bind(this);
     const name = esc(label);
     const attrs = onChange ? ` onchange="${esc(onChange)}"` : '';
     return `<div class="pu-daterange" role="group" aria-label="${name}">
@@ -885,9 +888,31 @@ Object.assign(App, {
     return v == null ? '' : String(v);
   },
 
+  // 单据编辑页行级校验提示的公共实现：rootSel 为明细容器，qtySel 为数量输入框，
+  // tipAttr 为行首提示元素的 data 属性名。各业务页只传参数，不再重复 DOM 逻辑。
+  clearLineErrors(rootSel, qtySel) {
+    document.querySelectorAll(`${rootSel} .line-error-tip.show`).forEach(el => {
+      el.classList.remove('show'); el.textContent = '';
+    });
+    document.querySelectorAll(`${rootSel} ${qtySel}.error`).forEach(el => el.classList.remove('error'));
+  },
+
+  showLineError(rootSel, qtySel, tipAttr, idx, msg, withToast) {
+    this.clearLineErrors(rootSel, qtySel);
+    const tip = document.querySelector(`${rootSel} [${tipAttr}="${idx}"]`);
+    if (tip) { tip.textContent = msg || ''; tip.classList.add('show'); }
+    const inp = document.querySelector(`${rootSel} ${qtySel}[data-idx="${idx}"]`);
+    if (inp) {
+      inp.classList.add('error');
+      inp.focus();
+      if (inp.scrollIntoView) inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    if (withToast) this.toast(msg, 'error');
+  },
+
   // 打印专用 HTML（单据头 + 明细表，表头跨页重复、明细行不跨页断裂）
   buildDocPrintHtml(doc) {
-    const esc = v => this.docEsc(v);
+    const esc = this.docEsc.bind(this);
     const cols = doc.columns || [];
     const rows = doc.rows || [];
     const head = cols.map(c => `<th${c.align === 'right' ? ' class="text-right"' : ''}>${esc(c.label)}</th>`).join('');

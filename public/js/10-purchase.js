@@ -735,7 +735,7 @@ Object.assign(App, {
         s.lq = e.target.value;
         // 组词过程中不重绘：重绘会重建输入框，导致中文输入法组词被打断
         if (e.isComposing || this._puLqComposing) return;
-        this.puRenderLinesBody(); this.puFocusEnd('pu_lqi');
+        this.puRenderLinesBody(); this.focusEnd('pu_lqi');
       }
       else if (e.target.id === 'pu_mat_kw') { this._puMatKw = e.target.value; this.puRefreshMatOptions(); }
       else if (e.target.id === 'pu_lm_kw') { this._puLmKw = e.target.value; this.puRefreshLmOptions(); }
@@ -750,7 +750,7 @@ Object.assign(App, {
       this._puLqComposing = false;
       if (this.currentPage !== 'purchase') return;
       this.puState().lq = e.target.value;
-      this.puRenderLinesBody(); this.puFocusEnd('pu_lqi');
+      this.puRenderLinesBody(); this.focusEnd('pu_lqi');
     });
 
     document.addEventListener('change', e => {
@@ -786,11 +786,6 @@ Object.assign(App, {
     window.addEventListener('resize', () => {
       if (this.currentPage === 'purchase') this.pinPager('pu-pager');
     });
-  },
-
-  puFocusEnd(id) {
-    const el = document.getElementById(id);
-    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
   },
 
   puAction(name, id, t, el) {
@@ -1317,24 +1312,11 @@ Object.assign(App, {
     }
   },
 
-  // 行级校验：红框 + 行首提示（与入库编辑页同一套样式），不再只弹整屏 toast
-  puClearLineErrors() {
-    document.querySelectorAll('#pu-edit-lines .line-error-tip.show').forEach(el => {
-      el.classList.remove('show'); el.textContent = '';
-    });
-    document.querySelectorAll('#pu-edit-lines .pu-line-qty.error').forEach(el => el.classList.remove('error'));
-  },
+  // 行级校验：红框 + 行首提示（与入库编辑页共用公共实现），不再只弹整屏 toast
+  puClearLineErrors() { this.clearLineErrors('#pu-edit-lines', '.pu-line-qty'); },
 
   puShowLineError(idx, msg) {
-    this.puClearLineErrors();
-    const tip = document.querySelector(`#pu-edit-lines [data-pu-tip="${idx}"]`);
-    if (tip) { tip.textContent = msg || ''; tip.classList.add('show'); }
-    const inp = document.querySelector(`#pu-edit-lines .pu-line-qty[data-idx="${idx}"]`);
-    if (inp) {
-      inp.classList.add('error');
-      inp.focus();
-      if (inp.scrollIntoView) inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
+    this.showLineError('#pu-edit-lines', '.pu-line-qty', 'data-pu-tip', idx, msg);
   },
 
   // 后端行级错误 → 定位到具体行并给出行号/编码/数量；未命中返回 false 由调用方回退 toast

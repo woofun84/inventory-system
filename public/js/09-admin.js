@@ -31,15 +31,13 @@ Object.assign(App, {
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid, h[2])).join('');
     thHtml += `<th class="text-center"></th>`;
-    const roleLabel = r => this.roleLabel(r);
-    const statusBadge = s => s === 'active' ? `<span class="badge badge-success">${this.t('status_active')}</span>` : `<span class="badge badge-muted">${this.t('status_disabled')}</span>`;
     let tbody = '';
     if (pageData.length === 0) {
       tbody = this.emptyRow(headers.length + 1, null, this.can('users', 'create')
         ? { actionLabel: this.t('user_add'), action: 'App.editUser()' }
         : {});
     }
-    else { tbody = pageData.map(u => `<tr><td class="cell-code">${this.docEsc(u.username)}${u.must_change_pwd ? ' <span class="badge badge-warning">' + this.icon('alert') + '</span>' : ''}</td><td>${this.docEsc(u.name || '')}</td><td>${roleLabel(u.role)}</td><td class="text-center">${statusBadge(u.status)}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td class="text-center">${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
+    else { tbody = pageData.map(u => `<tr><td class="cell-code">${this.docEsc(u.username)}${u.must_change_pwd ? ' <span class="badge badge-warning">' + this.icon('alert') + '</span>' : ''}</td><td>${this.docEsc(u.name || '')}</td><td>${this.roleLabel(u.role)}</td><td class="text-center">${this.badgeHtml(u.status === 'active' ? 'badge-success' : 'badge-muted', this.t(u.status === 'active' ? 'status_active' : 'status_disabled'))}</td><td>${this.fmtDateTime(u.last_login) || '-'}</td><td>${this.fmtDateTime(u.created_at)}</td><td class="text-center">${this.rowActions('users', `App.editUser(${u.id})`, `App.deleteUser(${u.id})`)}</td></tr>`).join(''); }
     document.getElementById('users-scroll').innerHTML = `<div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('users-pager').innerHTML = this.renderPager(tid, sorted.length);
   },

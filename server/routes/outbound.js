@@ -8,6 +8,7 @@ const express = require('express');
 const db = require('../db');
 const costing = require('../services/costing');
 const { requirePerm } = require('../middleware/auth');
+const { createDocPermissions } = require('../middleware/doc-permission');
 const { hasGrant } = require('../permissions');
 const { kwClause } = require('../utils/search');
 const {
@@ -33,80 +34,20 @@ const router = express.Router();
 function moduleOfTxnType(txnType) {
   return txnType === '领料退库' ? 'returns' : 'outbound';
 }
-function moduleOfDoc(doc) {
-  return moduleOfTxnType(doc && doc.txn_type);
-}
-function permDenied(res, code) {
-  return res.status(403).json({ error: '权限不足：无该操作权限', code: code || 'PERM_FORBIDDEN' });
-}
-
-// 新建单：按提交的 txn_type 选择模块（退库 → returns.manage，其余 → outbound.manage）
-function requireTypeAction(action) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: '未登录' });
-    const txnType = (req.body && req.body.txn_type) || '正常出库';
-    if (!hasGrant(req.grants, moduleOfTxnType(txnType), action)) return permDenied(res);
-    next();
-  };
-}
-
-// 单据读写：按库里的 txn_type 选择模块；单据不存在时交给路由返回 404。
-function requireDocAction(action, code) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: '未登录' });
-    const doc = db.prepare('SELECT txn_type FROM outbound_docs WHERE doc_no=?').get(req.params.docNo);
-    if (!doc) return next();
-    if (!hasGrant(req.grants, moduleOfDoc(doc), action)) return permDenied(res, code);
-    next();
-  };
-}
-
-// 下一单号预览：只读，退库单归 returns.view，其余归 outbound.view
-function requireNextNoView(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: '未登录' });
-  const txnType = req.query.txnType || '正常出库';
-  if (!hasGrant(req.grants, moduleOfTxnType(txnType), 'view')) return permDenied(res);
-  next();
-}
-
-// 更正草稿的明细保存按 correct 或 void 放行（void-only 用户需先删空全部明细），
-// 普通草稿仍要求 manage，与前端判定一致。
-function requireDocEditOrCorrect(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: '未登录' });
-  const doc = db.prepare('SELECT txn_type, corrects_doc_no FROM outbound_docs WHERE doc_no=?').get(req.params.docNo);
-  if (!doc) return next();
-  const mod = moduleOfDoc(doc);
-  const isCorrDraft = !!String(doc.corrects_doc_no || '').trim();
-  const ok = hasGrant(req.grants, mod, 'manage')
-    || (isCorrDraft && (hasGrant(req.grants, mod, 'correct') || hasGrant(req.grants, mod, 'void')));
-  if (!ok) return permDenied(res);
-  next();
-}
-
-// 发起更正：correct 或 void 均可。void-only 用户走「发起更正 → 删空明细 → 零行确认作废」。
-function requireCorrectionStart(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: '未登录' });
-  const doc = db.prepare('SELECT txn_type FROM outbound_docs WHERE doc_no=?').get(req.params.docNo);
-  if (!doc) return next();
-  const mod = moduleOfDoc(doc);
-  if (!hasGrant(req.grants, mod, 'correct') && !hasGrant(req.grants, mod, 'void')) {
-    return permDenied(res, 'CORRECT_FORBIDDEN');
-  }
-  next();
-}
-
-// 更正草稿确认：有明细 = 更正重开（correct），零行 = 整单作废（void），按单据所属模块判定
-function requireCorrectionAction(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: '未登录' });
-  const doc = db.prepare('SELECT txn_type FROM outbound_docs WHERE doc_no=?').get(req.params.docNo);
-  if (!doc) return next();
-  const n = db.prepare('SELECT COUNT(*) c FROM outbound WHERE doc_no=?').get(req.params.docNo).c;
-  const action = n > 0 ? 'correct' : 'void';
-  if (!hasGrant(req.grants, moduleOfDoc(doc), action)) {
-    return permDenied(res, action === 'void' ? 'VOID_FORBIDDEN' : 'CORRECT_FORBIDDEN');
-  }
-  next();
-}
+// 单据鉴权与入库共用同一套中间件工厂：仅表名、默认业务类型、退库归属模块不同
+const {
+  requireTypeAction,
+  requireDocAction,
+  requireNextNoView,
+  requireDocEditOrCorrect,
+  requireCorrectionStart,
+  requireCorrectionAction,
+} = createDocPermissions({
+  docTable: 'outbound_docs',
+  lineTable: 'outbound',
+  defaultTxnType: '正常出库',
+  moduleOfTxnType,
+});
 
 // 生成出库单据号（正常出库 GIN / 领料退库 GIT，规则见 services/docno.js，前缀可在参数设置中修改）
 function genOutboundDocNo(date, txnType) {

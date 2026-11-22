@@ -649,7 +649,7 @@ Object.assign(App, {
         s.lq = e.target.value;
         // 组词过程中不重绘：重绘会重建输入框，导致中文输入法组词被打断
         if (e.isComposing || this._stLqComposing) return;
-        this.stRenderLinesBody(); this.stFocusEnd('st_lqi');
+        this.stRenderLinesBody(); this.focusEnd('st_lqi');
       }
     });
 
@@ -661,7 +661,7 @@ Object.assign(App, {
       this._stLqComposing = false;
       if (this.currentPage !== 'stocktake') return;
       this.stState().lq = e.target.value;
-      this.stRenderLinesBody(); this.stFocusEnd('st_lqi');
+      this.stRenderLinesBody(); this.focusEnd('st_lqi');
     });
 
     document.addEventListener('change', e => {
@@ -686,11 +686,6 @@ Object.assign(App, {
     window.addEventListener('resize', () => {
       if (this.currentPage === 'stocktake') this.pinPager('st-pager');
     });
-  },
-
-  stFocusEnd(id) {
-    const el = document.getElementById(id);
-    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
   },
 
   stAction(name, id, el) {
