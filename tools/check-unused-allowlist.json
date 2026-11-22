@@ -1,0 +1,42 @@
+{
+  "_comment": "check-unused.js 白名单。只放经人工确认的动态分发/运行时钩子；新增条目必须在 _reasons 写明原因。",
+  "_reasons": {
+    "i18nPrefixes.audit_act_": "12-audit.js 把后端审计 action 码归一化为 audit_act_ + 动作名后调用 this.t()；字典还要兼容历史日志与多端写入的 action 值，静态引用无法穷举。",
+    "i18nPrefixes.audit_mod_": "12-audit.js 用 'audit_mod_' + 模块码翻译审计模块名，模块码来自后端审计记录。",
+    "i18nPrefixes.audit_doc_": "12-audit.js 用 'audit_doc_' + 模块码生成审计文档类型标题，模块码来自后端审计记录。",
+    "i18nPrefixes.audit_fld_": "12-audit.js 用 'audit_fld_' + 原始字段名翻译审计变更字段，字段由各单据/设置页运行时写入。",
+    "i18nPrefixes.audit_val_": "12-audit.js 用 'audit_val_' + 值码翻译审计前后值（状态、类型、角色等），值码来自数据库枚举。",
+    "i18nPrefixes.perm_": "09-admin.js 权限矩阵按权限目录的 模块码_动作 拼 'perm_' + key，缺失时再回落 'perm_' + 动作；目录由 /api/permissions/catalog 返回。",
+    "i18nPrefixes.role_": "01-core.js 的 roleLabel() 用 'role_' + 角色码翻译，角色码来自用户/审计数据。",
+    "i18nPrefixes.cv_reason_": "03-dashboard.js 的 costVarianceReasonLabel() 用 'cv_reason_' + 原因码翻译成本差异原因，原因码由服务端成本计算写入。",
+    "i18nPrefixes.set_auto_wd_": "08-orders.js 自动备份星期下拉用 'set_auto_wd_' + i（0-6）生成选项文案。",
+    "i18nKeys.nav_price": "09-admin.js 权限矩阵用 'nav_' + 模块码取模块标题，price 模块由权限目录返回；12-audit.js 也用同样方式翻译审计模块。",
+    "i18nKeys.dash_comp_return_with": "server/routes/dashboard.js 返回 r.key='return_with'，03-dashboard.js 用 'dash_comp_' + r.key 拼 key。",
+    "i18nKeys.dash_comp_return_without": "server/routes/dashboard.js 返回 r.key='return_without'，03-dashboard.js 用 'dash_comp_' + r.key 拼 key。",
+    "i18nKeys.q_an_class_b": "07-stock.js 用 'q_an_class_' + 分类码.toLowerCase() 渲染 ABC/N 分类筛选与标题。",
+    "i18nKeys.q_an_class_c": "07-stock.js 用 'q_an_class_' + 分类码.toLowerCase() 渲染 ABC/N 分类筛选与标题。",
+    "i18nKeys.q_an_class_n": "07-stock.js 用 'q_an_class_' + 分类码.toLowerCase() 渲染 ABC/N 分类筛选与标题。"
+  },
+  "i18nPrefixes": [
+    "audit_act_",
+    "audit_mod_",
+    "audit_doc_",
+    "audit_fld_",
+    "audit_val_",
+    "perm_",
+    "role_",
+    "cv_reason_",
+    "set_auto_wd_"
+  ],
+  "i18nKeys": [
+    "nav_price",
+    "dash_comp_return_with",
+    "dash_comp_return_without",
+    "q_an_class_b",
+    "q_an_class_c",
+    "q_an_class_n"
+  ],
+  "exportNames": [],
+  "cssPrefixes": [],
+  "cssClasses": []
+}

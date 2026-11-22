@@ -3,7 +3,7 @@
 - 审查日期：2026-11-22
 - 审查范围：全项目 37,069 行（前端 JS 18,458 / 后端约 11,500 / CSS 2,658 / HTML + 文档 + 配置）
 - 审查方式：静态引用分析（定义点 → 全局引用计数 → 内联事件、事件委托、字符串动态分发、前缀拼接逐项排除）+ 浏览器实测交叉验证
-- 重要声明：本报告主体为**只读审查**，原始审查未修改源码。所有「确认可删」项均经全局 grep 复核；代理初筛中的 1 处误报已排除（见文末「已排除的误报」）。**后续已分批执行 P0/P1（见 9.1-9.4）、P2（见 9.5）与 P3（见 9.6），执行记录追加在第 9 节。**
+- 重要声明：本报告主体为**只读审查**，原始审查未修改源码。所有「确认可删」项均经全局 grep 复核；代理初筛中的 1 处误报已排除（见文末「已排除的误报」）。**后续已分批执行 P0/P1（见 9.1-9.4）、P2（见 9.5）、P3（见 9.6）与 7.1 自检机制（见 9.7），执行记录追加在第 9 节。**
 
 ---
 
@@ -210,24 +210,27 @@
 
 清理是一次性的，机制才是长期解药。建议分三层落地：
 
-### 7.1 提交前自检（开发者侧，零成本）
+### 7.1 提交前自检（开发者侧，零成本）—— 已落地，见 9.7
 
-在 `package.json` 增加脚本：
+`package.json` 已接入三个脚本（语法检查做成独立 `tools/check-syntax.js`，避免 Windows 下 shell 引号与 glob 差异）：
 
 ```json
 "scripts": {
   "check": "npm run check:syntax && npm run check:dead",
-  "check:syntax": "node -e \"require('fs').readdirSync('public/js').filter(f=>f.endsWith('.js')).forEach(f=>require('child_process').execSync('node --check public/js/'+f))\"",
+  "check:syntax": "node tools/check-syntax.js",
   "check:dead": "node tools/check-unused.js"
 }
 ```
 
-`tools/check-unused.js`（建议新建，约 100 行）做三件事：
-1. 扫 `public/js/*.js` 中 `class="..."` 与 `public/css/*.css` 选择器，输出 JS 生成但 CSS 无定义的类（当前有 28 个待确认项）
-2. 扫 `00-i18n.js` 的 key 与全项目 `t('key')`，输出零引用键（当前 10 个）
-3. 扫 `server/services/*` 的 `module.exports` 与全项目 `require`，输出零引用导出
+`tools/check-syntax.js`：递归编译 `public/js/`、`server/`、`tools/` 与两个入口文件（当前 60 个 JS），任一语法错误即失败。
 
-每次提交前跑 `npm run check`，把新增的死代码挡在门前。
+`tools/check-unused.js` 做三件事，按「宁可漏报，不可误报」取向分级：
+
+1. **阻断项**：i18n 中英 key 对齐 + 零引用 key。由于项目大量动态分发（`t(variable)`、`t(prefix + suffix)`、内联 `onclick`、审计 detail key），引用判定采用保守子串匹配；确属动态分发的 key/前缀登记到 `tools/check-unused-allowlist.json`，并在 `_reasons` 写明原因。
+2. **阻断项**：`server/` 下 `module.exports` 导出名全项目零引用检查（当前 165 个导出，0 死导出）。
+3. **仅报告项**：`class="..."` 生成类与 CSS 选择器差异（含 HTML 内联 `<style>` 作为定义来源，并过滤 JS 整行注释中的示例类）。当前 27 个待确认项，不参与退出码，避免把 `querySelector` 钩子误判为缺陷。
+
+每次提交前跑 `npm run check`；查看报告明细用 `npm run check:dead -- --verbose`。
 
 ### 7.2 审查清单（Code Review 模板）
 
@@ -268,7 +271,7 @@
 
 ---
 
-**报告结论**：可以安全执行 P0（除审计日志 3 键需特殊处理）与 P1 全部清理；P2 建议按组分批做，每组独立回归；P3 单独排期。机制部分（7.1 的 check 脚本、7.2 的清单）建议随第一批清理一起落地。
+**报告结论**：可以安全执行 P0（除审计日志 3 键需特殊处理）与 P1 全部清理；P2 建议按组分批做，每组独立回归；P3 单独排期。机制部分 7.1 的 check 脚本已落地（见 9.7）；7.2 的审查清单仍作为 PR 模板建议保留。
 
 ---
 
@@ -345,6 +348,17 @@
 
 **净效果**：6 个既有文件，新增 266 行、删除 252 行（主要是注释与私有方法拆分）。
 
-### 9.7 未执行（待后续排期）
+### 9.7 7.1 自检机制落地（已执行）
 
-- **7.1 的 `tools/check-unused.js` 自检脚本**：仍未新建（属机制建议，非 P2/P3 本体；本次未扩大范围）
+按用户「按建议做」授权，将 7.1 从机制建议转为可运行的提交前门禁：
+
+| 文件 | 变更 |
+|---|---|
+| `package.json` | 新增 `check` / `check:syntax` / `check:dead` 三个 npm scripts |
+| `tools/check-syntax.js` | 新建；用 `vm.Script` 递归编译 60 个 JS（public/js、server、tools、server.js、init-db.js），跨平台、不执行代码 |
+| `tools/check-unused.js` | 新建；i18n 中英对齐与零引用、server 导出零引用为阻断项；CSS 类差异为仅报告项。CSS 定义来源补充 HTML 内联 `<style>`，并过滤 JS 整行注释中的示例类，避免误报 |
+| `tools/check-unused-allowlist.json` | 新建白名单；9 组动态前缀（`audit_act_`/`audit_mod_`/`audit_doc_`/`audit_fld_`/`audit_val_`/`perm_`/`role_`/`cv_reason_`/`set_auto_wd_`）与 6 个精确 key（`nav_price`、`dash_comp_return_with/without`、`q_an_class_b/c/n`）全部在 `_reasons` 注明动态分发来源 |
+
+**误报收敛过程**：初版按 `t('key')` 精确抽取，因模板字符串嵌套、英文句子里的 `xxx:`、审计 detail key 等误报 681 个；改为词法/保守子串判定后降到 222 个，逐项查证后确认全部是动态分发或历史兼容 key，未删任何真实死键，而是通过白名单登记。白名单刻意采用「前缀 + 精确 key」混合：动态族用前缀，零散 key 用精确条目，保证未来新增死键仍能被报出。
+
+**当前基线**：`npm run check` → 语法 60/60、i18n zh=en=1448 且零引用 0、单边 0、server 导出 165 个零引用 0、CSS 仅报告 27 项（未定义类，含 `querySelector` 钩子可能），整体 PASS。
