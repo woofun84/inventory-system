@@ -68,9 +68,13 @@ Object.assign(App, {
     ];
     let thHtml = headers.map(h => this.sortTh(h[1], h[0], tid, h[2])).join('');
     thHtml += `<th class="text-center no-clip">${this.t('mat_status')}</th><th class="text-center no-clip"></th>`;
-    // 数字列收窄，省出的宽度让给品牌列；fixed 布局保证长品牌不撑破表格
-    const widths = vp ? [10, 12, 9, 9, 6, 8, 9, 8, 14, 7, 8] : [10, 12, 9, 9, 6, 8, 8, 22, 7, 9];
-    const colgroup = `<colgroup>${widths.map(w => `<col style="width:${w}%">`).join('')}</colgroup>`;
+    // 列宽用像素固定 + 表格 min-width：窄屏由 #materials-scroll 横向滚动，
+    // 不再用百分比列把「编码/名称/规格」压扁串列（与查询中心库存表同一套做法）
+    const colW = vp
+      ? [96, 160, 110, 96, 56, 80, 88, 80, 130, 72, 88]
+      : [96, 160, 110, 96, 56, 80, 80, 130, 72, 88];
+    const minW = colW.reduce((s, w) => s + w, 0);
+    const colgroup = `<colgroup>${colW.map(w => `<col style="width:${w}px">`).join('')}</colgroup>`;
     let tbody = '';
     if (pageData.length === 0) {
       tbody = this.emptyRow(vp ? 11 : 10, null, this.can('materials', 'create')
@@ -84,7 +88,7 @@ Object.assign(App, {
         return `<tr><td class="cell-code">${this.docEsc(m.code)}</td><td>${this.docEsc(m.name)}</td><td>${this.docEsc(m.spec || '')}</td><td>${this.docEsc(m.category)}</td><td>${this.docEsc(m.unit)}</td><td class="text-right">${this.docEsc(m.opening_qty)}</td>${vp ? `<td class="text-right">${this.docEsc(this.fmtMoney(m.opening_price))}</td>` : ''}<td class="text-right">${this.docEsc(m.min_stock)}</td><td title="${this.docEsc(m.brand || '')}">${this.docEsc(m.brand || '')}</td><td class="text-center no-clip">${m.status === '停用' ? this.statusBadge('停用') : `<span class="badge badge-success">${this.t('mat_in_use')}</span>`}</td><td class="text-center no-clip">${this.rowActions('materials', `App.editMaterial(${codeArg})`, `App.deleteMaterial(${codeArg})`)}</td></tr>`;
       }).join('');
     }
-    document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table class="clip-table">${colgroup}<thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+    document.getElementById('materials-scroll').innerHTML = `<div class="table-wrap"><table class="clip-table" style="table-layout:fixed;min-width:${minW}px">${colgroup}<thead><tr>${thHtml}</tr></thead><tbody>${tbody}</tbody></table></div>`;
     document.getElementById('materials-pager').innerHTML = this.renderPager(tid, sorted.length);
   },
 
