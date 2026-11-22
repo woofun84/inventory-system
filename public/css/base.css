@@ -142,25 +142,22 @@
   --num-zero: #b45309;
   --num-warn: #b45309;
 
-  /* ===== 字号 / 行高 / 间距阶梯（4px 基准，新增样式一律复用） ===== */
-  --fs-9: 9px;
-  --fs-10: 10px;
-  --fs-11_5: 11.5px;
+  /* ===== 字号阶梯：7 级（1.2 模数取整），新增样式一律复用 =====
+     旧版有 18 级（9/10/11/11.5/12/12.5/13/14/15/16/17/18/20/22/24/25/32/42），
+     其中 11/11.5、24/25 属半像素级伪分级。现收敛为 7 级；图标尺寸不再是字号，
+     另立 --icon-* 令牌（见下），保证视觉零变化。 */
   --fs-xxs: 11px;
   --fs-xs: 12px;
-  --fs-12_5: 12.5px;
   --fs-sm: 13px;
   --fs-md: 14px;
-  --fs-15: 15px;
   --fs-lg: 16px;
-  --fs-17: 17px;
-  --fs-18: 18px;
   --fs-xl: 20px;
-  --fs-22: 22px;
-  --fs-24: 24px;
-  --fs-25: 25px;
-  --fs-32: 32px;
-  --fs-42: 42px;
+  --fs-display: 28px;
+  /* 图标尺寸（关闭符号 / 空状态 / 确认框），与排版字号解耦，值保持原样 */
+  --icon-close: 22px;
+  --icon-close-lg: 24px;
+  --icon-confirm: 32px;
+  --icon-empty: 42px;
   --lh-base: 1.6;
   --space-0_5: 2px;
   --space-0_75: 3px;
@@ -559,7 +556,7 @@ body {
   border-radius: var(--radius-sm);
   background: var(--card-bg);
   color: var(--text);
-  font-size: var(--fs-18);
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
 }

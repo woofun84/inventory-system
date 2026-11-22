@@ -190,13 +190,7 @@ Object.assign(App, {
     const sel = this.obState().sel;
     const tid = 'outbound';
     const cols = [
-      ['doc_no', this.t('obd_no'), r => {
-        const subs = [];
-        if (r.corrects_doc_no) subs.push(`${this.icon('edit')} ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
-        if (r.corrected_by_doc_no) subs.push(`→ ${this.t('ibd_corr_to')} ${this.docEsc(r.corrected_by_doc_no)}`);
-        const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
-        return `<button type="button" class="pu-lk" data-ob="open" data-id="${this.docEsc(r.doc_no)}">${this.docEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
-      }],
+      ['doc_no', this.t('obd_no'), r => this.docNoCellHtml(r, 'data-ob="open"')],
       ['date', this.t('obd_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
       ['txn_type', this.t('obd_type'), r => this.obTypeBadge(r.txn_type)
         + (r.no_origin ? ` <span class="badge badge-muted">${this.t('ret_no_origin_badge')}</span>` : ''), 'center'],

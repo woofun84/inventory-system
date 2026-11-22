@@ -78,7 +78,7 @@
 }
 
 @media (max-width: 480px) {
-  .page-title { font-size: var(--fs-17); }
+  .page-title { font-size: var(--fs-lg); }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* head-actions + filter-toggle 同行等宽，视觉统一不割裂 */
   .pu-head-actions > .btn,
@@ -259,7 +259,7 @@
   animation: scaleIn 0.15s ease;
 }
 .confirm-icon {
-  font-size: var(--fs-32);
+  font-size: var(--icon-confirm);
   margin-bottom: 12px;
   text-align: center;
 }
@@ -330,7 +330,7 @@
   white-space: nowrap;
 }
 .sort-th:hover { color: var(--primary); }
-.sort-arrow { font-size: var(--fs-10); margin-left: 4px; opacity: 0.6; }
+.sort-arrow { font-size: var(--fs-xxs); margin-left: 4px; opacity: 0.6; }
 .sort-th.active { color: var(--primary); }
 .sort-th:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sort-th.active .sort-arrow { opacity: 1; }
@@ -460,7 +460,7 @@
   position: static;
   transform: none;
   margin-left: 4px;
-  font-size: var(--fs-9);
+  font-size: var(--fs-xxs);
   line-height: 1;
   opacity: .55;
   vertical-align: middle;
@@ -667,6 +667,20 @@ button.pu-kpi { cursor: pointer; }
 .pu-lk { background: none; border: 0; padding: 0; color: var(--primary); font-weight: 600; cursor: pointer; font-size: var(--fs-sm); font-family: inherit; text-align: left; }
 .pu-lk:hover { text-decoration: underline; }
 .pu-lk.danger { color: var(--danger); }
+/* 单据号单元格：主单号为主视觉，更正链降为单行紧凑角标（完整单号在 title） */
+.docno-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.docno-cell > .badge { align-self: flex-start; }
+.docno-rels { display: flex; flex-direction: column; gap: 1px; max-width: 100%; }
+.docno-rel {
+  display: block;
+  max-width: 190px;
+  font-size: var(--fs-xxs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+}
 .pu-lk.is-voided { color: var(--text-muted); text-decoration: line-through; }
 .pu-row { cursor: pointer; }
 .pu-row.sel > td { background: var(--table-row-selected); }
@@ -695,7 +709,7 @@ button.pu-kpi { cursor: pointer; }
 
 /* --- 详情栏内部 --- */
 .pu-insp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-2_5) var(--space-2) var(--space-4); }
-.pu-insp-head h2 { font-size: var(--fs-18); font-weight: 700; margin: 0 0 var(--space-0_5); font-family: inherit; }
+.pu-insp-head h2 { font-size: var(--fs-lg); font-weight: 700; margin: 0 0 var(--space-0_5); font-family: inherit; }
 .pu-insp-head small { color: var(--text-muted); font-size: var(--fs-xs); }
 .pu-insp-meta { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-4); margin: 0 var(--space-4) var(--space-3); }
 .pu-insp-meta div { display: flex; flex-direction: column; min-width: 0; }
@@ -863,7 +877,7 @@ button.pu-kpi { cursor: pointer; }
 /* --- 采购单编辑页（新建 / 整单编辑） --- */
 .pu-edit-bar { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: 14px; }
 .pu-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: var(--space-4_5); margin-bottom: 14px; }
-.pu-card-title { display: flex; align-items: center; gap: var(--space-2_25); font-size: var(--fs-15); font-weight: 700; margin-bottom: 14px; }
+.pu-card-title { display: flex; align-items: center; gap: var(--space-2_25); font-size: var(--fs-md); font-weight: 700; margin-bottom: 14px; }
 .pu-card-title span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--primary-light); color: var(--primary); font-size: var(--fs-xs); font-weight: 700; }
 .pu-card-title small { font-weight: 400; color: var(--text-muted); font-size: var(--fs-xs); }
 /* 仪表盘「本月业务构成」：沿用采购卡片规范 */
@@ -1035,7 +1049,7 @@ button.pu-kpi { cursor: pointer; }
 /* --- 库存查询：长列截断与详情卡数字块（原 qBoardStock 内联段） --- */
 #q_stock_scroll tbody td.q-ell { overflow: hidden; text-overflow: ellipsis; }
 #q_stock_insp .q-card-stock { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 0; }
-#q_stock_insp .q-card-stock dd.q-num { font-size: var(--fs-15); font-weight: 700; font-variant-numeric: tabular-nums; }
+#q_stock_insp .q-card-stock dd.q-num { font-size: var(--fs-md); font-weight: 700; font-variant-numeric: tabular-nums; }
 #q_stock_insp .q-card-month { margin-top: 8px; font-size: var(--fs-sm); color: var(--text-muted); }
 
 /* --- 单据 / 领用人列表与概览预警清单（原 qFlowCss 的三个调用） ---

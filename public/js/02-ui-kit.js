@@ -161,6 +161,26 @@ Object.assign(App, {
     return `<span class="badge badge-info">${this.t('doc_revision', { n: Number(m[1]) })}</span>`;
   },
 
+  // 单据号单元格：主单号为主视觉，更正链压成单行紧凑角标（title 保留完整单号），
+  // 避免「主单号 + 修订徽标 + 多行更正单号」堆叠造成的层级混乱。
+  // dataAttrs/openAction 由调用方提供（如 'data-ib="open"'），行为与原先一致。
+  docNoCellHtml(row, dataAttrs) {
+    const no = this.docEsc(row.doc_no || '');
+    const links = [];
+    if (row.corrects_doc_no) links.push({ mark: '↢', label: this.t('ibd_corr_from'), no: row.corrects_doc_no });
+    if (row.corrected_by_doc_no) links.push({ mark: '↣', label: this.t('ibd_corr_to'), no: row.corrected_by_doc_no });
+    let sub = '';
+    if (links.length) {
+      const chips = links.map(l => {
+        const full = this.docEsc(String(l.no || ''));
+        const short = full.length > 16 ? full.slice(0, 14) + '…' : full;
+        return `<span class="docno-rel" title="${this.docEsc(l.label)} ${full}">${l.mark} ${this.docEsc(l.label)} ${short}</span>`;
+      }).join('');
+      sub = `<div class="docno-rels">${chips}</div>`;
+    }
+    return `<span class="docno-cell"><button type="button" class="pu-lk" ${dataAttrs} data-id="${no}">${no}</button>${this.docRevisionBadge(row.doc_no)}${sub}</span>`;
+  },
+
   // 徽标基元：统一 <span class="badge ..."> 结构，调用方只传类名与已转义/已国际化的标签
   badgeHtml(cls, label) { return `<span class="badge ${cls}">${label}</span>`; },
 

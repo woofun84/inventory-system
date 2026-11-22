@@ -203,13 +203,7 @@ Object.assign(App, {
     const sel = this.ibState().sel;
     const tid = 'inbound';
     const cols = [
-      ['doc_no', this.t('ibd_no'), r => {
-        const subs = [];
-        if (r.corrects_doc_no) subs.push(`${this.icon('edit')} ${this.t('ibd_corr_from')} ${this.docEsc(r.corrects_doc_no)}`);
-        if (r.corrected_by_doc_no) subs.push(`→ ${this.t('ibd_corr_to')} ${this.docEsc(r.corrected_by_doc_no)}`);
-        const sub = subs.length ? `<br><span class="pu-mu">${subs.join('<br>')}</span>` : '';
-        return `<button type="button" class="pu-lk" data-ib="open" data-id="${this.docEsc(r.doc_no)}">${this.docEsc(r.doc_no)}</button>${this.docRevisionBadge(r.doc_no)}${sub}`;
-      }],
+      ['doc_no', this.t('ibd_no'), r => this.docNoCellHtml(r, 'data-ib="open"')],
       ['date', this.t('ibd_date'), r => this.fmtDocDate(r.date, r.created_at, r.confirmed_at)],
       ['txn_type', this.t('ibd_type'), r => this.ibTypeBadge(r.txn_type), 'center'],
       ['supplier', this.t('ibd_supplier'), r => this.docEsc(r.supplier || '')],

@@ -21,14 +21,23 @@ Object.assign(App, {
       const cvSub = cv.count
         ? this.t('dash_cost_variance_count', { n: cv.count })
         : this.t('dash_cost_variance_none');
-      html += `<div class="metric-grid">
+      // 主卡 2 张（库存规模）+ 紧凑指标条（本月概览与风险），避免 6+1 的网格失衡
+      const mini = (label, value, sub, icon, cls, extra = '') =>
+        `<div class="dash-mini ${cls || ''}" ${extra}><div class="dash-mini-label">${this.icon(icon, 'icon--metric')} ${label}</div><div class="dash-mini-value">${value}</div><div class="dash-mini-sub">${sub}</div></div>`;
+      html += `<div class="metric-grid metric-grid--feature">
         <div class="metric-card"><div class="metric-label">${this.icon('tag', 'icon--metric')} ${this.t('dash_total_items')}</div><div class="metric-value">${data.total_items}</div><div class="metric-sub">${this.t('dash_items_sub')}</div></div>
-        ${vp ? `<div class="metric-card metric-success"><div class="metric-label">${this.icon('wallet', 'icon--metric')} ${this.t('dash_total_value')}</div><div class="metric-value">${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>
-        <div class="metric-card ${cv.exceeded ? 'metric-diff-alert' : ''} u-pointer" onclick="App.showCostVariance()" title="${this.t('dash_cost_variance_desc')}"><div class="metric-label">${this.icon('chart', 'icon--metric')} ${this.t('dash_cost_variance')}</div><div class="metric-value">${this.fmtMoney(cv.total)}</div><div class="metric-sub">${cvSub}${cv.exceeded ? ' · ' + this.t('dash_cost_variance_alert', { pct: Math.round(cv.ratio * 1000) / 10 }) : ''}</div></div>
-        <div class="metric-card metric-info"><div class="metric-label">${this.icon('inbound', 'icon--metric')} ${this.t('dash_month_in')}</div><div class="metric-value">${this.fmtMoney(data.month_in_amount)}</div><div class="metric-sub">${this.t('dash_month_in_sub')}</div></div>
-        <div class="metric-card metric-warning"><div class="metric-label">${this.icon('outbound', 'icon--metric')} ${this.t('dash_month_out')}</div><div class="metric-value">${this.fmtMoney(data.month_out_amount)}</div><div class="metric-sub">${this.t('dash_month_out_sub')}</div></div>` : ''}
-        <div class="metric-card"><div class="metric-label">${this.icon('receipt', 'icon--metric')} ${this.t('dash_month_txn')}</div><div class="metric-value">${data.month_txn_count}</div><div class="metric-sub">${this.t('dash_txn_sub')}</div></div>
-        <div class="metric-card metric-danger"><div class="metric-label">${this.icon('alert', 'icon--metric')} ${this.t('dash_alerts')}</div><div class="metric-value">${data.alert_count}</div><div class="metric-sub">${this.t('dash_alerts_sub')}</div></div></div>`;
+        ${vp ? `<div class="metric-card metric-success"><div class="metric-label">${this.icon('wallet', 'icon--metric')} ${this.t('dash_total_value')}</div><div class="metric-value">${this.fmtMoney(data.total_value)}</div><div class="metric-sub">${this.t('dash_value_sub')}</div></div>` : ''}
+      </div>`;
+      const miniItems = [
+        ...(vp ? [
+          mini(this.t('dash_cost_variance'), this.fmtMoney(cv.total), cvSub + (cv.exceeded ? ' · ' + this.t('dash_cost_variance_alert', { pct: Math.round(cv.ratio * 1000) / 10 }) : ''), 'chart', (cv.exceeded ? 'dash-mini-warn' : '') + ' u-pointer', `onclick="App.showCostVariance()" title="${this.t('dash_cost_variance_desc')}" role="button" tabindex="0"`),
+          mini(this.t('dash_month_in'), this.fmtMoney(data.month_in_amount), this.t('dash_month_in_sub'), 'inbound', 'dash-mini-info'),
+          mini(this.t('dash_month_out'), this.fmtMoney(data.month_out_amount), this.t('dash_month_out_sub'), 'outbound', 'dash-mini-warn2'),
+        ] : []),
+        mini(this.t('dash_month_txn'), data.month_txn_count, this.t('dash_txn_sub'), 'receipt', ''),
+        mini(this.t('dash_alerts'), data.alert_count, this.t('dash_alerts_sub'), 'alert', 'dash-mini-danger'),
+      ];
+      html += `<div class="dash-mini-strip"><div class="dash-mini-strip-title">${this.t('dash_kpi_secondary')}</div><div class="dash-mini-grid">${miniItems.join('')}</div></div>`;
       html += this.renderMonthBreakdown(data, vp);
       if (vp) html += `<div class="chart-grid"><div class="card"><div class="card-title">${this.t('dash_trend')}</div><div class="chart-container"><canvas id="trendChart"></canvas></div></div><div class="card"><div class="card-title">${this.t('dash_category')}</div><div class="chart-container"><canvas id="categoryChart"></canvas></div></div></div>`;
       if (vp) html += `<div class="card"><div class="card-title">${this.t('dash_top5')}</div><div class="chart-container"><canvas id="topChart"></canvas></div></div>`;
