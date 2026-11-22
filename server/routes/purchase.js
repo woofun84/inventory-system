@@ -882,7 +882,7 @@ router.put('/api/purchase/lines/:id', requirePriceEdit, (req, res) => {
   }
 });
 
-router.delete('/api/purchase/lines/:id', (req, res) => {
+router.delete('/api/purchase/lines/:id', requirePriceEdit, (req, res) => {
   try {
     const line = db.prepare(`${LINE_SEL} WHERE ol.id = ?`).get(req.params.id);
     if (!line) return res.status(404).json({ error: '采购明细不存在' });

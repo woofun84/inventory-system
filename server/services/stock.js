@@ -150,6 +150,27 @@ function getReturnedQtyByLine(originLineId, excludeDocNo) {
   return Number(db.prepare(sql).get(...args).qty || 0);
 }
 
+// 原出库行累计已退数量（批量版）：一次 IN 查询拿齐全部行的已退量
+// 与 getReturnedQtyByLine 口径完全一致，只是避免 N+1。
+// 返回 Map<originLineId, returnedQty>；没命中的行不在 Map 中。
+function getReturnedQtyMap(originLineIds, excludeDocNo) {
+  if (!originLineIds || originLineIds.length === 0) return new Map();
+  const ids = originLineIds.map(Number).filter(id => id > 0);
+  if (ids.length === 0) return new Map();
+  const ph = ids.map(() => '?').join(',');
+  let sql = `SELECT o.origin_line_id AS id, COALESCE(SUM(ABS(o.qty)),0) AS qty
+    FROM outbound o
+    JOIN outbound_docs d ON d.doc_no = o.doc_no
+    WHERE o.origin_line_id IN (${ph}) AND o.txn_type = ?
+      AND d.status = 'posted'`;
+  const args = [...ids, RETURN_TXN_TYPE];
+  if (excludeDocNo) { sql += ' AND o.doc_no <> ?'; args.push(excludeDocNo); }
+  sql += ' GROUP BY o.origin_line_id';
+  const map = new Map();
+  db.prepare(sql).all(...args).forEach(r => map.set(Number(r.id), Number(r.qty || 0)));
+  return map;
+}
+
 // 校验原出库单可作为退库来源
 function loadReturnableOrigin(originDocNo) {
   const doc = db.prepare('SELECT * FROM outbound_docs WHERE doc_no=?').get(originDocNo);
@@ -171,9 +192,11 @@ function getReturnableLines(originDocNo, excludeDocNo, originDoc) {
     WHERE o.doc_no = ? AND o.status = 'posted' AND o.qty > 0
     ORDER BY o.id ASC`).all(originDocNo);
 
+  // 已退量一次批量预取，避免 N+1
+  const returnedMap = getReturnedQtyMap(lines.map(l => l.id), excludeDocNo);
   return lines.map(l => {
     const origQty = sign.absQty(l.qty);
-    const returnedQty = getReturnedQtyByLine(l.id, excludeDocNo);
+    const returnedQty = returnedMap.get(l.id) || 0;
     return {
       id: l.id,
       code: l.code,
@@ -195,6 +218,9 @@ function getReturnableLines(originDocNo, excludeDocNo, originDoc) {
 function validateReturnAgainstOrigin(lines, originDocNo, excludeDocNo) {
   loadReturnableOrigin(originDocNo);
   const seen = new Map();
+  // 已退量一次批量预取，避免 N+1（行级校验 SQL 保持原样，只替换退库量查询）
+  const allLineIds = lines.map(l => Number(l.origin_line_id) || 0).filter(id => id > 0);
+  const returnedMap = getReturnedQtyMap(allLineIds, excludeDocNo);
 
   lines.forEach(l => {
     const lineId = Number(l.origin_line_id) || 0;
@@ -210,7 +236,7 @@ function validateReturnAgainstOrigin(lines, originDocNo, excludeDocNo) {
     }
 
     const qty = sign.absQty(l.qty);
-    const used = getReturnedQtyByLine(lineId, excludeDocNo);
+    const used = returnedMap.get(lineId) || 0;
     const inBatch = (seen.get(lineId) || 0) + qty;
     seen.set(lineId, inBatch);
 
@@ -729,6 +755,7 @@ module.exports = {
   validateOutboundStock,
   validateInboundReturnStock,
   getReturnedQtyByLine,
+  getReturnedQtyMap,
   loadReturnableOrigin,
   getReturnableLines,
   validateReturnAgainstOrigin,

@@ -367,7 +367,7 @@
         .map(m => `<option value="${m}" ${m === f.module ? 'selected' : ''}>${m ? escHtml(this.auditModuleLabel(m)) : this.t('audit_all_modules')}</option>`).join('');
       const actOpts = [''].concat(AUDIT_ACTIONS)
         .map(a => `<option value="${a}" ${a === f.action ? 'selected' : ''}>${a ? escHtml(this.auditActionLabel(a)) : this.t('audit_all_actions')}</option>`).join('');
-      return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%">
+      return `<div class="u-flex-wrap-center" style="gap:8px;width:100%">
         <select id="audit_filter_module" style="${sel}" onchange="App.onAuditFilter()">${modOpts}</select>
         <select id="audit_filter_action" style="${sel}" onchange="App.onAuditFilter()">${actOpts}</select>
         <input id="audit_filter_kw" placeholder="${this.t('audit_filter_ph')}" value="${escHtml(f.keyword)}" style="${sel};flex:1;min-width:180px;max-width:320px" oninput="App.onAuditFilter()">
@@ -469,7 +469,7 @@
             <td>${escHtml(this.auditTargetLabel(r.target) || '')}</td>
             <td>${detailCell}</td>
             <td class="text-center">${resultCell}</td>
-            <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${escHtml(r.ip || '')}</td>
+            <td class="u-muted-sm u-nowrap">${escHtml(r.ip || '')}</td>
           </tr>`;
         }).join('');
       }

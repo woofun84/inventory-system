@@ -24,6 +24,7 @@
   --card-bg: #ffffff;
   --text: #1f2937;
   --text-muted: #6b7280;
+  --placeholder: #9ca3af;
   --border: #e5e7eb;
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
   --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1);
@@ -101,7 +102,7 @@
   --overlay-bg: rgba(15,23,42,0.45);
   --overlay-bg-strong: rgba(15,23,42,0.78);
   --overlay-bg-hover: rgba(15,23,42,0.5);
-  --sidebar-divider: var(--sidebar-divider);
+  --sidebar-divider: rgba(255, 255, 255, 0.08);
   --shadow-sidebar: 4px 0 18px rgba(15, 23, 42, 0.28);
   --shadow-primary: 0 4px 10px rgba(37,99,235,0.25);
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, .18);
@@ -174,6 +175,37 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* 占位符颜色：亮/暗主题各自通过 --placeholder 覆盖 */
+input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 1; }
+
+/* 日期/时间输入框归一化：干掉 WebKit/Blink 内置的双层聚焦蓝边
+   Chrome 对 <input type="date"> 会在内部插入 ::-webkit-datetime-edit 子容器，
+   它自己会画一圈独立的 outline，外层 input 设了 outline:none 也杀不掉它。
+   必须同时 apperance:none + 干掉所有伪元素的 outline，才能让外层 focus 边框成为唯一焦点指示。 */
+input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"], input[type="week"] {
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+}
+input[type="date"]:focus, input[type="time"]:focus,
+input[type="datetime-local"]:focus, input[type="month"]:focus, input[type="week"]:focus {
+  outline: none;
+}
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit {
+  outline: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+}
 
 
 /* ========== 全屏主框架 ========== */
@@ -418,8 +450,8 @@ body {
   display: none;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

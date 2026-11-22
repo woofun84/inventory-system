@@ -1913,10 +1913,10 @@ Object.assign(App, {
           <td class="u-min-w-100"><div class="pu-qty-wrap"><input type="number" class="ib-edit-qty" data-idx="${i}" step="0.01" min="${qtyMin}"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
           ${vp ? `${priceCell}
           <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
-          <td style="min-width:120px;font-size:12px">${contract}</td>
+          <td style="min-width:120px" class="u-fs-xs">${contract}</td>
           <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
           ${corrUnrecCell}
-          <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}" style="font-size:12px"${(availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
+          <td class="pu-edit-amt u-fs-xs${availCls ? ' ' + availCls : ''}"${(availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
           <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
       }).join('');
@@ -1955,7 +1955,7 @@ Object.assign(App, {
           </div>`;
         }
       }
-      box.innerHTML = filterHtml + `<div id="ib-over-hint" class="ui-note ui-note--warning" style="display:none"></div>`
+      box.innerHTML = filterHtml + `<div id="ib-over-hint" class="ui-note ui-note--warning u-hidden"></div>`
         + `<div class="table-wrap"><table class="pu-edit-lines"><thead>${headHtml}</thead><tbody>${tbody}</tbody></table></div>` + sumHtml;
     }
     this.ibMarkOverReceipt();

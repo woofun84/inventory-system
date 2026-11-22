@@ -784,6 +784,7 @@ Object.assign(App, {
 
     box.classList.remove('ob-voided-panel');
     box.innerHTML = `
+      <div class="pu-insp-body">
       <button type="button" class="btn btn-outline btn-sm pu-mback" data-ob="icl">← ${this.t('pu_back_list')}</button>
       ${this.crossLinkBackBtn('outbound', d.doc_no)}
       <div class="pu-insp-head">
@@ -802,6 +803,7 @@ Object.assign(App, {
       ${this.obCorrectionBarHtml(d)}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" data-ob="dt" data-id="${k}">${label} ${n}</button>`).join('')}</div>
       <div class="pu-dpanel" id="ob-dpanel"></div>
+      </div>
       <div class="pu-insp-foot">${this.obRenderFoot(d, lines)}</div>`;
     this.obRenderDetailPanel();
     this.pinPager('ob-pager');
@@ -958,7 +960,7 @@ Object.assign(App, {
 
     if (!lines.length) {
       box.innerHTML = d.status === 'draft'
-        ? `<div class="ib-empty-draft"><b>${this.t('obd_empty_draft_title')}</b><div style="font-size:12px;color:var(--text-muted);margin:6px 0 12px">${this.t('obd_empty_draft_desc')}</div>${this.can(this.obPermModule(d), 'manage') ? `<button class="btn btn-primary btn-sm" data-ob="edit">${this.t('obd_empty_draft_add')}</button>` : ''}</div>`
+        ? `<div class="ib-empty-draft"><b>${this.t('obd_empty_draft_title')}</b><div class="u-muted-sm" style="margin:6px 0 12px">${this.t('obd_empty_draft_desc')}</div>${this.can(this.obPermModule(d), 'manage') ? `<button class="btn btn-primary btn-sm" data-ob="edit">${this.t('obd_empty_draft_add')}</button>` : ''}</div>`
         : `<div class="pu-empty">${this.t('obd_no_lines')}</div>`;
       return;
     }
@@ -1589,7 +1591,7 @@ Object.assign(App, {
     this._obBatch = { cat: '', kw: '', onlyStock: false, sel: new Set() };
 
     this.showModal(`<h3>${this.t('obd_batch_title')}</h3>`,
-      `<div class="pu-matfilter" style="margin-bottom:10px">
+      `<div class="pu-matfilter u-mb-10">
         <label>${this.t('mat_category')}<select id="ob_batch_cat" onchange="App.obBatchFilter()">${catOpts}</select></label>
         <input id="ob_batch_kw" type="search" placeholder="${this.t('pu_mat_filter_ph')}" aria-label="${this.t('pu_mat_filter_ph')}" oninput="App.obBatchFilter()">
         <label class="u-row-muted"><input type="checkbox" id="ob_batch_only" onchange="App.obBatchFilter()"> ${this.t('obd_batch_only_stock')}</label>
@@ -1643,7 +1645,7 @@ Object.assign(App, {
           <td>${this.docEsc(m.spec || '')}</td>
           <td>${this.docEsc(m.brand || '')}</td>
           <td>${this.docEsc(m.unit || '')}</td>
-          <td class="text-right${cls ? ' ' + cls : ''}" style="font-variant-numeric:tabular-nums">${this.fmtQty(q)}</td>
+          <td class="text-right u-tabular${cls ? ' ' + cls : ''}">${this.fmtQty(q)}</td>
         </tr>`;
       }).join('');
     }

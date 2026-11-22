@@ -130,7 +130,7 @@ Object.assign(App, {
             <div class="form-error" id="m_image_error"></div>
           </div>
         </div>
-        <input type="file" id="m_image_file" accept="image/*" style="display:none" onchange="App.onMaterialImagePick(this)">
+        <input type="file" id="m_image_file" accept="image/*" class="u-hidden" onchange="App.onMaterialImagePick(this)">
       </div>
       </div>`, code ? this.t('save') : this.t('add'), async () => {
       if (!this.validateForm({ m_name: [{rule:'required'}], m_category: [{rule:'required'}], m_unit: [{rule:'required'}] })) return;
@@ -312,7 +312,7 @@ Object.assign(App, {
 
   matBatchBody() {
     return `<div class="u-muted-xs-mb-10">${this.t('mat_batch_hint')}</div>
-      <div id="mat-batch-summary" class="ui-note ui-note--danger" style="display:none"></div>
+      <div id="mat-batch-summary" class="ui-note ui-note--danger u-hidden"></div>
       <div id="mat-batch-table-wrap">${this.matBatchTableHtml()}</div>
       <div class="u-mt-10"><button type="button" class="btn btn-outline btn-sm" onclick="App.matBatchAddRow()">+ ${this.t('mat_batch_add_row')}</button></div>`;
   },
@@ -340,7 +340,7 @@ Object.assign(App, {
       ${ep ? `<td class="u-min-w-86"><input data-field="opening_price" type="${numType(r.opening_price)}" step="0.01" value="${this.matEsc(r.opening_price)}" oninput="App.matBatchSet(${i},'opening_price',this.value,this)"></td>` : ''}
       <td class="u-min-w-86"><input data-field="min_stock" type="${numType(r.min_stock)}" step="0.01" value="${this.matEsc(r.min_stock)}" oninput="App.matBatchSet(${i},'min_stock',this.value,this)"></td>
       <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.matBatchRemoveRow(${i})">${this.t('in_remove_row')}</button></td>
-      <td id="mat-batch-err-${i}" style="font-size:12px;color:var(--danger);min-width:150px;max-width:260px"></td>
+      <td id="mat-batch-err-${i}" class="u-danger-xs" style="min-width:150px;max-width:260px"></td>
     </tr>`).join('');
     return `<div class="table-wrap"><table class="pu-edit-lines"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
   },
@@ -734,7 +734,7 @@ Object.assign(App, {
     catch (e) { this.toast(e.message, 'error'); return; }
     this._matImport = { rows: [], errors: [], fileName: '', submitting: false };
     const body = `<div class="u-muted-xs-mb-10">${this.t('mat_import_hint')}</div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="u-flex-wrap-center" style="gap:10px;margin-bottom:12px">
         <input type="file" id="mat-import-file" accept=".csv,.xlsx,.xls,text/csv" onchange="App.matImportFilePicked(this)">
         <button type="button" class="btn btn-outline btn-sm" onclick="App.downloadMaterialTemplate()">${this.t('mat_import_download_tpl')}</button>
       </div>
@@ -995,9 +995,9 @@ Object.assign(App, {
         ${vp ? `<td>${this.matEsc(r.opening_price)}</td>` : ''}<td>${this.matEsc(r.min_stock)}</td>
         <td>${errs.length ? errs.map(e => this.matEsc(e.message)).join('<br>') : this.t('mat_import_ok')}</td></tr>`;
     }).join('');
-    box.innerHTML = `<div style="margin-bottom:8px;font-size:12px">
+    box.innerHTML = `<div class="u-mb-2 u-fs-xs">
         <b>${this.t('mat_import_summary', { total: st.rows.length, ok, bad })}</b>
-        ${st.fileName ? `<span style="color:var(--text-muted);margin-left:8px">${this.matEsc(st.fileName)}</span>` : ''}
+        ${st.fileName ? `<span class="u-muted-xs-ml-2">${this.matEsc(st.fileName)}</span>` : ''}
       </div>
       <div class="table-wrap"><table class="pu-edit-lines"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
   },

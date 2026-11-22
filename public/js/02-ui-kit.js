@@ -292,12 +292,11 @@ Object.assign(App, {
       // 末页
       nums += pgBtn(tp, tp, false, false);
     }
-    return `<span class="pu-tot">${tot}</span>
-      <span>${page} / ${tp} ${this.t('page')}</span>
-      <label>${this.t('pageSize')} <select${selAttr}>${sizes.map(n => `<option value="${n}"${n === st.pageSize ? ' selected' : ''}>${n === 0 ? this.t('all') : n + ' / ' + this.t('page')}</option>`).join('')}</select></label>
-      ${pgBtn(page - 1, this.t('pu_prev'), false, all || page <= 1)}
+    return `<span class="pu-pager-pageinfo">${page} / ${tp} ${this.t('page')}</span>
+      <label class="pu-pager-sz">${this.t('pageSize')} <select${selAttr}>${sizes.map(n => `<option value="${n}"${n === st.pageSize ? ' selected' : ''}>${n === 0 ? this.t('all') : n}</option>`).join('')}</select></label>
+      ${pgBtn(page - 1, '‹', false, all || page <= 1)}
       ${nums}
-      ${pgBtn(page + 1, this.t('pu_next'), false, all || page >= tp)}`;
+      ${pgBtn(page + 1, '›', false, all || page >= tp)}`;
   },
 
   // 只有内容超出视口时才把分页条吸附到底部；内容不足一屏时随内容排在末尾
@@ -807,7 +806,7 @@ Object.assign(App, {
         onChange: dateFilter.onChange, label: dateFilter.label || this.t('ledger_date')
       });
     }
-    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+    return `<div class="u-flex-wrap-center" style="gap:12px;margin-bottom:12px">
       <div>${addBtnHtml || ''}</div>
       <div class="form-group" style="flex:1;max-width:400px;margin:0;margin-right:auto">
         <input id="${filterId}" type="text" placeholder="${this.t('quick_filter_ph')}" oninput="${filterOnInput}" style="width:100%">

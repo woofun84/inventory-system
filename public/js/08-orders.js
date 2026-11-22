@@ -147,7 +147,7 @@ Object.assign(App, {
     }
     return `<div class="pu-card">
       <div class="pu-card-title"><span>${String(n).padStart(2, '0')}</span><div>${s.title}<small>${s.count != null ? s.count : items.length}</small></div></div>
-      ${s.hint ? `<p class="set-note" style="margin:0 0 8px">${s.hint}</p>` : ''}
+      ${s.hint ? `<p class="set-note u-mb-2">${s.hint}</p>` : ''}
       <div class="table-wrap"><table><thead><tr>${thHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>
       ${addRow}</div>`;
   },
@@ -342,16 +342,16 @@ Object.assign(App, {
     const today = this.today();
     return `<div class="pu-card">
       <div class="pu-card-title"><span>04</span><div>${this.t('set_docno_title')}</div></div>
-      <p style="color:var(--text-muted);margin-bottom:10px">${this.t('set_docno_desc')}</p>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">${inputs}
+      <p class="u-muted u-mb-10">${this.t('set_docno_desc')}</p>
+      <div class="u-flex-wrap-end" style="gap:12px">${inputs}
         <div class="form-group u-min-w-110"><label>${this.t('set_docno_pad')}</label>
           <input id="docno_pad" type="number" min="1" max="8" value="${rules.pad}" ${dis} oninput="App.previewDocNo()"></div>
         <div class="form-group u-min-w-150"><label>${this.t('set_docno_date_style')}</label>
           <select id="docno_date_style" ${dis} onchange="App.previewDocNo()">${styleOptions}</select></div>
       </div>
-      <p style="color:var(--text-muted);margin:10px 0 6px">${this.t('set_docno_hint')}</p>
-      <div style="color:var(--text-muted);margin-bottom:6px">${this.t('set_docno_preview')}</div>
-      <div id="docno_preview" data-date="${today}" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <p class="u-muted" style="margin:10px 0 6px">${this.t('set_docno_hint')}</p>
+      <div class="u-muted u-mb-1_5">${this.t('set_docno_preview')}</div>
+      <div id="docno_preview" data-date="${today}" class="u-flex-wrap-center" style="gap:8px"></div>
       <div class="u-mt-3">${actions}</div>
     </div>`;
   },
@@ -392,7 +392,7 @@ Object.assign(App, {
     const seg = dateStyle === 'month' ? date.slice(0, 6) : date;
     target.innerHTML = this.docNoTypeKeys().map(k => {
       const text = previews[k] || `${prefixes[k] || '?'}-${seg}-${'?'.repeat(pad)}`;
-      return `<span style="padding:3px 8px;border-radius:4px;background:var(--bg-muted);font-family:monospace">${this.docEsc(text)}</span>`;
+      return `<span class="u-mono-chip">${this.docEsc(text)}</span>`;
     }).join('');
   },
 

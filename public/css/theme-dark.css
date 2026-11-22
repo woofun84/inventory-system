@@ -35,6 +35,7 @@
   --sidebar-fg: #e2e8f0;
   --sidebar-fg-muted: #94a3b8;
   --sidebar-section-fg: #8b9cb3;
+  --sidebar-divider: rgba(255, 255, 255, 0.14);
 
   /* ===== 语义状态色 ===== */
   --success-bg: rgba(34,197,94,0.15);
@@ -121,10 +122,6 @@
 [data-theme="dark"] .pu-daterange :where(input, select) {
   background-color: transparent;
   border: 0;
-}
-[data-theme="dark"] :where(input, textarea)::placeholder {
-  color: var(--placeholder);
-  opacity: 1;
 }
 [data-theme="dark"] .btn-outline {
   background: var(--card-bg);

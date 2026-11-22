@@ -14,7 +14,7 @@ const {
   validateOutboundStock,
   getAvailableStock,
   getReturnableLines,
-  getReturnedQtyByLine,
+  getReturnedQtyMap,
   validateReturnAgainstOrigin,
   loadReturnableOrigin,
 } = require('../services/stock');
@@ -794,12 +794,14 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requireCorrectionAct
   }
 
   // 冲突 1：已确认退库量 > 新单对应行数量 → 拒绝，提示具体退库单
+  // 已退量一次批量预取，避免 N+1；returnDocsForLine 只在冲突时触发，保持原样
+  const returnedMap = getReturnedQtyMap(origLines.map(l => l.id));
   const returnDocsForLine = db.prepare(`SELECT DISTINCT d.doc_no FROM outbound r
     JOIN outbound_docs d ON d.doc_no = r.doc_no
     WHERE r.origin_line_id = ? AND r.txn_type = '领料退库' AND d.status = 'posted'`);
   const conflicts = [];
   origLines.forEach((ol, idx) => {
-    const returned = getReturnedQtyByLine(ol.id);
+    const returned = returnedMap.get(ol.id) || 0;
     const target = newKeyMap.map.get(origKeyMap.keys[idx]);
     const newQty = target ? sign.absQty(target.qty) : 0;
     if (returned > newQty + 1e-6) {
@@ -875,10 +877,12 @@ router.post('/api/outbound-docs/:docNo/confirm-correction', requireCorrectionAct
             draftLines.map(l => ({ code: l.code, qty: sign.absQty(l.qty), origin_line_id: l.origin_line_id })),
             orig.origin_doc_no, orig.doc_no);
         }
+        // 写锁内批量取最新已退量，避免 N+1
+        const txReturnedMap = getReturnedQtyMap(origLineIds);
         origLines.forEach((ol, idx) => {
           const target = newKeyMap.map.get(origKeyMap.keys[idx]);
           const newQty = target ? sign.absQty(target.qty) : 0;
-          if (getReturnedQtyByLine(ol.id) > newQty + 1e-6) {
+          if ((txReturnedMap.get(ol.id) || 0) > newQty + 1e-6) {
             throw businessError('RETURN_EXCEEDS_CORRECTED_QTY',
               `物料 ${ol.code}：已确认退库量已超过更正后的新数量 ${newQty}，请先更正相关退库单`);
           }

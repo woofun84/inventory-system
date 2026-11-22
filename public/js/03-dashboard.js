@@ -141,7 +141,7 @@ Object.assign(App, {
           <td class="text-right"><b>${this.fmtMoney(r.amount)}</b></td>` : ''}
           <td><span class="badge badge-warning">${this.docEsc(this.cvReasonLabel(r.reason))}</span></td>
         </tr>`).join('');
-        body = `<p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">${this.t('cv_notice')}</p>
+        body = `<p class="u-muted-sm u-mb-10">${this.t('cv_notice')}</p>
           <div class="table-wrap"><table><thead><tr>
             <th>${this.t('cv_date')}</th><th>${this.t('cv_doc')}</th><th>${this.t('cv_biz')}</th><th>${this.t('cv_code')}</th>
             <th class="text-right">${this.t('cv_qty')}</th>${vp ? `<th class="text-right">${this.t('cv_unit_cost')}</th>

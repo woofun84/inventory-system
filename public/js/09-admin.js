@@ -114,11 +114,11 @@ Object.assign(App, {
         const label = modLabel !== modKey
           ? modLabel
           : (m.key === 'price' && a === 'edit') ? this.t('perm_price_edit') : this.t('perm_' + a);
-        return `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:12px;font-size:12px;white-space:nowrap"><input type="checkbox" data-perm="${m.key}" value="${a}" ${acts.includes(a) ? 'checked' : ''} ${adminLocked ? 'disabled' : ''}>${label}</label>`;
+        return `<label class="u-label-inline" style="gap:3px;margin-right:12px;font-size:12px"><input type="checkbox" data-perm="${m.key}" value="${a}" ${acts.includes(a) ? 'checked' : ''} ${adminLocked ? 'disabled' : ''}>${label}</label>`;
       }).join('');
       return `<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border)"><span style="min-width:84px;font-size:12px;color:var(--text-muted);padding-top:2px">${this.t('nav_' + (m.key === 'dashboard' ? 'home' : m.key))}</span><span style="flex:1;display:flex;flex-wrap:wrap;gap:4px 0">${boxes}</span></div>`;
     }).join('');
-    return `<div class="form-group u-full"><label>${this.t('perm_title')}</label><div id="u_perm_matrix" style="border:1px solid var(--border);border-radius:6px;max-height:250px;overflow:auto">${rows}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">${this.t(adminLocked ? 'perm_admin_hint' : 'perm_hint')}</div></div>`;
+    return `<div class="form-group u-full"><label>${this.t('perm_title')}</label><div id="u_perm_matrix" style="border:1px solid var(--border);border-radius:6px;max-height:250px;overflow:auto">${rows}</div><div class="u-fs-11 u-mt-1" style="color:var(--text-muted)">${this.t(adminLocked ? 'perm_admin_hint' : 'perm_hint')}</div></div>`;
   },
 
   onUserRoleChange(role) {

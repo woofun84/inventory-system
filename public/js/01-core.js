@@ -247,6 +247,27 @@ const App = {
     this.router();
     this.initTableScrollHints();
     document.addEventListener('keydown', e => this.onClickableKeydown(e));
+    this.initDrawerOverlayClick();
+  },
+
+  // 小屏（≤1024px）详情抽屉：点击遮罩关闭详情。
+  // 遮罩层（.pu-split::before）只在 1024px media query 里存在，桌面端不存在遮罩、不应触发关闭。
+  // 用白名单排除列表内操作（表格行、筛选工具栏、分页等），这些点击可能是「打开详情」而非「关闭抽屉」。
+  initDrawerOverlayClick() {
+    const mql = window.matchMedia('(max-width: 1024px)');
+    document.addEventListener('click', (e) => {
+      if (!mql.matches) return;
+      const split = e.target.closest('.pu-split.open');
+      if (!split) return;
+      const insp = split.querySelector(':scope > .pu-insp:not([hidden])');
+      if (!insp) return;
+      // 白名单：列表内的操作不触发关闭（点击表格行是打开新详情、不是关闭遮罩）
+      const allow = '.pu-row, tbody tr, .pu-toolbar, .pu-kpi, .pu-pager, .pu-pager *, th, .cell-code, .q-row, .table-wrap, .pu-list, .pu-head-actions, .pu-daterange, .pu-search';
+      if (e.target.closest(allow)) return;
+      if (insp.contains(e.target)) return; // 点在抽屉内部 → 不关闭
+      split.classList.remove('open', 'wide', 'has-doc', 'doc-wide');
+      split.querySelectorAll(':scope > .pu-insp').forEach(el => { el.hidden = true; el.innerHTML = ''; });
+    });
   },
 
   // 界面空闲锁屏：5 分钟无操作返回登录页（前端界面保护）。

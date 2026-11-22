@@ -248,7 +248,7 @@ Object.assign(App, {
         <button type="button" class="btn btn-outline btn-sm" onclick="App.retPickReset()">${this.t('pu_clear_filter')}</button>
       </div>
       <div id="ret-pick-table"></div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:10px">${this.t('ret_pick_origin_hint')}</div>`;
+      <div class="u-muted-sm u-mt-10">${this.t('ret_pick_origin_hint')}</div>`;
     this.showModal(title, body, this.t('ret_pick_enter'), () => {
       const sel = document.querySelector('input[name="ret_pick"]:checked');
       if (!sel) { this.toast(this.t('ret_pick_required'), 'error'); return; }
@@ -765,6 +765,7 @@ Object.assign(App, {
     }
 
     box.innerHTML = `
+      <div class="pu-insp-body">
       <button type="button" class="btn btn-outline btn-sm pu-mback" onclick="App.retBackToList()">← ${this.t('pu_back_list')}</button>
       ${this.crossLinkBackBtn('returns', d.doc_no)}
       <div class="pu-insp-head">
@@ -784,6 +785,7 @@ Object.assign(App, {
       ${d.corrects_doc_no ? `<div class="ui-note ui-note--info">${this.icon('edit')} ${this.t('ibd_corr_from')} <button type="button" class="pu-lk" onclick="App.retSelectDoc('${this.docEsc(d.corrects_doc_no)}')">${this.docEsc(d.corrects_doc_no)}</button></div>` : ''}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" onclick="App.retSetDt('${k}')">${label} ${n}</button>`).join('')}</div>
       <div class="pu-dpanel" id="ret-dpanel"></div>
+      </div>
       <div class="pu-insp-foot">${foot}</div>`;
     this.retRenderDetailPanel();
     this.pinPager('ret-pager');

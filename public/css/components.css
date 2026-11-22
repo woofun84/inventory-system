@@ -46,6 +46,8 @@
 .u-row-muted { display: flex; align-items: center; gap: var(--space-1_5); font-size: var(--fs-sm); color: var(--text-muted); }
 .u-scroll-420 { max-height: 420px; overflow: auto; }
 .u-plain-control { border: 0; background: transparent; color: var(--text); font-size: var(--fs-sm); min-width: 104px; }
+/* u-plain-control 与 u-select-transparent 功能一致，保留作别名向后兼容；新代码统一用 u-select-transparent */
+.u-search-flex { flex: 1 1 220px; max-width: 300px; }
 .u-kicked-msg { padding: var(--space-5) var(--space-6); text-align: center; color: var(--text-muted); }
 .u-fs-sm { font-size: var(--fs-sm); }
 .u-mb-3 { margin-bottom: var(--space-3); }
@@ -54,6 +56,68 @@
 .u-muted-xs-mb-10 { color: var(--text-muted); font-size: var(--fs-xs); margin-bottom: var(--space-2_5); }
 .u-w-36 { width: 36px; }
 .u-py-1_75 { padding: var(--space-1_75) 0; }
+
+/* ========== 纯静态高频工具类（JS 内联 style 清理用） ========== */
+.u-hidden { display: none; }
+.u-block { display: block; }
+.u-flex-center { display: flex; align-items: center; }
+.u-flex-col-gap3 { display: flex; flex-direction: column; gap: 3px; }
+.u-tabular { font-variant-numeric: tabular-nums; }
+.u-opac-7 { opacity: 0.7; }
+.u-opac-6 { opacity: 0.6; }
+
+/* 间距（4px 基准，命名遵循 spacing token） */
+.u-mt-1_5 { margin-top: var(--space-1_5); }   /* 6px */
+.u-mt-2 { margin-top: var(--space-2); }        /* 8px */
+.u-mt-3 { margin-top: var(--space-3); }        /* 12px */
+.u-mt-4 { margin-top: var(--space-4); }        /* 16px */
+.u-mb-0 { margin-bottom: 0; }
+.u-mb-3 { margin-bottom: var(--space-3); }
+.u-mb-4 { margin-bottom: var(--space-4); }
+.u-ml-2 { margin-left: var(--space-2); }
+.u-mr-2 { margin-right: var(--space-2); }
+.u-m-auto { margin: 0 auto; }
+
+/* 字号（对应 base.css 阶梯） */
+.u-fs-11 { font-size: var(--fs-11_5); }  /* 11.5px — 凑 12px 下一档 */
+.u-fs-10 { font-size: var(--fs-10); }
+
+/* 宽度 */
+.u-w-90 { width: 90px; }
+.u-w-auto { width: auto; }
+
+/* checkbox 内联（pu-daterange 内嵌或裸标签里） */
+.u-check-inline { width: auto; margin: 0; }
+
+/* cursor 变体 — 动态 pointer/not-allowed 用 JS 内联，静态场景走类 */
+.u-cursor-pointer { cursor: pointer; }
+.u-cursor-default { cursor: default; }
+
+/* 标签/复选框行内包装 */
+.u-label-inline { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.u-label-inline-gap6 { display: inline-flex; align-items: center; gap: 6px; height: 34px; font-size: var(--fs-sm); white-space: nowrap; color: var(--text); }
+
+/* pu-daterange 内嵌 select：透明无底无边 */
+.u-select-transparent { border: 0; background: transparent; color: var(--text); font-size: var(--fs-sm); min-width: 0; }
+
+/* 省略号三行套 */
+.u-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 提示行：dashed border + muted text */
+.u-tip-box { padding: var(--space-2) var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--fs-xs); }
+
+/* 高频 flex-wrap 框架：gap / margin-bottom 按需内联 */
+.u-flex-wrap-center { display: flex; flex-wrap: wrap; align-items: center; }
+.u-flex-wrap-end   { display: flex; flex-wrap: wrap; align-items: flex-end; }
+
+/* 次要小字 + 左间距：文件名/版本号等行内标注 */
+.u-muted-xs-ml-2   { font-size: var(--fs-xs); color: var(--text-muted); margin-left: var(--space-2); }
+
+/* 等宽字体 chip：单据编号 / 格式 token 展示 */
+.u-mono-chip       { padding: var(--space-0_75) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-muted); font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-xs); color: var(--text); }
+
+/* 危险色 + 小字号：错误明细单元格 */
+.u-danger-xs       { color: var(--danger); font-size: var(--fs-xs); }
 
 /* ========== 卡片 ========== */
 .card {

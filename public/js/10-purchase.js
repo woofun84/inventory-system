@@ -516,6 +516,7 @@ Object.assign(App, {
     }
 
     box.innerHTML = `
+      <div class="pu-insp-body">
       <button type="button" class="btn btn-outline btn-sm pu-mback" data-pu="icl">← ${this.t('pu_back_list')}</button>
       <div class="pu-insp-head">
         <div>
@@ -535,6 +536,7 @@ Object.assign(App, {
       </div>
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" data-pu="dt" data-id="${k}">${label} ${n}</button>`).join('')}</div>
       <div class="pu-dpanel" id="pu-dpanel"></div>
+      </div>
       <div class="pu-insp-foot">${foot}</div>`;
     this.puRenderDetailPanel();
     this.pinPager('pu-pager');
@@ -998,7 +1000,7 @@ Object.assign(App, {
   async puConfirmDelete(title, msg, doDelete, doneMsg) {
     // 删除属破坏性操作：走统一确认弹窗，确认键为红色
     this.confirmDialog(this.docEsc(title),
-      `<p class="u-m-0">${msg}</p><p class="pu-mu" style="margin:8px 0 0;font-size:12px">${this.t('pu_delete_hint')}</p>`,
+      `<p class="u-m-0">${msg}</p><p class="pu-mu u-mt-2 u-fs-xs">${this.t('pu_delete_hint')}</p>`,
       async () => {
         let undo;
         try { undo = await doDelete(); } catch (e) { this.toast(e.message, 'error'); return; }
@@ -1570,7 +1572,7 @@ Object.assign(App, {
         ${matFilter}
         <select id="pu_l_code" ${isEdit ? 'disabled' : ''}>${matOpts}</select>
         <div class="form-error" id="pu_l_code_error"></div></div>
-      <div class="form-group"><label>${this.t('pu_order_qty')} *</label><input id="pu_l_qty" type="number" step="0.0001" min="${recvFloor}" value="${l.order_qty}" oninput="App.clearFieldError('pu_l_qty')">${recvFloor > 0 ? `<div class="pu-mu" style="margin-top:4px">${this.t('pu_received_floor', { received: this.fmtQty(recvFloor) })}</div>` : ''}<div class="form-error" id="pu_l_qty_error"></div></div>
+      <div class="form-group"><label>${this.t('pu_order_qty')} *</label><input id="pu_l_qty" type="number" step="0.0001" min="${recvFloor}" value="${l.order_qty}" oninput="App.clearFieldError('pu_l_qty')">${recvFloor > 0 ? `<div class="pu-mu u-mt-1">${this.t('pu_received_floor', { received: this.fmtQty(recvFloor) })}</div>` : ''}<div class="form-error" id="pu_l_qty_error"></div></div>
       ${vp ? `<div class="form-group"><label>${this.t('pu_order_price')}</label>${priceEditable
         ? `<input id="pu_l_price" type="number" step="0.01" min="0" value="${this.fmtPrice2(l.order_price)}">`
         : `<div class="pu-readonly" class="u-py-1_75">${this.fmtMoney(l.order_price)}</div>`}</div>` : ''}

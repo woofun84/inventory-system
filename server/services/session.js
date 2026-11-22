@@ -69,11 +69,12 @@ function revokeSession(userId, sid) {
 // 会话记录异常缺失时补建一条，保证登录态可继续校验。
 function rotateSession(userId, req) {
   const sid = newSid();
+  const terminal = String((req && req.body && req.body.terminal) || '').slice(0, 64);
   const changed = db.prepare('UPDATE user_sessions SET sid=?, last_seen=datetime(\'now\') WHERE user_id=?').run(sid, userId);
   if (!changed.changes) {
     db.prepare(`INSERT INTO user_sessions (user_id, sid, terminal, login_at, last_seen, ip, user_agent)
       VALUES (?,?,?,datetime('now'),datetime('now'),?,?)`)
-      .run(userId, sid, '', clientIp(req), clientUa(req));
+      .run(userId, sid, terminal, clientIp(req), clientUa(req));
   }
   return sid;
 }

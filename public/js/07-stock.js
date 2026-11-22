@@ -109,10 +109,11 @@ Object.assign(App, {
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_keyword" placeholder="${this.t('quick_filter_ph')}" oninput="App.qStockFilter()"></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_category')}</label><select id="q_category" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:132px"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${this.docEsc(c.name)}">${this.docEsc(c.name)}</option>`).join('')}</select></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_status')}</label><select id="q_status" onchange="App.qStockFilter()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:96px"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_category')}</label><select id="q_category" onchange="App.qStockFilter()" class="u-select-transparent" style="min-width:132px"><option value="">${this.t('stock_all')}</option>${this.params.categories.map(c => `<option value="${this.docEsc(c.name)}">${this.docEsc(c.name)}</option>`).join('')}</select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('stock_status')}</label><select id="q_status" onchange="App.qStockFilter()" class="u-select-transparent" style="min-width:96px"><option value="">${this.t('stock_all')}</option><option value="正常">${this.t('st_normal')}</option><option value="补货">${this.t('st_restock')}</option><option value="缺货">${this.t('st_out')}</option></select></div>
         </div>
         <div class="pu-head-actions">
+          <button class="btn btn-outline btn-sm" onclick="App.qStockReset()" title="${this.t('pu_clear_filter')}">${this.t('pu_clear_filter')}</button>
           <button class="btn btn-outline" onclick="App.qStockExport()">${this.t('doc_export')}</button>
           <button class="btn btn-outline" onclick="App.qStockPrint()">${this.t('doc_print')}</button>
         </div>
@@ -145,6 +146,12 @@ Object.assign(App, {
   qStockFilter() {
     this.getTableState('stock').page = 1;
     this.qStockTable();
+  },
+
+  // 重置库存查询筛选
+  qStockReset() {
+    ['q_keyword', 'q_category', 'q_status'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    this.qStockFilter();
   },
 
   async qLoadStock() {
@@ -763,7 +770,7 @@ Object.assign(App, {
     } catch (e) {
       if (seq !== this._qCardSeq) return;
       const box = document.getElementById('q_stock_insp');
-      if (box) box.innerHTML = `<div class="pu-insp-head"><div><h2>${this.docEsc(code)}</h2></div><button class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qInsClose('stock')">${this.icon('close', 'icon--tool')}</button></div><div class="pu-dpanel">${this.emptyState(this.docEsc(e.message))}</div>`;
+      if (box) box.innerHTML = `<div class="pu-insp-body"><div class="pu-insp-head"><div><h2>${this.docEsc(code)}</h2></div><button class="btn btn-outline btn-sm" title="${this.t('close')}" aria-label="${this.t('close')}" onclick="App.qInsClose('stock')">${this.icon('close', 'icon--tool')}</button></div><div class="pu-dpanel">${this.emptyState(this.docEsc(e.message))}</div></div>`;
     }
   },
 
@@ -776,7 +783,7 @@ Object.assign(App, {
     const row = (this._stockData || []).find(x => x.code === st.key) || {};
     const status = row.stock_status || m.status || '';
     const sub = [st.key, m.spec].filter(Boolean).join(' · ');
-    box.innerHTML = this.qInsShell('stock', {
+    box.innerHTML = '<div class="pu-insp-body">' + this.qInsShell('stock', {
       title: this.docEsc(m.name || st.key),
       badge: status ? this.statusBadge(status) : '',
       sub: this.docEsc(sub),
@@ -788,7 +795,7 @@ Object.assign(App, {
       expanded: st.expanded,
     }) + (d
       ? `<div class="pu-dpanel" id="q_card_panel">${this.qCardPanelHtml()}</div>`
-      : `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`);
+      : `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`) + '</div>';
     this._tableRenderers = this._tableRenderers || {};
     this._tableRenderers['qcard'] = () => this.qCardFlowRender();
     if (d && st.tab === 'flow' && st.expanded) this.qCardFlowRender();
@@ -837,7 +844,7 @@ Object.assign(App, {
       : '';
     return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${imageRow}
       <dl class="pu-insp-meta q-card-meta q-card-stock">${stats.map(k => `<div><dt>${k[0]}</dt><dd class="q-num">${k[1]}</dd></div>`).join('')}</dl>
-      <div class="q-card-month">${this.t('q_month_in_qty')} <strong style="color:var(--num-pos)">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong style="color:var(--warning-fg)">−${io.out}</strong></div>`;
+      <div class="q-card-month">${this.t('q_month_in_qty')} <strong class="num-pos">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong class="num-warn">−${io.out}</strong></div>`;
   },
 
   qCardFlowPanel() {
@@ -854,17 +861,17 @@ Object.assign(App, {
             <td class="text-right">${r.balance == null ? '' : r.balance}</td>
           </tr>`).join('')
         : `${this.emptyRow(5, this.t('q_no_data'), { cls: 'text-center' })}`;
-      return `<div class="table-wrap"><table class="q-flow" style="width:100%;font-size:12px"><thead><tr><th>${this.t('q_col_time')}</th><th>${this.t('ledger_doc')}</th><th class="text-center">${this.t('q_col_biz')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('q_col_balance')}</th></tr></thead><tbody>${body}</tbody></table></div>
+      return `<div class="table-wrap"><table class="q-flow u-fs-xs" style="width:100%"><thead><tr><th>${this.t('q_col_time')}</th><th>${this.t('ledger_doc')}</th><th class="text-center">${this.t('q_col_biz')}</th><th class="text-right">${this.t('q_qty')}</th><th class="text-right">${this.t('q_col_balance')}</th></tr></thead><tbody>${body}</tbody></table></div>
         ${this._qCardTotal > 5 ? `<button type="button" class="btn btn-outline btn-sm pu-more" onclick="App.qInsViewAll('stock','flow')">${this.t('q_view_all_count', { n: this._qCardTotal })}</button>` : ''}`;
     }
     const biz = [['', 'stock_all'], ['采购入库', 'in_purchase'], ['零星入库', 'in_other'], ['采购退货', 'in_return'], ['零星退货', 'in_misc_return'], ['正常出库', 'out_normal'], ['领料退库', 'out_return'], ['盘盈', 'ledger_adj_gain'], ['盘亏', 'ledger_adj_loss'], ['其它', 'ledger_adj_other'], ['期初结存', 'ledger_opening_flow']]
       .map(o => `<option value="${o[0]}">${this.t(o[1])}</option>`).join('');
-    return `<div class="pu-toolbar" style="margin:0 0 10px;padding:0">
+    return `<div class="pu-toolbar u-mb-10" style="padding:0">
         <div class="pu-filter-inner">
           ${this.dateRangeHtml({ fromId: 'q_c_start', toId: 'q_c_end', onChange: 'App.qCardFlowReload()', label: this.t('ledger_date') })}
           <div class="pu-daterange"><label class="u-nowrap">${this.t('ledger_type')}</label><select class="u-plain-control" id="q_c_type" onchange="App.qCardFlowReload()">${biz}</select></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_direction')}</label><select id="q_c_dir" onchange="App.qCardFlowReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:80px"><option value="">${this.t('stock_all')}</option><option value="in">${this.t('q_dir_in')}</option><option value="out">${this.t('q_dir_out')}</option><option value="adj">${this.t('q_dir_adj')}</option></select></div>
-          <label style="display:inline-flex;align-items:center;gap:6px;height:34px;color:var(--text);font-size:13px;white-space:nowrap"><input type="checkbox" id="q_c_voided" style="width:auto;margin:0" onchange="App.qCardFlowReload()"> ${this.t('ledger_show_voided')}</label>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_direction')}</label><select id="q_c_dir" onchange="App.qCardFlowReload()" class="u-select-transparent" style="min-width:80px"><option value="">${this.t('stock_all')}</option><option value="in">${this.t('q_dir_in')}</option><option value="out">${this.t('q_dir_out')}</option><option value="adj">${this.t('q_dir_adj')}</option></select></div>
+          <label class="u-label-inline-gap6"><input type="checkbox" id="q_c_voided" class="u-check-inline" onchange="App.qCardFlowReload()"> ${this.t('ledger_show_voided')}</label>
         </div>
       </div>
       <div class="data-scroll" id="q_card_flow_scroll" style="overflow-x:auto"></div>
@@ -1099,10 +1106,11 @@ Object.assign(App, {
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_d_keyword" autocomplete="off" placeholder="${this.t('q_doc_search_ph')}" aria-label="${this.t('q_doc_search_ph')}" oninput="App.qDocsReload()"></div>
           <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_type')}</label><select class="u-plain-control" id="q_d_type" onchange="App.qDocsReload()">${types}</select></div>
-          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" style="border:0;background:transparent;color:var(--text);font-size:13px;min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
+          <div class="pu-daterange"><label class="u-nowrap">${this.t('q_doc_status')}</label><select id="q_d_status" onchange="App.qDocsReload()" class="u-select-transparent" style="min-width:84px"><option value="">${this.t('stock_all')}</option><option value="draft">${this.t('q_status_draft')}</option><option value="posted">${this.t('q_status_posted')}</option><option value="voided">${this.t('q_status_voided')}</option></select></div>
           ${this.dateRangeHtml({ fromId: 'q_d_start', toId: 'q_d_end', onChange: 'App.qDocsReload()', label: this.t('ledger_date') })}
         </div>
         <div class="pu-head-actions">
+          <button class="btn btn-outline btn-sm" onclick="App.qDocsReset()" title="${this.t('pu_clear_filter')}">${this.t('pu_clear_filter')}</button>
           <button class="btn btn-outline" onclick="App.qDocsExport()">${this.t('doc_export')}</button>
           <button class="btn btn-outline" onclick="App.qDocsPrint()">${this.t('doc_print')}</button>
         </div>
@@ -1222,6 +1230,12 @@ Object.assign(App, {
       this.getTableState('docs').page = 1;
       this.qDocsTable();
     }, 260);
+  },
+
+  // 重置单据查询筛选
+  qDocsReset() {
+    ['q_d_keyword', 'q_d_type', 'q_d_status', 'q_d_start', 'q_d_end'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    this.qDocsReload();
   },
 
   async qDocsTable() {
@@ -1367,7 +1381,7 @@ Object.assign(App, {
       expanded: st.expanded,
     });
     if (!d) {
-      box.innerHTML = head + `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`;
+      box.innerHTML = '<div class="pu-insp-body">' + head + `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div></div>`;
       return;
     }
     // 无论窄卡还是展开态，都只渲染当前页签的内容：展开 = 完整表格（+分页），窄卡 = 摘要 5 条
@@ -1387,8 +1401,8 @@ Object.assign(App, {
     } else {
       body = this.qDocPanel(sc, d, { section: 'meta', showNo: true });
     }
-    box.innerHTML = head
-      + `<div class="pu-dpanel">${body}</div>`
+    box.innerHTML = '<div class="pu-insp-body">' + head
+      + `<div class="pu-dpanel">${body}</div></div>`
       + `<div class="pu-insp-foot"><button class="btn btn-primary" onclick="App.qOpenModuleDoc('${this.qDocKindOf(sc, d)}','${this.docEsc(st.key)}')">${this.t('q_open_module')}</button></div>`;
   },
 
@@ -1435,7 +1449,7 @@ Object.assign(App, {
         .join('')
       : `${this.emptyRow(isSt ? 5 : (vp ? 5 : 3), this.t('q_no_data'), { cls: 'text-center' })}`;
     const more = opts.maxLines && lines.length > opts.maxLines
-      ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">${this.t('q_flow_more').replace('{n}', lines.length - opts.maxLines)}</div>` : '';
+      ? `<div class="u-mt-1_5 u-fs-11 u-muted">${this.t('q_flow_more').replace('{n}', lines.length - opts.maxLines)}</div>` : '';
     const kind = opts.kind || ((type === '采购退货' || type === '零星退货' || type === '领料退库') ? 'returns' : (isSt ? 'stocktake' : source));
     // 分段渲染：单据查询 / 领用人详情卡按页签取用，其余调用方不传 section 时保持整卡输出
     if (opts.section === 'meta') {
@@ -1470,18 +1484,19 @@ Object.assign(App, {
     panel.innerHTML = `<div id="q-rcv">
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
-          <div class="pu-search" style="flex:1 1 220px;max-width:300px">
+          <div class="pu-search u-search-flex">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
             <input id="q_r_kw" autocomplete="off" placeholder="${this.t('q_rcv_search_ph')}" oninput="App.qReceiversFilter()">
           </div>
           ${this.dateRangeHtml({ fromId: 'q_r_start', toId: 'q_r_end', onChange: 'App.qReceiversFilter()', label: this.t('ledger_date') })}
         </div>
         <div class="pu-head-actions">
+          <button class="btn btn-outline btn-sm" onclick="App.qReceiversReset()" title="${this.t('pu_clear_filter')}">${this.t('pu_clear_filter')}</button>
           <button class="btn btn-outline" onclick="App.qReceiversExport()">${this.t('doc_export')}</button>
           <button class="btn btn-outline" onclick="App.qReceiversPrint()">${this.t('doc_print')}</button>
         </div>
       </div>
-      <div style="margin:0 0 10px;padding:8px 12px;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--text-muted);font-size:12px">${this.t('q_rcv_rule')}</div>
+      <div class="u-tip-box u-mb-10">${this.t('q_rcv_rule')}</div>
       <div class="pu-split q-ins-split" id="q_rcv_split">
         <section class="pu-list u-min-w-0">
           <div class="data-scroll" id="q_rcv_scroll"></div>
@@ -1510,6 +1525,12 @@ Object.assign(App, {
       this.getTableState('receivers').page = 1;
       this.qReceiversLoad();
     }, 260);
+  },
+
+  // 重置领用人查询筛选
+  qReceiversReset() {
+    ['q_r_kw', 'q_r_start', 'q_r_end'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    this.qReceiversFilter();
   },
 
   async qReceiversLoad() {
@@ -1661,14 +1682,14 @@ Object.assign(App, {
       expanded: st.expanded,
     });
     if (!d) {
-      box.innerHTML = head + `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`;
+      box.innerHTML = '<div class="pu-insp-body">' + head + `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div></div>`;
       return;
     }
     // 同上：展开态保留页签，只把当前页签切成完整表格（+分页），不纵向堆叠
     const limit = st.expanded ? 0 : 5;
     const body = st.tab === 'docs' ? this.qRcvDocsHtml(docs, limit)
       : (st.tab === 'mats' ? this.qRcvMatsHtml(mats, limit) : this.qRcvInfoHtml(d.summary || {}));
-    box.innerHTML = head + `<div class="pu-dpanel">${body}</div>`;
+    box.innerHTML = '<div class="pu-insp-body">' + head + `<div class="pu-dpanel">${body}</div></div>`;
   },
 
   qRcvInfoHtml(s) {
@@ -1688,7 +1709,7 @@ Object.assign(App, {
       [this.t('q_rcv_net'), `<strong>${s.net_qty || 0}</strong>`],
     ];
     return `<dl class="pu-insp-meta u-mb-10">${meta.map(x => `<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>
-      <div style="font-size:12px;color:var(--text-muted)">${this.t('q_rcv_rule')}</div>`;
+      <div class="u-muted-sm">${this.t('q_rcv_rule')}</div>`;
   },
 
   qRcvDocsHtml(rows, limit) {
@@ -1830,7 +1851,7 @@ Object.assign(App, {
       const list = Object.keys(cats).map(k => [k, Number(cats[k] || 0)]).sort((a, b) => b[1] - a[1]);
       const max = list.length ? list[0][1] : 0;
       document.getElementById('q_an_cat').innerHTML = list.length ? list.map(([n, v]) => `<div class="q-an-row">
-        <span title="${esc(n)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span>
+        <span title="${esc(n)}" class="u-ellipsis">${esc(n)}</span>
         <span class="q-an-bar"><i style="width:${max ? Math.max(2, v / max * 100) : 0}%;background:var(--primary)"></i></span>
         <span class="text-right">${this.fmtMoney(v)}</span></div>`).join('') : `${this.emptyState(this.t('q_no_data'))}`;
 
@@ -1839,11 +1860,11 @@ Object.assign(App, {
       const tmax = Math.max(1, ...trend.map(m => Math.max(Number(m.in_amount || 0), Number(m.out_amount || 0))));
       document.getElementById('q_an_trend').innerHTML = trend.length ? trend.map(m => `<div class="q-an-row">
         <span>${esc(m.label || '')}</span>
-        <span style="display:flex;flex-direction:column;gap:3px">
+        <span class="u-flex-col-gap3">
           <span class="q-an-bar"><i style="width:${Number(m.in_amount || 0) / tmax * 100}%;background:var(--flow-in)"></i></span>
           <span class="q-an-bar"><i style="width:${Number(m.out_amount || 0) / tmax * 100}%;background:var(--flow-out)"></i></span>
         </span>
-        <span class="text-right" style="font-size:11px">${this.fmtMoney(m.in_amount || 0) + ' / ' + this.fmtMoney(m.out_amount || 0)}</span>
+        <span class="text-right u-fs-11">${this.fmtMoney(m.in_amount || 0) + ' / ' + this.fmtMoney(m.out_amount || 0)}</span>
       </div>`).join('') : `${this.emptyState(this.t('q_no_data'))}`;
     }
 
@@ -2259,7 +2280,7 @@ Object.assign(App, {
     if (!cfg) return '<span class="badge badge-muted">-</span>';
     const arrow = cfg[0] ? `<span style="opacity:.7;margin-right:3px">${cfg[0]}</span>` : '';
     const noOrigin = (bt === '领料退库' && !Number(r.return_line_id || 0))
-      ? ` <span class="badge badge-danger" style="font-size:10px">${this.t('ledger_no_origin')}</span>` : '';
+      ? ` <span class="badge badge-danger u-fs-10">${this.t('ledger_no_origin')}</span>` : '';
     return `<span class="badge ${this.docTypeBadgeClass(bt)}">${arrow}${this.t(cfg[1])}</span>${noOrigin}`;
   },
 

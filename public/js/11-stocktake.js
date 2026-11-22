@@ -362,6 +362,7 @@ Object.assign(App, {
     acts += `<button type="button" class="btn btn-outline btn-sm" data-st="print">${this.t('doc_print')}</button>`;
 
     box.innerHTML = `
+      <div class="pu-insp-body">
       <button type="button" class="btn btn-outline btn-sm pu-mback" data-st="icl">← ${this.t('pu_back_list')}</button>
       <div class="pu-insp-head">
         <div>
@@ -375,9 +376,10 @@ Object.assign(App, {
         </div>
       </div>
       <dl class="pu-insp-meta">${meta.map(m => `<div><dt>${this.docEsc(m[0])}</dt><dd>${this.docEsc(m[1])}</dd></div>`).join('')}</dl>
-      ${acts ? `<div class="pu-lqtoolbar st-insp-actions">${acts}</div>` : ''}
       <div class="pu-dtabs" role="tablist">${tabs.map(([k, label, n]) => `<button type="button" class="pu-dtab" role="tab" aria-selected="${s.dt === k}" data-st="dt" data-id="${k}">${label} ${n}</button>`).join('')}</div>
-      <div class="pu-dpanel" id="st-dpanel"></div>`;
+      <div class="pu-dpanel" id="st-dpanel"></div>
+      </div>
+      ${acts ? `<div class="pu-insp-foot" role="toolbar" aria-label="${this.t('doc_actions_bar')}">${acts}</div>` : ''}`;
     this.stRenderDetailPanel();
     this.pinPager('st-pager');
   },
@@ -446,7 +448,7 @@ Object.assign(App, {
         ${ex ? `<div class="pu-line-d">
           <div class="pu-mu">${this.t('st_book_qty')} ${this.qtyCell(book)} · ${this.t('st_count_qty')} ${hasCount ? this.qtyCell(cnt) : '–'} · ${this.t('st_diff_qty')} ${diffHtml}</div>
           <div>${this.stLineStatusBadge(l.status)}${l.remarks ? ` · ${this.t('pu_remarks')}：${this.docEsc(l.remarks)}` : ''}</div>
-          ${(this._stDetail && this._stDetail.status === 'confirmed' && hasCount && this.can('stocktake', 'correct')) ? `<div style="margin-top:6px"><button type="button" class="btn btn-outline btn-sm" onclick="App.stCorrectPrompt(${l.id})">${this.t('st_correct_line')}</button></div>` : ''}
+          ${(this._stDetail && this._stDetail.status === 'confirmed' && hasCount && this.can('stocktake', 'correct')) ? `<div class="u-mt-1_5"><button type="button" class="btn btn-outline btn-sm" onclick="App.stCorrectPrompt(${l.id})">${this.t('st_correct_line')}</button></div>` : ''}
         </div>` : ''}
       </li>`;
     }).join('') + '</ul>';
@@ -1145,7 +1147,7 @@ Object.assign(App, {
     if (!box) return;
     if (!lines.length) {
       box.innerHTML = `<div class="pu-empty">${this.t('st_empty_lines')}
-        <div style="margin-top:8px;font-size:12px">${this.t('st_empty_lines_hint')}</div></div>`;
+        <div class="u-mt-2 u-fs-xs">${this.t('st_empty_lines_hint')}</div></div>`;
       return;
     }
 
@@ -1470,7 +1472,7 @@ Object.assign(App, {
       `<h3>${this.t('st_confirm')}</h3>`,
       `<div class="ui-note ui-note--info">${this.t('st_confirm_hint')}</div>
       <div style="font-size:13px;margin-bottom:8px">${this.t('st_counted')}: ${s.counted_count || 0} · ${this.t('st_diff')}: ${s.diff_count || 0}</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">${this.t('st_confirm_diff_title')}</div>
+      <div class="u-muted-sm u-mb-1_5">${this.t('st_confirm_diff_title')}</div>
       ${table}`,
       this.t('st_confirm'), () => this.stConfirmWithDiffs(no), null, true);
   },
