@@ -172,25 +172,16 @@ Object.assign(App, {
   },
 
   obRenderList() {
-    const s = this.obState();
-    const kp = document.getElementById('ob-kpis');
-    if (kp) {
-      kp.innerHTML = this.obKpiDefs().map(([k, label, fn]) =>
-        `<button type="button" class="pu-kpi" aria-pressed="${s.kpi === k}" data-ob="kpi" data-id="${k}"><small>${label}</small><strong>${this.obScopeRows().filter(fn).length}</strong></button>`
-      ).join('');
-    }
-    const rows = this.obVisibleRows();
-    const st = this.getTableState('outbound');
-    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
-    const pageData = this.paginate(sorted, st.page, st.pageSize);
-    const scroll = document.getElementById('ob-scroll');
-    if (scroll) {
-      scroll.innerHTML = sorted.length
-        ? this.obListTable(pageData)
-        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.obHasFilter() ? this.t('pu_no_result_hint') : this.t('pu_empty_hint')}</span></div>`;
-    }
-    this.obRenderPager(sorted);
-    this.pinPager('ob-pager');
+    this.renderList({
+      ns: 'ob', tableId: 'outbound',
+      state: () => this.obState(),
+      kpiDefs: () => this.obKpiDefs(),
+      kpiRows: () => this.obScopeRows(),
+      visibleRows: () => this.obVisibleRows(),
+      hasFilter: () => this.obHasFilter(),
+      listTable: rows => this.obListTable(rows),
+      renderPager: rows => this.obRenderPager(rows),
+    });
   },
 
   obListTable(pageData) {

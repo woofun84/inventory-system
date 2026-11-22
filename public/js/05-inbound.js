@@ -185,25 +185,16 @@ Object.assign(App, {
   },
 
   ibRenderList() {
-    const s = this.ibState();
-    const kp = document.getElementById('ib-kpis');
-    if (kp) {
-      kp.innerHTML = this.ibKpiDefs().map(([k, label, fn]) =>
-        `<button type="button" class="pu-kpi" aria-pressed="${s.kpi === k}" data-ib="kpi" data-id="${k}"><small>${label}</small><strong>${this.ibScopeRows().filter(fn).length}</strong></button>`
-      ).join('');
-    }
-    const rows = this.ibVisibleRows();
-    const st = this.getTableState('inbound');
-    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
-    const pageData = this.paginate(sorted, st.page, st.pageSize);
-    const scroll = document.getElementById('ib-scroll');
-    if (scroll) {
-      scroll.innerHTML = sorted.length
-        ? this.ibListTable(pageData)
-        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.ibHasFilter() ? this.t('pu_no_result_hint') : this.t('pu_empty_hint')}</span></div>`;
-    }
-    this.ibRenderPager(sorted);
-    this.pinPager('ib-pager');
+    this.renderList({
+      ns: 'ib', tableId: 'inbound',
+      state: () => this.ibState(),
+      kpiDefs: () => this.ibKpiDefs(),
+      kpiRows: () => this.ibScopeRows(),
+      visibleRows: () => this.ibVisibleRows(),
+      hasFilter: () => this.ibHasFilter(),
+      listTable: rows => this.ibListTable(rows),
+      renderPager: rows => this.ibRenderPager(rows),
+    });
   },
 
   ibListTable(pageData) {
@@ -1502,6 +1493,39 @@ Object.assign(App, {
       this.api('/api/suppliers/options').catch(() => [])
     ]);
     if (!alive()) return;
+    // 数据加载按原顺序逐阶段写回模块态，每个 await 后的 alive() 守卫都在加载方法内保留
+    if (!await this.ibLoadEditDetail(detail, suppliers, docNo, preloadLines, alive)) return;
+
+    const typeLabel = this.ibTypeLabel(detail.txn_type);
+    const isReturn = detail.txn_type === '采购退货' || detail.txn_type === '零星退货';
+    const isCorr = !!String(detail.corrects_doc_no || '').trim();
+    const backNo = isCorr ? detail.corrects_doc_no : docNo;
+    if (!alive()) return;
+
+    this.setMain(this.pageWrap(this.icon('edit', 'icon--title') + ' ' + (isCorr ? detail.corrects_doc_no : detail.doc_no),
+      `${this.t(isCorr ? 'ibd_corr_title' : (isReturn ? 'ibd_edit_title_return' : 'ibd_edit_title'))} · ${typeLabel}`, '',
+      `<div id="ib-edit-root" class="data-page">
+        <div class="pu-edit-bar">
+          <span class="action-link" onclick="App.backToInboundDetail('${backNo}')">← ${this.t('ibd_back_detail')}</span>
+          ${this.ibdStatusBadge(detail.status)}
+        </div>
+        <div class="pu-card">
+          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
+          <div id="ib-edit-form"></div>
+        </div>
+        <div class="pu-card">
+          <div class="pu-card-title"><span>02</span><div>${isReturn ? this.t('ibd_section_lines_return') : (isCorr ? this.t('ibd_corr_section_lines') : this.t('ibd_section_lines'))}<small id="ib-edit-line-count"></small></div></div>
+          <div id="ib-edit-lines"></div>
+        </div>
+        <div class="pu-edit-actions" id="ib-edit-buttons"></div>
+      </div>`));
+
+    this.renderInboundEdit();
+  },
+
+  // 编辑页数据加载：保留原实现的状态写入顺序、归一化口径与并发守卫位置。
+  // 返回 false 表示加载途中当前单据已被新的切单请求取代，调用方必须放弃渲染。
+  async ibLoadEditDetail(detail, suppliers, docNo, preloadLines, alive) {
     this._ibDetail = detail;
     this._ibSupplierList = suppliers || [];
 
@@ -1512,7 +1536,7 @@ Object.assign(App, {
       try {
         info = await this.api('/api/inbound-docs/' + encodeURIComponent(detail.corrects_doc_no) + '/correction-info');
       } catch (e) { info = null; }
-      if (!alive()) return;
+      if (!alive()) return false;
       const srcLines = (info && info.lines) || [];
       const current = Object.fromEntries(srcLines.map(l => [String(l.line_key || this.ibCorrKey(l)), Number(l.qty) || 0]));
       // 原单单价基线：仅在有价格查看权（接口未删 price）时建立，用于「只改价」的无改动判定
@@ -1576,9 +1600,9 @@ Object.assign(App, {
       }
       try {
         const sources = await this.api(srcUrl);
-        if (!alive()) return;
+        if (!alive()) return false;
         this._ibReturnSourceMap = Object.fromEntries((sources || []).map(s => [String(s.id), s]));
-      } catch (e) { if (!alive()) return; this._ibReturnSourceMap = null; }
+      } catch (e) { if (!alive()) return false; this._ibReturnSourceMap = null; }
       this._ibEditLines.forEach(l => {
         const src = this._ibReturnSourceMap && l.origin_line_id
           ? this._ibReturnSourceMap[String(l.origin_line_id)] : null;
@@ -1604,7 +1628,7 @@ Object.assign(App, {
       this._ibSource = poNo ? { kind: 'po', no: poNo } : (ctNo ? { kind: 'contract', no: ctNo } : null);
       if (!isCorrDoc) {
         this._ibSourceList = await this.api('/api/purchase/inbound-sources').catch(() => []);
-        if (!alive()) return;
+        if (!alive()) return false;
       }
       if (this._ibSource) {
         const qs = this._ibSource.kind === 'po' ? 'poNo=' : 'contractNo=';
@@ -1612,49 +1636,24 @@ Object.assign(App, {
         const exDocNo = isCorrDoc && String(detail.status) === 'draft' ? String(detail.corrects_doc_no || '').trim() : '';
         const ex = exDocNo ? '&excludeDocNo=' + encodeURIComponent(exDocNo) : '';
         this._ibSourceLines = await this.api('/api/purchase/inbound-scope-lines?' + qs + encodeURIComponent(this._ibSource.no) + ex).catch(() => []);
-        if (!alive()) return;
+        if (!alive()) return false;
       }
     }
 
     // 加载物料和库存数据（可用库存列只在零星入库/采购退货无原单档使用）
     const materials = await this.api('/api/materials');
-    if (!alive()) return;
+    if (!alive()) return false;
     this._materialsCache = materials;
     let stockMap = {};
     if (detail.txn_type !== '采购入库') {
       try {
         const stock = await this.api('/api/stock-summary');
-        if (!alive()) return;
+        if (!alive()) return false;
         stockMap = Object.fromEntries(stock.map(s => [s.code, s.on_hand]));
-      } catch (e) { if (!alive()) return; }
+      } catch (e) { if (!alive()) return false; }
     }
     this._inboundStockMap = stockMap;
-
-    const typeLabel = this.ibTypeLabel(detail.txn_type);
-    const isReturn = detail.txn_type === '采购退货' || detail.txn_type === '零星退货';
-    const isCorr = !!String(detail.corrects_doc_no || '').trim();
-    const backNo = isCorr ? detail.corrects_doc_no : docNo;
-    if (!alive()) return;
-
-    this.setMain(this.pageWrap(this.icon('edit', 'icon--title') + ' ' + (isCorr ? detail.corrects_doc_no : detail.doc_no),
-      `${this.t(isCorr ? 'ibd_corr_title' : (isReturn ? 'ibd_edit_title_return' : 'ibd_edit_title'))} · ${typeLabel}`, '',
-      `<div id="ib-edit-root" class="data-page">
-        <div class="pu-edit-bar">
-          <span class="action-link" onclick="App.backToInboundDetail('${backNo}')">← ${this.t('ibd_back_detail')}</span>
-          ${this.ibdStatusBadge(detail.status)}
-        </div>
-        <div class="pu-card">
-          <div class="pu-card-title"><span>01</span><div>${this.t('pu_section_header')}</div></div>
-          <div id="ib-edit-form"></div>
-        </div>
-        <div class="pu-card">
-          <div class="pu-card-title"><span>02</span><div>${isReturn ? this.t('ibd_section_lines_return') : (isCorr ? this.t('ibd_corr_section_lines') : this.t('ibd_section_lines'))}<small id="ib-edit-line-count"></small></div></div>
-          <div id="ib-edit-lines"></div>
-        </div>
-        <div class="pu-edit-actions" id="ib-edit-buttons"></div>
-      </div>`));
-
-    this.renderInboundEdit();
+    return true;
   },
 
   renderInboundEdit() {
@@ -1761,6 +1760,116 @@ Object.assign(App, {
     this.renderInboundEditTable();
   },
 
+  // 明细行参照列口径：可用量 / 更正未到货 / 关联可退量共用一次 filled 计算。
+  // 这里只做展示派生值，不写回 _ibEditLines；提交体与服务端成本计算均不依赖这些值。
+  ibEditRowRefs(l, ctx) {
+    const { lines, isDraft, linked, isCorr, isPurchaseIn, isPurchaseInCol, corr, d } = ctx;
+    const linkedMax = linked ? (l.max_qty === undefined ? (l.available || 0) : l.max_qty) : null;
+    // 同一采购行拆多行时，本单已填数量只汇总一次（普通/更正两条分支共用）
+    let filled = null;
+    let available;
+    let availTitle = '';
+    if (isPurchaseInCol) {
+      const oid = Number(l.order_line_id) || 0;
+      const src = oid ? (this._ibSourceLines || []).find(x => Number(x.id) === oid) : null;
+      if (src) {
+        const base = Number(src.unreceived_qty) || 0;
+        filled = isDraft ? lines.reduce((s, x) =>
+          s + (Number(x.order_line_id) === oid ? Math.abs(Number(x.qty) || 0) : 0), 0) : 0;
+        available = base - filled;
+        availTitle = isDraft
+          ? `${this.t('ibd_unreceived')} ${this.fmtQty(base)}（${this.t('ibd_not_this_doc')}）· ${this.t('ibd_filled_this_doc')} ${this.fmtQty(filled)}`
+          : `${this.t('ibd_unreceived')} ${this.fmtQty(base)}`;
+      } else {
+        available = null;
+      }
+    } else {
+      available = isCorr
+        ? (corr.current[this.ibCorrKey(l)] !== undefined ? corr.current[this.ibCorrKey(l)] : 0)
+        : (linked ? linkedMax : this._inboundStockMap[l.code]);
+    }
+    const availCls = available === undefined || available === null ? 'num-zero'
+      : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : ''));
+    let corrUnrec = null;
+    let corrUnrecTitle = '';
+    if (isCorr && isPurchaseIn) {
+      const oid = Number(l.order_line_id) || 0;
+      const srcLine = oid ? (this._ibSourceLines || []).find(x => Number(x.id) === oid) : null;
+      if (srcLine) {
+        const base = Number(srcLine.unreceived_qty) || 0;
+        if (filled === null) {
+          filled = isDraft ? lines.reduce((s, x) =>
+            s + (Number(x.order_line_id) === oid ? Math.abs(Number(x.qty) || 0) : 0), 0) : 0;
+        }
+        corrUnrec = base - filled;
+        corrUnrecTitle = this.t('ibd_corr_unreceived_title', {
+          base: this.fmtQty(base), filled: this.fmtQty(filled), remaining: this.fmtQty(corrUnrec)
+        });
+      }
+    }
+    const corrUnrecColor = corrUnrec === null ? 'var(--text-muted)'
+      : (corrUnrec < 0 ? 'var(--danger)' : (corrUnrec === 0 ? 'var(--warning)' : 'var(--success)'));
+    const corrUnrecCell = (isCorr && isPurchaseIn)
+      ? `<td class="pu-edit-amt" style="font-size:12px;color:${corrUnrecColor}"${corrUnrecTitle ? ` title="${this.docEsc(corrUnrecTitle)}"` : ''}>${corrUnrec === null ? '-' : this.fmtQty(corrUnrec)}</td>`
+      : '';
+    const contract = isCorr
+      ? [l.po_no || d.po_no || '', l.contract_no || d.contract_no || ''].filter(Boolean).join(' · ')
+      : (linked ? (l.source_doc_no || '') : (l.contract_no || d.contract_no || ''));
+    return {
+      linkedMax, availText: available === undefined || available === null ? '-' : this.fmtQty(available),
+      availCls, availTitle, corrUnrecCell, contract,
+      amt: (Number(l.qty) || 0) * (Number(l.price) || 0),
+    };
+  },
+
+  // 明细行 HTML：过账态只读、草稿态可编辑，两种分支都走同一份参照列结果
+  ibEditRowHtml(l, i, ctx, r) {
+    const { d, isDraft, isCorr, isPurchaseIn, linked, vp } = ctx;
+    if (!isDraft) {
+      const qty = Number(l.qty) || 0;
+      return `<tr>
+            <td>${this.ibLineLabel(l)}</td>
+            <td${qty < 0 ? ' class="num-neg"' : ''}>${this.fmtQty(qty)}${l.material_unit ? ' ' + this.docEsc(l.material_unit) : ''}</td>
+            ${vp ? `<td>${this.fmtMoney(l.price)}</td><td class="pu-edit-amt">${this.fmtMoney(r.amt)}</td>` : ''}
+            <td class="u-fs-xs">${r.contract}</td>
+            <td>${l.remarks || ''}</td>
+            ${r.corrUnrecCell}
+            <td class="pu-edit-amt${r.availCls ? ' ' + r.availCls : ''}"${isCorr ? ` title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${r.availText}</td>
+            <td></td>
+          </tr>`;
+    }
+    const lockMat = linked || (isCorr && !!l._locked)
+      || (isPurchaseIn && (Number(l.order_line_id) > 0 || (!this._ibSource && !isCorr)));
+    let matCell;
+    if (lockMat) {
+      const outOfScope = isPurchaseIn && !!l._outOfScope;
+      matCell = `<div class="u-fs-sm">${this.ibLineLabel(l)}` +
+        `${outOfScope ? `<small class="ib-out-scope"> ${this.t('ibd_line_out_of_scope')}</small>` : ''}</div>`;
+    } else if (isPurchaseIn && (!isCorr || this._ibSource)) {
+      matCell = `<select class="ib-line-ol" data-idx="${i}" onchange="App.ibPickOrderLine(${i}, this.value)">${this.ibOrderLineOpts(l)}</select>`;
+    } else {
+      matCell = `<select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select>`;
+    }
+    const corrPriceEditable = isCorr && d.txn_type === '零星入库';
+    const lockPrice = !this.canEditPrice() || linked || (isCorr && !corrPriceEditable);
+    const priceCell = lockPrice
+      ? `<td>${this.fmtMoney(l.price)}</td>`
+      : `<td class="u-min-w-100"><input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.price)}" oninput="App.ibEditSet(${i},'price',this.value)"></td>`;
+    const qtyMax = linked ? ` max="${r.linkedMax}"` : '';
+    const qtyMin = isCorr ? '0' : '0.01';
+    return `<tr>
+          <td class="u-min-w-220">${matCell}<div class="line-error-tip" data-ib-tip="${i}"></div></td>
+          <td class="u-min-w-100"><div class="pu-qty-wrap"><input type="number" class="ib-edit-qty" data-idx="${i}" step="0.01" min="${qtyMin}"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
+          ${vp ? `${priceCell}
+          <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(r.amt)}</td>` : ''}
+          <td style="min-width:120px" class="u-fs-xs">${r.contract}</td>
+          <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
+          ${r.corrUnrecCell}
+          <td class="pu-edit-amt u-fs-xs${r.availCls ? ' ' + r.availCls : ''}"${(r.availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : r.availTitle)}"` : ''}>${r.availText}</td>
+          <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
+        </tr>`;
+  },
+
   // 只重渲染 02 明细区（物料筛选条 + 明细表 + 汇总），不重建 01 表单与底部按钮
   renderInboundEditTable() {
     this.msClose();
@@ -1777,19 +1886,20 @@ Object.assign(App, {
     const vp = this.canViewPrice() || this.canEditPrice();
     const mats = this._materialsCache || [];
     const colCount = 7 + (vp ? 2 : 0) + ((isCorr && isPurchaseIn) ? 1 : 0);
+    const ctx = { d, lines, isDraft, linked, isCorr, isPurchaseIn, isPurchaseInCol, corr, vp };
 
     // 参照列：普通采购入库「未到货」；更正采购入库「未到货」+「当前有效数量」两列并存；
     // 关联档「可退量」；其他类型「可用库存」
-    let refCols;
-    if (linked) {
-      refCols = `<th class="text-right">${this.t('ret_remaining_qty')}</th>`;
-    } else if (isCorr) {
-      refCols = (isPurchaseIn
-        ? `<th class="text-right" title="${this.docEsc(this.t('ibd_corr_unreceived_col_title'))}">${this.t('ibd_unreceived')}</th>` : '')
-        + `<th class="text-right" title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}">${this.t('ibd_corr_current_qty')}</th>`;
-    } else {
-      refCols = `<th class="text-right">${isPurchaseIn ? this.t('ibd_unreceived') : this.t('out_available')}</th>`;
-    }
+    // 参照列描述数组：[{key, head}]，供表头渲染与行数校验共用，避免各分支各写一份列集合
+    const refCols = (linked
+      ? [['remaining', `<th class="text-right">${this.t('ret_remaining_qty')}</th>`]]
+      : isCorr
+        ? [
+          ...(isPurchaseIn ? [['unreceived', `<th class="text-right" title="${this.docEsc(this.t('ibd_corr_unreceived_col_title'))}">${this.t('ibd_unreceived')}</th>`]] : []),
+          ['current', `<th class="text-right" title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}">${this.t('ibd_corr_current_qty')}</th>`],
+        ]
+        : [['available', `<th class="text-right">${isPurchaseIn ? this.t('ibd_unreceived') : this.t('out_available')}</th>`]]
+    ).map(c => c[1]).join('');
 
     // 列序对齐采购编辑页：物料 / 数量 / 单价 / 行金额 / 合同号 / 备注 / 只读参照列 / 删除
     const headHtml = `<tr>
@@ -1810,111 +1920,8 @@ Object.assign(App, {
         ${isDraft && !linked ? `<div class="u-mt-10"><button class="btn btn-primary btn-sm" onclick="App.addInboundEditRow()">+ ${this.t('ibd_add_line')}</button></div>` : ''}
       `, { pad: 26 });
     } else {
-      tbody = lines.map((l, i) => {
-        // 采购退货关联档：可退量取后端实时额度；更正：展示当前有效数量；其他类型取库存
-        const linkedMax = linked ? (l.max_qty === undefined ? (l.available || 0) : l.max_qty) : null;
-        let available;
-        let availTitle = '';
-        if (isPurchaseInCol) {
-          const oid = Number(l.order_line_id) || 0;
-          const src = oid ? (this._ibSourceLines || []).find(x => Number(x.id) === oid) : null;
-          if (src) {
-            const base = Number(src.unreceived_qty) || 0;
-            // 草稿：未到货 − 本单已填（同一采购行拆多行只扣一次）；已过账：未到货已含本单
-            const filled = isDraft ? lines.reduce((s, x) =>
-              s + (Number(x.order_line_id) === oid ? Math.abs(Number(x.qty) || 0) : 0), 0) : 0;
-            available = base - filled;
-            availTitle = isDraft
-              ? `${this.t('ibd_unreceived')} ${this.fmtQty(base)}（${this.t('ibd_not_this_doc')}）· ${this.t('ibd_filled_this_doc')} ${this.fmtQty(filled)}`
-              : `${this.t('ibd_unreceived')} ${this.fmtQty(base)}`;
-          } else {
-            available = null;
-          }
-        } else {
-          available = isCorr
-            ? (corr.current[this.ibCorrKey(l)] !== undefined ? corr.current[this.ibCorrKey(l)] : 0)
-            : (linked ? linkedMax : this._inboundStockMap[l.code]);
-        }
-        const availText = available === undefined || available === null ? '-' : this.fmtQty(available);
-        const availCls = available === undefined || available === null ? 'num-zero'
-          : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : ''));
-        // 更正采购入库：另加一列「未到货」。更正单确认后原单作废，
-        // 基准 = 该采购行可到总量（订单量 − 排除原单后的已过账量，_ibSourceLines 已按 excludeDocNo 取数），
-        // 再减本单该采购行目标数量合计（同一采购行拆多行只扣一次）
-        let corrUnrec = null;
-        let corrUnrecTitle = '';
-        if (isCorr && isPurchaseIn) {
-          const oid = Number(l.order_line_id) || 0;
-          const srcLine = oid ? (this._ibSourceLines || []).find(x => Number(x.id) === oid) : null;
-          if (srcLine) {
-            const base = Number(srcLine.unreceived_qty) || 0;
-            const filled = isDraft ? lines.reduce((s, x) =>
-              s + (Number(x.order_line_id) === oid ? Math.abs(Number(x.qty) || 0) : 0), 0) : 0;
-            corrUnrec = base - filled;
-            corrUnrecTitle = this.t('ibd_corr_unreceived_title', {
-              base: this.fmtQty(base), filled: this.fmtQty(filled), remaining: this.fmtQty(corrUnrec)
-            });
-          }
-        }
-        const corrUnrecText = corrUnrec === null ? '-' : this.fmtQty(corrUnrec);
-        const corrUnrecColor = corrUnrec === null ? 'var(--text-muted)'
-          : (corrUnrec < 0 ? 'var(--danger)' : (corrUnrec === 0 ? 'var(--warning)' : 'var(--success)'));
-        const corrUnrecCell = (isCorr && isPurchaseIn)
-          ? `<td class="pu-edit-amt" style="font-size:12px;color:${corrUnrecColor}"${corrUnrecTitle ? ` title="${this.docEsc(corrUnrecTitle)}"` : ''}>${corrUnrecText}</td>`
-          : '';
-        const contract = isCorr
-          ? [l.po_no || d.po_no || '', l.contract_no || d.contract_no || ''].filter(Boolean).join(' · ')
-          : (linked ? (l.source_doc_no || '') : (l.contract_no || d.contract_no || ''));
-        const amt = (Number(l.qty) || 0) * (Number(l.price) || 0);
-
-        if (!isDraft) {
-          const qty = Number(l.qty) || 0;
-          return `<tr>
-            <td>${this.ibLineLabel(l)}</td>
-            <td${qty < 0 ? ' class="num-neg"' : ''}>${this.fmtQty(qty)}${l.material_unit ? ' ' + this.docEsc(l.material_unit) : ''}</td>
-            ${vp ? `<td>${this.fmtMoney(l.price)}</td><td class="pu-edit-amt">${this.fmtMoney(amt)}</td>` : ''}
-            <td class="u-fs-xs">${contract}</td>
-            <td>${l.remarks || ''}</td>
-            ${corrUnrecCell}
-            <td class="pu-edit-amt${availCls ? ' ' + availCls : ''}"${isCorr ? ` title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${availText}</td>
-            <td></td>
-          </tr>`;
-        }
-        // 关联档 / 更正预填行：物料与单价锁定为原入库行，只允许修改数量与备注
-        // 采购入库：已选定采购明细行的行锁定物料；未选来源时不允许再换物料
-        // 更正草稿：继承自原单的行（_locked）保持只读展示，即使已不在来源范围内也不重选；新增行按来源选采购行
-        const lockMat = linked || (isCorr && !!l._locked)
-          || (isPurchaseIn && (Number(l.order_line_id) > 0 || (!this._ibSource && !isCorr)));
-        let matCell;
-        if (lockMat) {
-          const outOfScope = isPurchaseIn && !!l._outOfScope;
-          matCell = `<div class="u-fs-sm">${this.ibLineLabel(l)}` +
-            `${outOfScope ? `<small class="ib-out-scope"> ${this.t('ibd_line_out_of_scope')}</small>` : ''}</div>`;
-        } else if (isPurchaseIn && (!isCorr || this._ibSource)) {
-          matCell = `<select class="ib-line-ol" data-idx="${i}" onchange="App.ibPickOrderLine(${i}, this.value)">${this.ibOrderLineOpts(l)}</select>`;
-        } else {
-          matCell = `<select class="ib-line-mat" data-idx="${i}" onchange="App.ibEditSet(${i},'code',this.value)">${this.ibMatOpts(l.code)}</select>`;
-        }
-        // 只有「零星入库」更正草稿允许改价（受价格填写权控制）；采购入库、两类退货的更正仍只读
-        const corrPriceEditable = isCorr && d.txn_type === '零星入库';
-        const lockPrice = !this.canEditPrice() || linked || (isCorr && !corrPriceEditable);
-        const priceCell = lockPrice
-          ? `<td>${this.fmtMoney(l.price)}</td>`
-          : `<td class="u-min-w-100"><input type="number" step="0.01" min="0" value="${this.fmtPrice2(l.price)}" oninput="App.ibEditSet(${i},'price',this.value)"></td>`;
-        const qtyMax = linked ? ` max="${linkedMax}"` : '';
-        const qtyMin = isCorr ? '0' : '0.01';
-        return `<tr>
-          <td class="u-min-w-220">${matCell}<div class="line-error-tip" data-ib-tip="${i}"></div></td>
-          <td class="u-min-w-100"><div class="pu-qty-wrap"><input type="number" class="ib-edit-qty" data-idx="${i}" step="0.01" min="${qtyMin}"${qtyMax} value="${l.qty === null || l.qty === undefined ? '' : l.qty}" oninput="App.ibEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div></td>
-          ${vp ? `${priceCell}
-          <td class="pu-edit-amt" data-line-amount="${i}">${this.fmtMoney(amt)}</td>` : ''}
-          <td style="min-width:120px" class="u-fs-xs">${contract}</td>
-          <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
-          ${corrUnrecCell}
-          <td class="pu-edit-amt u-fs-xs${availCls ? ' ' + availCls : ''}"${(availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : availTitle)}"` : ''}>${availText}</td>
-          <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
-        </tr>`;
-      }).join('');
+      tbody = lines.map((l, i) =>
+        this.ibEditRowHtml(l, i, ctx, this.ibEditRowRefs(l, ctx))).join('');
     }
 
     const totalQty = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);

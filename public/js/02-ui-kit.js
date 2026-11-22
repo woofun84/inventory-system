@@ -229,6 +229,33 @@ Object.assign(App, {
     this.onSort(tableId, key);
   },
 
+  // 单据列表页的统一流水线：KPI → 可见行 → 排序 → 分页 → 表格 → 分页器。
+  // 各模块只注入差异（命名空间、表 ID、KPI 定义/计数源、列渲染、分页汇总），
+  // 流水线本身不再复制四份；kpiRows 必须保留各模块原来的调用顺序与数据源。
+  renderList(cfg) {
+    const { ns, tableId, state, kpiDefs, kpiRows, visibleRows, hasFilter,
+      listTable, renderPager, kpiExtraClass, pagerId } = cfg;
+    const s = state();
+    const kp = document.getElementById(`${ns}-kpis`);
+    if (kp) {
+      kp.innerHTML = kpiDefs().map(([k, label, fn]) =>
+        `<button type="button" class="pu-kpi${kpiExtraClass ? kpiExtraClass(k) : ''}" aria-pressed="${s.kpi === k}" data-${ns}="kpi" data-id="${k}"><small>${label}</small><strong>${kpiRows().filter(fn).length}</strong></button>`
+      ).join('');
+    }
+    const rows = visibleRows();
+    const st = this.getTableState(tableId);
+    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
+    const pageData = this.paginate(sorted, st.page, st.pageSize);
+    const scroll = document.getElementById(`${ns}-scroll`);
+    if (scroll) {
+      scroll.innerHTML = sorted.length
+        ? listTable(pageData)
+        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${hasFilter() ? this.t('pu_no_result_hint') : this.t('pu_empty_hint')}</span></div>`;
+    }
+    renderPager(sorted);
+    this.pinPager(pagerId || `${ns}-pager`);
+  },
+
   // ========== 分页 ==========
   paginate(data, page, pageSize) {
     if (pageSize <= 0) return data;

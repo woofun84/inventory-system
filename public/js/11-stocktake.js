@@ -168,25 +168,16 @@ Object.assign(App, {
   },
 
   stRenderList() {
-    const s = this.stState();
-    const kp = document.getElementById('st-kpis');
-    if (kp) {
-      kp.innerHTML = this.stKpiDefs().map(([k, label, fn]) =>
-        `<button type="button" class="pu-kpi" aria-pressed="${s.kpi === k}" data-st="kpi" data-id="${k}"><small>${label}</small><strong>${this.stScopeRows().filter(fn).length}</strong></button>`
-      ).join('');
-    }
-    const rows = this.stVisibleRows();
-    const st = this.getTableState('stocktake');
-    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
-    const pageData = this.paginate(sorted, st.page, st.pageSize);
-    const scroll = document.getElementById('st-scroll');
-    if (scroll) {
-      scroll.innerHTML = sorted.length
-        ? this.stListTable(pageData)
-        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.stHasFilter() ? this.t('pu_no_result_hint') : this.t('pu_empty_hint')}</span></div>`;
-    }
-    this.stRenderPager(sorted);
-    this.pinPager('st-pager');
+    this.renderList({
+      ns: 'st', tableId: 'stocktake',
+      state: () => this.stState(),
+      kpiDefs: () => this.stKpiDefs(),
+      kpiRows: () => this.stScopeRows(),
+      visibleRows: () => this.stVisibleRows(),
+      hasFilter: () => this.stHasFilter(),
+      listTable: rows => this.stListTable(rows),
+      renderPager: rows => this.stRenderPager(rows),
+    });
   },
 
   stListTable(pageData) {

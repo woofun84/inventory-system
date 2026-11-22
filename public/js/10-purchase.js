@@ -273,25 +273,18 @@ Object.assign(App, {
   },
 
   puRenderList() {
-    const s = this.puState();
-    const kp = document.getElementById('pu-kpis');
-    if (kp) {
-      kp.innerHTML = this.puKpiDefs().map(([k, label, fn]) =>
-        `<button type="button" class="pu-kpi${k === 'od' ? ' warn' : ''}" aria-pressed="${s.kpi === k}" data-pu="kpi" data-id="${k}"><small>${label}</small><strong>${this._puList.filter(fn).length}</strong></button>`
-      ).join('');
-    }
-    const rows = this.puVisibleRows();
-    const st = this.getTableState('purchase');
-    const sorted = this.sortData(rows, st.sortKey, st.sortDir);
-    const pageData = this.paginate(sorted, st.page, st.pageSize);
-    const scroll = document.getElementById('pu-scroll');
-    if (scroll) {
-      scroll.innerHTML = sorted.length
-        ? this.puListTable(pageData)
-        : `<div class="pu-empty">${this.t('pu_no_result')}<br><span class="pu-mu">${this.puHasFilter() ? this.t('pu_no_result_hint') : this.t('pu_empty_hint')}</span></div>`;
-    }
-    this.puRenderPager(sorted);
-    this.pinPager('pu-pager');
+    this.renderList({
+      ns: 'pu', tableId: 'purchase',
+      state: () => this.puState(),
+      kpiDefs: () => this.puKpiDefs(),
+      // 采购单 KPI 计数走整个 _puList，而非可见行（与其它三个模块不同，必须保留）
+      kpiRows: () => this._puList,
+      kpiExtraClass: k => (k === 'od' ? ' warn' : ''),
+      visibleRows: () => this.puVisibleRows(),
+      hasFilter: () => this.puHasFilter(),
+      listTable: rows => this.puListTable(rows),
+      renderPager: rows => this.puRenderPager(rows),
+    });
   },
 
   puHasFilter() { const s = this.puState(); return !!(s.f.kw || s.f.from || s.f.to || s.kpi); },

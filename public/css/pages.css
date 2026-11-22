@@ -969,38 +969,17 @@ button.pu-kpi { cursor: pointer; }
   }
   .pu-mback { display: inline-flex; }
 
-  /* 查询中心 .q-ins-split 样式包（media query 外后定义，specificity 相同会覆盖上面的抽屉规则）。
-     这里用 !important 覆盖 grid-template-columns，确保查询中心所有状态（open / wide / has-doc / doc-wide）
-     在小屏都统一走右侧抽屉 + 遮罩。 */
-  .q-ins-split.open:not(.wide),
-  .q-ins-split.wide,
-  .q-ins-split.wide.has-doc,
-  .q-ins-split.doc-wide { grid-template-columns: minmax(0, 1fr) !important; }
-  .q-ins-split.open:not(.wide) .pu-list,
-  .q-ins-split.wide .pu-list,
-  .q-ins-split.wide.has-doc .pu-list,
-  .q-ins-split.doc-wide .pu-list { display: block !important; }
-  .q-ins-split.open:not(.wide) > .pu-insp:not([hidden]),
-  .q-ins-split.wide > .pu-insp:not([hidden]),
-  .q-ins-split.wide.has-doc > .pu-insp:not([hidden]),
-  .q-ins-split.doc-wide > .pu-insp:not([hidden]) {
-    position: fixed !important; inset: 0 0 0 auto !important; width: min(92vw, 480px) !important; max-height: 100dvh !important;
-    z-index: 1000 !important; box-shadow: var(--shadow-lg) !important;
-  }
-  .q-ins-split.open:not(.wide)::before,
-  .q-ins-split.wide::before,
-  .q-ins-split.wide.has-doc::before,
-  .q-ins-split.doc-wide::before {
-    content: '' !important; position: fixed !important; inset: 0 !important; background: var(--overlay-bg-hover) !important; z-index: 999 !important;
-  }
+  /* 查询中心的抽屉覆盖移至下方「查询中心样式包」之后（见该段末尾的 1024 断点），
+     以免被后定义的 .q-ins-split.wide 静态两栏规则反向覆盖；此处不再需要 !important。 */
 }
 
 /* ================= 查询中心样式包（原 07-stock.js 运行时注入） =================
    来源：qInsCss() / qFlowCss(id) / qCardFlowCss()、库存查询板块与库存分析板块
    拼在 innerHTML 里的 <style> 段。此前这些 <style> 随内容进入 body，靠「后出现」
-   压过 <head> 里的静态表；改为静态加载后，本段必须排在 .pu-* 段与上方
-   @media(max-width:1400px/1024px) 的 .pu-split.open 规则之后，
-   用相同权重 + 同等顺序还原 .q-ins-split.wide 对两栏布局的覆盖，不靠提高权重。
+   压过 <head> 里的静态表；改为静态加载后，本段排在 .pu-* 段与上方
+   @media(max-width:1400px/1024px) 的 .pu-split.open 规则之后；
+   小屏抽屉覆盖放在本段静态两栏规则之后（见 .q-ins-split 段末尾的 1024 断点），
+   靠相同权重 + 后定义顺序生效，不靠 !important。
    作用域：#q-root 内的 .q-ins-* 布局壳，以及 #q_docs_scroll / #q_rcv_scroll /
    #q_an_alert_box / #q_card_flow_scroll / #q_stock_scroll / #q_stock_insp /
    #q-analysis 这些查询中心专属 id，不涉及其他模块。
@@ -1013,6 +992,32 @@ button.pu-kpi { cursor: pointer; }
 .q-ins-split.wide.has-doc { grid-template-columns: minmax(0, 1fr) 420px; }
 .q-ins-split.doc-wide { grid-template-columns: minmax(0, 1fr); }
 .q-ins-split.doc-wide .q-ins-main { display: none; }
+
+/* 小屏抽屉覆盖：必须放在上面的静态两栏规则之后，靠同等特异性 + 后定义顺序生效。
+   四种状态（open / wide / wide.has-doc / doc-wide）统一走右侧抽屉 + 全屏遮罩，不用 !important。 */
+@media (max-width: 1024px) {
+  .q-ins-split.open:not(.wide),
+  .q-ins-split.wide,
+  .q-ins-split.wide.has-doc,
+  .q-ins-split.doc-wide { grid-template-columns: minmax(0, 1fr); }
+  .q-ins-split.open:not(.wide) .pu-list,
+  .q-ins-split.wide .pu-list,
+  .q-ins-split.wide.has-doc .pu-list,
+  .q-ins-split.doc-wide .pu-list { display: block; }
+  .q-ins-split.open:not(.wide) > .pu-insp:not([hidden]),
+  .q-ins-split.wide > .pu-insp:not([hidden]),
+  .q-ins-split.wide.has-doc > .pu-insp:not([hidden]),
+  .q-ins-split.doc-wide > .pu-insp:not([hidden]) {
+    position: fixed; inset: 0 0 0 auto; width: min(92vw, 480px); max-height: 100dvh;
+    z-index: 1000; box-shadow: var(--shadow-lg);
+  }
+  .q-ins-split.open:not(.wide)::before,
+  .q-ins-split.wide::before,
+  .q-ins-split.wide.has-doc::before,
+  .q-ins-split.doc-wide::before {
+    content: ''; position: fixed; inset: 0; background: var(--overlay-bg-hover); z-index: 999;
+  }
+}
 
 /* 详情卡基本信息：窄态两列、宽态四列等宽，状态整行内联 */
 .q-ins-insp .q-card-meta { margin: 0 0 var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2_5) var(--space-4_5); }
