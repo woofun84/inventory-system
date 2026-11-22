@@ -732,7 +732,7 @@ const App = {
         { key: 'audit', icon: 'audit', label: this.t('nav_audit') },
       ]}
     ];
-    let html = `<div class="sidebar"><div class="sidebar-header"><h1>${this.icon('box', 'icon--logo')}<span>${this.t('appName')}</span></h1><div class="subtitle">${this.t('appSub')}</div></div><div class="sidebar-nav">`;
+    let html = `<div class="sidebar"><div class="sidebar-header"><h1>${this.icon('box', 'icon--logo')}<span>${this.t('appName')}</span></h1></div><div class="sidebar-nav">`;
     nav.forEach(s => {
       // 按权限过滤
       const visibleItems = s.items.filter(item => this.can(item.key, 'view'));

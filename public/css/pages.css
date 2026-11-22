@@ -27,7 +27,7 @@
     box-shadow: var(--shadow-sidebar);
   }
   body.nav-open .sidebar { transform: none; }
-  .sidebar-header { padding: var(--space-4) var(--space-4) var(--space-3); }
+  .sidebar-header { padding: 0 var(--space-4); }
   .sidebar-nav {
     padding: var(--space-2) var(--space-2_5);
     overflow-y: auto;
@@ -48,7 +48,7 @@
 .filter-toggle { display: none; }
 @media (max-width: 768px) {
   .page-header,
-  .page-header-row { padding: var(--space-3); }
+  .page-header-row { padding: 0 var(--space-3); }
   .page-body { padding: var(--space-3); }
   .chart-grid { grid-template-columns: minmax(0, 1fr); }
   .data-toolbar { position: relative; }
@@ -342,7 +342,7 @@
 /* ==========================================
    公共筛选栏 + 分页条（入库/出库/退货/盘点/采购/查询中心共用）
    ========================================== */
-.pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2_5); padding: var(--space-3) 0; }
+.pu-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2_5); padding: var(--space-2) 0; }
 .pu-filter-inner { display: contents; }
 .pu-search { position: relative; flex: 1 1 280px; min-width: 200px; }
 .pu-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted); pointer-events: none; }
@@ -658,7 +658,7 @@
 
 /* --- 状态统计条（栅格卡片，左标签右计数） ---
    flex-shrink:0 防止表格内容多时被 flex 布局压塌（与 .data-toolbar 同级保护） */
-.pu-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-3); overflow: hidden; flex-shrink: 0; }
+.pu-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-2); overflow: hidden; flex-shrink: 0; }
 @media (max-width: 480px) {
   .pu-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -672,13 +672,13 @@ button.pu-kpi { cursor: pointer; }
 /* --- 列表 + 右侧详情栏 --- */
 /* 页面整体滚动（.page-body 为滚动容器），表头 sticky 在滚动到页面顶端时吸顶；
    不能在 .data-scroll 上再做内部滚动，否则移动端工具栏会占满屏幕、数据无空间 */
-/* 去掉滚动容器顶部内边距，让吸顶表头与页面主标题严丝合缝（原 20px 会变成缝隙）；
+/* 去掉滚动容器顶部内边距，让吸顶表头与页面主标题严丝合缝；
    该内边距改由页面根容器统一承担：入库 / 出库 / 采购 / 退货 / 盘点 / 查询中心一致，
-   数值与普通页面 .page-body 的 20px 相同，窄屏同步为 12px */
+   宽屏 12px、窄屏 8px，压缩页面上下的冗余留白 */
 .page-body.pu-page-body { padding-top: 0; padding-bottom: 0; }
-.page-body.pu-page-body > .data-page { padding-top: 20px; }
+.page-body.pu-page-body > .data-page { padding-top: var(--space-3); }
 @media (max-width: 768px) {
-  .page-body.pu-page-body > .data-page { padding-top: 12px; }
+  .page-body.pu-page-body > .data-page { padding-top: var(--space-2); }
 }
 .pu-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); flex: 1 1 0; min-height: 0; }
 .pu-split.open { grid-template-columns: minmax(0, 1fr) 480px; }

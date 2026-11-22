@@ -40,6 +40,8 @@
   --radius: 10px;
   --radius-sm: 6px;
   --sidebar-w: 200px;
+  /* 顶栏统一高度：侧栏品牌头与主区页头共用，保证中间分隔线严格对齐 */
+  --head-h: 78px;
 
   /* ===== 语义状态色（底色 / 前景 / 描边） ===== */
   --success-bg: #dcfce7;
@@ -272,7 +274,10 @@ body {
 .sidebar-header {
   flex: 0 0 auto;
   background: var(--sidebar-bg);
-  padding: var(--space-4_5) var(--space-4_5) var(--space-3_5);
+  height: var(--head-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4_5);
   border-bottom: 1px solid var(--sidebar-divider);
   min-width: 0;
   overflow: hidden;
@@ -291,12 +296,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.sidebar-header .subtitle {
-  font-size: var(--fs-xxs);
-  color: var(--sidebar-text);
-  margin-top: 4px;
-  padding-left: 26px;
 }
 
 /* 左侧导航 */
@@ -414,7 +413,8 @@ body {
 .page-header,
 .page-header-row {
   flex-shrink: 0;
-  padding: var(--space-4) var(--space-6);
+  height: var(--head-h);
+  padding: 0 var(--space-6);
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -472,7 +472,7 @@ body {
   overflow-y: auto;
   /* 横向滚动只由表格/详情等局部容器承担，页面本身不产生意外横滚 */
   overflow-x: hidden;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
 }
 
 /* ========== 数据页面布局：工具栏固定顶部 + 表格独立滚动 + 分页固定底部 ========== */

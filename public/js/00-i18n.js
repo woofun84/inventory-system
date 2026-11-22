@@ -6,7 +6,7 @@
 // ========== 国际化字典 ==========
 const I18N = {
   zh: {
-    appName: '库存管理系统', appSub: '进出库跟踪', loading: '加载中...',
+    appName: '库存管理系统', loading: '加载中...',
     hdr_lang_tip: '切换语言', hdr_theme_tip: '切换主题', hdr_logout_tip: '退出',
     doc_title: '库存进出库管理系统',
     confirm: '确认', cancel: '取消', save: '保存', add: '添加', edit: '编辑', delete: '删除', create: '创建', close: '关闭', search: '查询',
@@ -753,7 +753,7 @@ const I18N = {
     cost_basis_none_forbidden: '仅管理员可确认按 0 成本入账'
   },
   en: {
-    appName: 'Inventory System', appSub: 'In/Out Tracking', loading: 'Loading...',
+    appName: 'Inventory System', loading: 'Loading...',
     hdr_lang_tip: 'Switch language', hdr_theme_tip: 'Switch theme', hdr_logout_tip: 'Logout',
     doc_title: 'Inventory In/Out Management',
     confirm: 'Confirm', cancel: 'Cancel', save: 'Save', add: 'Add', edit: 'Edit', delete: 'Delete', create: 'Create', close: 'Close', search: 'Search',
