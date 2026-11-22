@@ -661,22 +661,6 @@ function voidDocLedger(sourceType, docNo, opts = {}) {
   return { codes: rows.map(r => r.code), anchor, result };
 }
 
-/** 全库重建（初始化/校正用，显式调用） */
-function rebuildAll() {
-  const codes = db.prepare("SELECT DISTINCT code FROM stock_ledger WHERE status='active'").all().map(r => r.code);
-  const tx = db.transaction(() => {
-    for (const code of codes) {
-      renumberFrom(code, 1);
-      recomputeFrom(code, 1);
-    }
-    const stale = db.prepare('SELECT code FROM stock_balance').all().map(r => r.code)
-      .filter(c => !codes.includes(c));
-    for (const c of stale) db.prepare('DELETE FROM stock_balance WHERE code=?').run(c);
-  });
-  tx();
-  return codes.length;
-}
-
 /**
  * 是否已经发生过期初以外的库存业务（含已作废单据）。
  * 期初业务日期固定 1970-01-01，必须排在回放最前面；一旦后续已有流水，
@@ -869,6 +853,6 @@ module.exports = {
   COST_BASIS,
   insertLedger, renumberFrom, recomputeFrom, settle,
   postInboundDoc, postOutboundDoc, postAdjustment, updateAdjustment, voidAdjustment, voidDocLedger,
-  rebuildAll, ensureOpeningBalances, syncOpeningLedger, hasNonOpeningLedger,
+  ensureOpeningBalances, syncOpeningLedger, hasNonOpeningLedger,
   captureBalances, logCorrection, updateInboundPrices, logPriceRecalc,
 };

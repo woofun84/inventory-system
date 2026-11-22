@@ -9,12 +9,7 @@
 .u-muted-sm { color: var(--text-muted); font-size: var(--fs-xs); }
 .u-m-0 { margin: 0; }
 .u-mt-1 { margin-top: var(--space-1); }
-.u-mt-2 { margin-top: var(--space-2); }
-.u-mt-3 { margin-top: var(--space-3); }
-.u-mb-1 { margin-bottom: var(--space-1); }
 .u-mb-2 { margin-bottom: var(--space-2); }
-.u-block-title { font-weight: 600; margin-bottom: var(--space-2); }
-.u-wrap-anywhere { overflow-wrap: anywhere; }
 .u-max-none { max-width: none; }
 .u-fs-xs { font-size: var(--fs-xs); }
 .u-muted { color: var(--text-muted); }
@@ -33,7 +28,6 @@
 .u-min-w-90 { min-width: 90px; }
 .u-min-w-96 { min-width: 96px; }
 .u-min-w-100 { min-width: 100px; }
-.u-min-w-120 { min-width: 120px; }
 .u-min-w-130 { min-width: 130px; }
 .u-min-w-140 { min-width: 140px; }
 .u-min-w-150 { min-width: 150px; }
@@ -51,7 +45,6 @@
 .u-kicked-msg { padding: var(--space-5) var(--space-6); text-align: center; color: var(--text-muted); }
 .u-fs-sm { font-size: var(--fs-sm); }
 .u-mb-3 { margin-bottom: var(--space-3); }
-.u-danger { color: var(--danger); }
 .u-lh-base { line-height: var(--lh-base); }
 .u-muted-xs-mb-10 { color: var(--text-muted); font-size: var(--fs-xs); margin-bottom: var(--space-2_5); }
 .u-w-36 { width: 36px; }
@@ -59,39 +52,20 @@
 
 /* ========== 纯静态高频工具类（JS 内联 style 清理用） ========== */
 .u-hidden { display: none; }
-.u-block { display: block; }
-.u-flex-center { display: flex; align-items: center; }
 .u-flex-col-gap3 { display: flex; flex-direction: column; gap: 3px; }
 .u-tabular { font-variant-numeric: tabular-nums; }
-.u-opac-7 { opacity: 0.7; }
-.u-opac-6 { opacity: 0.6; }
 
 /* 间距（4px 基准，命名遵循 spacing token） */
 .u-mt-1_5 { margin-top: var(--space-1_5); }   /* 6px */
 .u-mt-2 { margin-top: var(--space-2); }        /* 8px */
 .u-mt-3 { margin-top: var(--space-3); }        /* 12px */
-.u-mt-4 { margin-top: var(--space-4); }        /* 16px */
-.u-mb-0 { margin-bottom: 0; }
-.u-mb-3 { margin-bottom: var(--space-3); }
-.u-mb-4 { margin-bottom: var(--space-4); }
-.u-ml-2 { margin-left: var(--space-2); }
-.u-mr-2 { margin-right: var(--space-2); }
-.u-m-auto { margin: 0 auto; }
 
 /* 字号（对应 base.css 阶梯） */
 .u-fs-11 { font-size: var(--fs-11_5); }  /* 11.5px — 凑 12px 下一档 */
 .u-fs-10 { font-size: var(--fs-10); }
 
-/* 宽度 */
-.u-w-90 { width: 90px; }
-.u-w-auto { width: auto; }
-
 /* checkbox 内联（pu-daterange 内嵌或裸标签里） */
 .u-check-inline { width: auto; margin: 0; }
-
-/* cursor 变体 — 动态 pointer/not-allowed 用 JS 内联，静态场景走类 */
-.u-cursor-pointer { cursor: pointer; }
-.u-cursor-default { cursor: default; }
 
 /* 标签/复选框行内包装 */
 .u-label-inline { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }

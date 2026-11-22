@@ -15,7 +15,6 @@ const {
   getPurchaseReturnOriginOptions,
   getMiscReturnOriginOptions,
   getPurchaseReturnOriginLines,
-  getPurchaseReturnScopeOptions,
   getPurchaseReturnScopeLines,
 } = require('../services/stock');
 const { maskRows } = require('../services/price-mask');
@@ -310,11 +309,7 @@ router.get('/api/returns/purchase/origin-lines', requirePerm('returns', 'view'),
   }
 });
 
-// 档 2：采购单/合同下拉候选 + 范围内跨多张入库单的可退明细
-router.get('/api/returns/purchase/scope-options', requirePerm('returns', 'view'), (req, res) => {
-  res.json(getPurchaseReturnScopeOptions());
-});
-
+// 档 2：采购单/合同范围内跨多张入库单的可退明细
 router.get('/api/returns/purchase/scope-lines', requirePerm('returns', 'view'), (req, res) => {
   const scope = String(req.query.scope || 'po');
   const refNo = String(req.query.refNo || '').trim();

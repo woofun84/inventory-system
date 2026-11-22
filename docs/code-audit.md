@@ -269,3 +269,50 @@
 ---
 
 **报告结论**：可以安全执行 P0（除审计日志 3 键需特殊处理）与 P1 全部清理；P2 建议按组分批做，每组独立回归；P3 单独排期。机制部分（7.1 的 check 脚本、7.2 的清单）建议随第一批清理一起落地。
+
+---
+
+## 9. 清理执行记录（2026-11-22）
+
+> 用户确认执行 P0 + P1，并明确 `audit_detail_st_load_*` 三键**不做历史兼容保留，直接删除**。以下为实际执行结果。
+
+### 9.1 已完成（P0）
+
+| 项 | 处理结果 |
+|---|---|
+| 10 个 i18n 死键（中英） | **全部删除**，含 `audit_detail_st_load_*` 三键（按用户要求不做历史兼容） |
+| `window.appIconNames` 死导出 | 已删（`00-icons.js`） |
+| 3 个废弃端点 | 已删：`POST /api/purchase/lines/batch`、`GET /api/purchase/pending-orders`、`GET /api/returns/purchase/scope-options`；`docs/development.md`、`docs/business.md` 同步更新 |
+| 6 个后端死导出函数 | 已删：`rebuildAll`、`amountOf`、`unitPriceOf`、`isZeroAmount`、`computeCostPrice`、`getReturnedQtyByLine` 及其导出项 |
+| `init-db.js` 死写入 | 已删 `currency`/`use_icons` 两条 INSERT |
+
+### 9.2 执行中发现的新问题（已一并处理）
+
+1. **连锁死代码**：删除 `/api/returns/purchase/scope-options` 后，其唯一调用的服务函数 `getPurchaseReturnScopeOptions()`（`stock.js:675`）及其导出变成死代码，已一并删除，并同步清理 `returns.js` 的 import。**这说明端点清理必须追踪其专属 service 函数。**
+2. **报告判断修正 —— `server/db.js:450-455` 的 DELETE 不应删除**：原报告 1.5 建议"两处一起删"，但复核发现这段 DELETE 是**运行时清理历史库残留的有效逻辑**（老数据库里仍可能有 `currency`/`use_icons` 参数），删掉反而会让升级后的老库残留脏参数。最终只删了 `init-db.js` 的死写入，**保留了 db.js 的清理逻辑**。
+
+### 9.3 已完成（P1）
+
+| 项 | 处理结果 |
+|---|---|
+| 整块死规则 | 已删 `.data-pager`、`.page-header`（含响应式与主题中的分支）、`.st-tabs`、`.st-tab`、`.st-insp-actions`、`.pu-pager .pu-tot` |
+| 14 个死工具类 | 已删（`.u-wrap-anywhere`/`.u-danger`/`.u-block`/`.u-flex-center`/`.u-opac-*`/`.u-mb-*`/`.u-mt-4`/`.u-ml-2`/`.u-mr-2`/`.u-m-auto`/`.u-w-*`/`.u-cursor-*`/`.u-block-title`/`.u-min-w-120`） |
+| 死变量 | `--lh-tight` 已删 |
+| 重复声明 | `.u-mt-2`/`.u-mt-3`/`.u-mb-3` 各保留一处；`.pu-pager .btn` 在 768 断点只保留独有的 `flex-shrink:0`，删掉被覆盖的重复声明 |
+| 注释修正 | 640 断点过时注释已更新；2 处空注释段已删 |
+
+**保留项（非死代码）**：`breakpoints.css` 的 5 个 `--bp-*` 变量是**文档常量**（`/@media` 无法读取 `var()`），作为断点口径的单一事实来源保留，已在文件注释中明确标注"运行时零引用，勿判为死变量"，避免后续审查反复误报。
+
+### 9.4 验证结果
+
+- 全部 JS（前端 16 + 后端全部）`node --check` 通过
+- 5 个 CSS 文件括号平衡（end=0, min=0）
+- 两个 HTML 的资源引用完整性通过（index 22 项、login 5 项，无缺失）
+- 待删项 grep 残留全部为 0；`.page-header` 独立类、死类、死键、死导出均无残留
+- 净效果：**15 个文件、删除 298 行、新增 87 行（含本报告执行记录）**
+
+### 9.5 未执行（待后续排期）
+
+- **P2**：`focusEnd` 4 份合并、`esc` 包装 21 处收敛、行错误提示参数化、状态徽标统一、后端入出库鉴权中间件工厂化
+- **P3**：`renderInboundEditTable`（197 行）、`editInboundDoc`（168 行）等臃肿函数重构
+- **7.1 的 `tools/check-unused.js` 自检脚本**：建议与 P2 一起落地（本次未新建，避免一次性引入新文件）

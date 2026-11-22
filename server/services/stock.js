@@ -139,19 +139,7 @@ function bizError(code, message, details) {
   return e;
 }
 
-// 原出库行累计已退数量（可排除当前正在编辑的退库单自身）
-function getReturnedQtyByLine(originLineId, excludeDocNo) {
-  let sql = `SELECT COALESCE(SUM(ABS(o.qty)),0) AS qty FROM outbound o
-    JOIN outbound_docs d ON d.doc_no = o.doc_no
-    WHERE o.origin_line_id = ? AND o.txn_type = ?
-      AND d.status = 'posted'`;
-  const args = [Number(originLineId) || 0, RETURN_TXN_TYPE];
-  if (excludeDocNo) { sql += ' AND o.doc_no <> ?'; args.push(excludeDocNo); }
-  return Number(db.prepare(sql).get(...args).qty || 0);
-}
-
-// 原出库行累计已退数量（批量版）：一次 IN 查询拿齐全部行的已退量
-// 与 getReturnedQtyByLine 口径完全一致，只是避免 N+1。
+// 原出库行累计已退数量：一次 IN 查询拿齐全部行的已退量，避免 N+1。
 // 返回 Map<originLineId, returnedQty>；没命中的行不在 Map 中。
 function getReturnedQtyMap(originLineIds, excludeDocNo) {
   if (!originLineIds || originLineIds.length === 0) return new Map();
@@ -331,40 +319,6 @@ function getStockSummary(opts = {}) {
     };
     return includePrice ? row : stripSummaryPrice(row);
   });
-}
-
-// 计算出库成本单价（加权平均）
-// 口径：以「出库行创建时间 at」为界，只采纳此前已过账的入库流水。
-//   - 同日必须按 created_at 排序，严格先入后出：
-//       入库行 date < 出库日，或 date = 出库日且 created_at <= 出库行创建时间；
-//   - 采购退货属于入库侧的负数，按同一时间顺序参与均价计算；
-//   - 按加权平均法，出库按均价出库不会改变均价，故只需累计截至该时点的
-//     入库数量与金额（这也避免了“库存恰好为 0 时均价被算成 0”的问题）。
-// at 为空时退化为「当天结束」，仍按 created_at 排序，不会漏掉同日更早的入库。
-// 【已废弃，勿用】此函数用浮点算期初+入库均价，与 costing.js 的 BigInt 移动加权台账口径不一致；
-// 当前无任何调用点。保留仅为兼容潜在外部引用，新代码一律以 costing.js / stock_balance 的成本为准。
-function computeCostPrice(code, qty, date, at) {
-  const m = db.prepare('SELECT opening_qty, opening_price FROM materials WHERE code=?').get(code);
-  if (!m) return 0;
-
-  const point = at || `${date} 23:59:59`;
-
-  const inboundBefore = db.prepare(`
-    SELECT qty, price FROM inbound
-    WHERE code=? AND status='posted'
-      AND (date < ? OR (date = ? AND created_at <= ?))
-    ORDER BY date ASC, created_at ASC, id ASC
-  `).all(code, date, date, point);
-
-  let stockQty = Number(m.opening_qty) || 0;
-  let stockCost = (Number(m.opening_qty) || 0) * (Number(m.opening_price) || 0);
-
-  for (const r of inboundBefore) {
-    stockQty += Number(r.qty) || 0;
-    stockCost += (Number(r.qty) || 0) * (Number(r.price) || 0);
-  }
-
-  return stockQty > 0 ? stockCost / stockQty : 0;
 }
 
 // ==================== 库存盘点 ====================
@@ -671,19 +625,6 @@ function getPurchaseReturnScopeLines(scope, refNo, excludeDocNo) {
   return db.prepare(sql).all(...args).map(l => mapSourceLine(l, excludeDocNo));
 }
 
-// 档 2 下拉候选：所有已确认采购单 + 所有合同（含仅出现在明细行上的合同号）
-function getPurchaseReturnScopeOptions() {
-  const po = db.prepare(`SELECT po_no, date, supplier FROM purchase_orders
-    WHERE status='posted' ORDER BY date DESC, po_no`).all();
-  const contract = db.prepare(`SELECT contract_no, MAX(supplier) AS supplier FROM (
-      SELECT contract_no, supplier FROM contracts
-      UNION ALL SELECT ol.contract_no AS contract_no, po.supplier AS supplier
-        FROM order_lines ol LEFT JOIN purchase_orders po ON po.po_no = ol.po_no
-        WHERE TRIM(COALESCE(ol.contract_no,'')) <> ''
-    ) GROUP BY contract_no ORDER BY contract_no`).all();
-  return { po, contract };
-}
-
 // 档 1 下拉候选：采购退货只列采购入库
 function getPurchaseReturnOriginOptions() {
   return db.prepare(`SELECT doc_no, date, txn_type, supplier,
@@ -754,7 +695,6 @@ module.exports = {
   getAvailableStock,
   validateOutboundStock,
   validateInboundReturnStock,
-  getReturnedQtyByLine,
   getReturnedQtyMap,
   loadReturnableOrigin,
   getReturnableLines,
@@ -762,7 +702,6 @@ module.exports = {
   getStockSummary,
   stripSummaryPrice,
   getFlowTotalsMap,
-  computeCostPrice,
   genStocktakeNo,
   genMaterialCode,
   getOrderLinesForInbound,
@@ -784,7 +723,6 @@ module.exports = {
   getPurchaseReturnOriginLines,
   loadPurchaseReturnScope,
   getPurchaseReturnScopeLines,
-  getPurchaseReturnScopeOptions,
   getPurchaseReturnOriginOptions,
   getMiscReturnOriginOptions,
   collectPurchaseReturnSources,

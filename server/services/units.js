@@ -97,20 +97,6 @@ function qtyPriceProductToAmount(product) {
   return roundDiv(BigInt(product), 10n ** 12n);
 }
 
-// 业务便捷方法：以普通数字入参出参
-function amountOf(qty, price) {
-  return fromAmountInt(qtyMulPriceToAmount(toQtyInt(qty), toPriceInt(price)));
-}
-
-function unitPriceOf(amount, qty) {
-  return fromPriceInt(amountDivQtyToPrice(toAmountInt(amount), toQtyInt(qty)));
-}
-
-// 金额归零判定（尾差处理用）
-function isZeroAmount(v) {
-  return toAmountInt(v) === 0n;
-}
-
 module.exports = {
   QTY_DECIMALS, PRICE_DECIMALS, AMOUNT_DECIMALS,
   QTY_SCALE, PRICE_SCALE, AMOUNT_SCALE,
@@ -118,5 +104,4 @@ module.exports = {
   toQtyInt, toPriceInt, toAmountInt,
   fromQtyInt, fromPriceInt, fromAmountInt,
   qtyMulPriceToAmount, amountDivQtyToPrice, qtyPriceProductToAmount,
-  amountOf, unitPriceOf, isZeroAmount,
 };

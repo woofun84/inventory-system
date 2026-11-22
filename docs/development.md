@@ -245,7 +245,7 @@ better-sqlite3（WAL）→ inventory.db
 | GET | `/api/returns/docs`、`/api/returns/docs/:docNo` | `returns:view` |
 | GET | `/api/returns/purchase/origins`、`/origin-lines` | `returns:view` |
 | GET | `/api/returns/misc/origins`、`/origin-lines` | `returns:view`；零星退货原单候选 |
-| GET | `/api/returns/purchase/scope-options`、`/scope-lines` | `returns:view` |
+| GET | `/api/returns/purchase/scope-lines` | `returns:view` |
 
 退货退库为只读聚合接口；实际的采购退货、零星退货写入走入库路由，领料退库写入走出库路由，但权限归属统一为 `returns`（建单 / 改明细 / 删除整单 / 过账 / 更正 / 作废分别对应 `manage/manage/delete/post/correct/void`），不再要求入库 / 出库权限；原单候选只返回已过账且仍有可退量的单据。
 
@@ -285,10 +285,10 @@ better-sqlite3（WAL）→ inventory.db
 | PUT | `/api/purchase/orders/:poNo` | 草稿 `purchase:manage`；已确认 `purchase:modify`；保存不改状态，至少保留一行（`PO_LAST_LINE`）；已确认单改价时级联下游并返回 `price_sync` |
 | POST | `/api/purchase/orders/:poNo/confirm` | `purchase:post` |
 | DELETE | `/api/purchase/orders/:poNo` | `purchase:delete`；仅草稿可删，已确认返回 `PO_NOT_DRAFT` |
-| POST | `/api/purchase/lines/batch`、`/api/purchase/lines` | 草稿 `purchase:manage`；已确认 `purchase:modify`；建单时一次性带明细同样走 `purchase:manage` |
+| POST | `/api/purchase/lines` | 草稿 `purchase:manage`；已确认 `purchase:modify`；建单时一次性带明细同样走 `purchase:manage` |
 | PUT/DELETE | `/api/purchase/lines/:id` | 草稿 `purchase:manage`；已确认 `purchase:modify`；已到货行不可删、数量不得低于已到货（`PO_QTY_BELOW_RECEIVED`），已确认单删到 0 行返回 `PO_LAST_LINE` |
 | GET | `/api/purchase/lines`、`/lines/:id/inbound`、`/lines/by-po/:poNo`、`/lines/by-contract/:contractNo` | `purchase:view` |
-| GET | `/api/purchase/pending-orders`、`/inbound-sources`、`/inbound-scope-lines` | `purchase:view` |
+| GET | `/api/purchase/inbound-sources`、`/inbound-scope-lines` | `purchase:view` |
 | GET | `/api/purchase/contracts`、`/contracts/:contractNo` | `purchase:view` |
 | POST | `/api/purchase/contracts` | `purchase:manage` |
 | PUT/DELETE | `/api/purchase/contracts/:contractNo` | `purchase:manage/delete` |

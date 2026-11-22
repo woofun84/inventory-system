@@ -68,8 +68,6 @@ CREATE TABLE params (
   key TEXT PRIMARY KEY,
   value TEXT
 );
-INSERT INTO params VALUES ('currency', '¥');
-INSERT INTO params VALUES ('use_icons', '是');
 `);
 
   // 物料类别

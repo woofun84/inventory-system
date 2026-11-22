@@ -171,7 +171,7 @@ voided（已作废，流水置为 voided）
 - `/api/returns/docs`：采购退货、零星退货与领料退库的统一列表，前端分三个页签。
 - `/api/returns/docs/:docNo`：单据详情。
 - `/api/returns/purchase/origins`、`origin-lines`、`misc/origins`、`misc/origin-lines`：从原单发起时选择原采购入库单 / 零星入库单并带出可退明细。
-- `/api/returns/purchase/scope-options`、`scope-lines`：按采购单 / 合同选择退货范围。
+- `/api/returns/purchase/scope-lines`：按采购单 / 合同选择退货范围。
 
 前端「退货与退库」页只保留「从原单发起」入口；候选按「已过账且仍有可退量」过滤，没有候选时按钮置灰并说明原因。新建入口只看 `returns:manage`；后端对退货 / 退库单的建单、存明细、过账、删除整单、更正、作废分别校验 `returns` 的 `manage/manage/post/delete/correct/void`，不再要求入库 / 出库权限。
 

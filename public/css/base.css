@@ -147,7 +147,6 @@
   --fs-25: 25px;
   --fs-32: 32px;
   --fs-42: 42px;
-  --lh-tight: 1.4;
   --lh-base: 1.6;
   --space-0_5: 2px;
   --space-0_75: 3px;
@@ -410,7 +409,6 @@ body {
 }
 
 /* 顶部标题栏 — 固定不滚动 */
-.page-header,
 .page-header-row {
   flex-shrink: 0;
   height: var(--head-h);
@@ -422,7 +420,6 @@ body {
   justify-content: space-between;
   gap: var(--space-4);
 }
-.page-header { justify-content: flex-start; }
 .page-title {
   font-size: var(--fs-xl);
   font-weight: 700;
@@ -491,9 +488,5 @@ body {
   min-height: 0;
   overflow: auto;
   border-radius: 6px;
-}
-.data-pager {
-  flex-shrink: 0;
-  padding-top: 8px;
 }
 

@@ -787,31 +787,6 @@ function priceSyncSummary(result) {
   };
 }
 
-// 批量写入采购明细（同一张采购单下同一物料只允许一行）
-// 明细新增属于「修改已有采购单」：草稿要 manage，已确认要 modify
-router.post('/api/purchase/lines/batch', requirePriceEdit, (req, res) => {
-  const { items } = req.body || {};
-  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: '无数据' });
-  const poNo = items[0].po_no;
-  if (!poNo) return res.status(400).json({ error: '缺少采购单号' });
-  // 鉴权只按首行单号做，必须保证所有行都写入这张单，
-  // 否则后续行可用 r.po_no 指向他人单/已确认单绕过 per-line 校验
-  if (items.some(r => (r.po_no || poNo) !== poNo)) {
-    return res.status(400).json({ error: '批量明细只能写入同一张采购单', code: 'BATCH_PO_MISMATCH' });
-  }
-  const po = requireOrderEdit(req, res, poNo);
-  if (!po) return;
-  const before = po.status === 'posted' ? orderSnapshot(poNo) : null;
-  try {
-    const tx = db.transaction(() => { insertLines(tx, poNo, items); });
-    tx();
-    if (before) recordModifyAudit(req, poNo, diffOrder(before, orderSnapshot(poNo)));
-    res.json({ success: true, count: items.length });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
-});
-
 router.post('/api/purchase/lines', requirePriceEdit, (req, res) => {
   const l = req.body || {};
   if (!l.po_no) return res.status(400).json({ error: '缺少采购单号' });
@@ -981,19 +956,6 @@ router.get('/api/purchase/lines/by-contract/:contractNo', requirePerm('purchase'
   try {
     res.json(maskRows(req, getOrderLinesByContract(req.params.contractNo, { excludeDocNo: req.query.excludeInboundDoc || '' }), ['order_price', 'order_amount']));
   } catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-// 入库选单用：采购单下拉（只给未到齐仍有余额的）
-router.get('/api/purchase/pending-orders', requirePerm('purchase', 'view'), (req, res) => {
-  const orders = db.prepare("SELECT po_no, date, supplier, contract_no, expected_date, manual_status FROM purchase_orders ORDER BY date DESC").all();
-  const out = [];
-  orders.forEach(o => {
-    if (o.manual_status === '已取消' || o.manual_status === '已关闭') { out.push({ ...o, has_pending: false }); return; }
-    const lines = db.prepare(`${LINE_SEL} WHERE ol.po_no = ?`).all(o.po_no).map(enrichLine)
-      .filter(l => l.unreceived_qty > 0);
-    if (lines.length > 0) out.push({ ...o, has_pending: true });
-  });
-  res.json(out);
 });
 
 // ==================== 采购入库单头来源（2026-11 第八批） ====================
