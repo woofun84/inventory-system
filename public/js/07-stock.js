@@ -106,7 +106,6 @@ Object.assign(App, {
 
   qBoardStock(panel) {
     panel.innerHTML = `<div id="q-stock">
-      <div class="q-role-hint">${this.t('q_stock_hint')}</div>
       <div class="pu-toolbar">
         <div class="pu-filter-inner">
           <div class="pu-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input id="q_keyword" placeholder="${this.t('quick_filter_ph')}" oninput="App.qStockFilter()"></div>

@@ -479,7 +479,6 @@
 #q-root .q-global-bar { display: flex; align-items: center; gap: var(--space-3); }
 #q-root .q-global-bar #q-tabs { flex: 0 1 auto; min-width: 0; }
 /* 职责提示条：明示本板块看实时库存，主数据维护在物料档案（方案B） */
-.q-role-hint { font-size: var(--fs-xs); color: var(--text-muted); padding: var(--space-1_5) var(--space-2); margin-bottom: var(--space-2); border-left: 2px solid var(--primary); background: var(--primary-bg); border-radius: var(--radius-sm); }
 /* 列表视觉权重：现货列为主角，品牌等静态字段弱化（字段本身保留） */
 #q_stock_scroll .q-live-col strong { color: var(--primary); }
 #q_stock_scroll .q-static-col { color: var(--text-muted); }
