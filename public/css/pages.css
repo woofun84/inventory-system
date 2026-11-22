@@ -1058,8 +1058,6 @@ button.pu-kpi { cursor: pointer; }
 #q_stock_insp .q-card-stock { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 0; }
 #q_stock_insp .q-card-stock dd.q-num { font-size: var(--fs-md); font-weight: 700; font-variant-numeric: tabular-nums; }
 #q_stock_insp .q-card-month { margin-top: 8px; font-size: var(--fs-sm); color: var(--text-muted); }
-/* 详情卡底部：跳物料档案编辑（方案B职责互跳），按权限显示 */
-#q_stock_insp .q-card-edit { margin-top: var(--space-3); padding-top: var(--space-2_5); border-top: 1px solid var(--border); text-align: right; }
 
 /* --- 单据 / 领用人列表与概览预警清单（原 qFlowCss 的三个调用） ---
    字号、行高、内边距、表头高度由上方 #q-root 公共规则提供，这里只保留

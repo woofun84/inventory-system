@@ -530,9 +530,6 @@ body {
   justify-content: space-between;
   gap: var(--space-4);
 }
-/* 页头职责互跳链接：描边主色，与普通操作按钮区分，暗示「去另一页」 */
-.q-head-link { border-color: var(--primary); color: var(--primary); }
-.q-head-link:hover { background: var(--primary-bg); }
 .page-title {
   font-size: var(--fs-xl);
   font-weight: 700;

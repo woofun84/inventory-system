@@ -25,10 +25,7 @@ Object.assign(App, {
       if (code) this._qCardPending = { code, expanded: true };
     }
     this.qBoard = board;
-    // 页头右侧：有物料查看权限时给出「物料档案」入口，明示主数据维护在另一页（方案B职责互跳）
-    const headRight = this.can('materials', 'view')
-      ? `<button type="button" class="btn btn-outline btn-sm q-head-link" onclick="App.gotoPage('materials')">${this.t('q_goto_materials')} →</button>` : '';
-    this.setMain(this.pageWrap(this.icon('search', 'icon--title') + ' ' + this.t('q_title'), this.t('q_desc'), headRight, `<div id="q-root" class="data-page">
+    this.setMain(this.pageWrap(this.icon('search', 'icon--title') + ' ' + this.t('q_title'), this.t('q_desc'), '', `<div id="q-root" class="data-page">
       <div class="data-toolbar q-global-bar">
         <nav id="q-tabs" class="pu-viewtabs" role="tablist" aria-label="${this.t('q_title')}"></nav>
         <div class="q-gsearch"><div class="pu-search">
@@ -792,6 +789,9 @@ Object.assign(App, {
     const row = (this._stockData || []).find(x => x.code === st.key) || {};
     const status = row.stock_status || m.status || '';
     const sub = [st.key, m.spec].filter(Boolean).join(' · ');
+    // 操作按钮走全站统一的详情卡底栏（与单据详情「打开单据」同形态），不塞在正文末尾
+    const foot = this.can('materials', 'create')
+      ? `<div class="pu-insp-foot"><button class="btn btn-primary" onclick="App.qEditMaterial()">${this.t('q_edit_material')}</button></div>` : '';
     box.innerHTML = '<div class="pu-insp-body">' + this.qInsShell('stock', {
       title: this.docEsc(m.name || st.key),
       badge: status ? this.statusBadge(status) : '',
@@ -804,7 +804,7 @@ Object.assign(App, {
       expanded: st.expanded,
     }) + (d
       ? `<div class="pu-dpanel" id="q_card_panel">${this.qCardPanelHtml()}</div>`
-      : `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`) + '</div>';
+      : `<div class="pu-dpanel">${this.emptyState(this.t('q_loading'))}</div>`) + foot + '</div>';
     this._tableRenderers = this._tableRenderers || {};
     this._tableRenderers['qcard'] = () => this.qCardFlowRender();
     if (d && st.tab === 'flow' && st.expanded) this.qCardFlowRender();
@@ -853,8 +853,7 @@ Object.assign(App, {
       : '';
     return `<dl class="pu-insp-meta q-card-meta">${meta.map(x => `<div${x[2] ? ` class="${x[2]}"` : ''}><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl>${imageRow}
       <dl class="pu-insp-meta q-card-meta q-card-stock">${stats.map(k => `<div><dt>${k[0]}</dt><dd class="q-num">${k[1]}</dd></div>`).join('')}</dl>
-      <div class="q-card-month">${this.t('q_month_in_qty')} <strong class="num-pos">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong class="num-warn">−${io.out}</strong></div>
-      ${this.can('materials', 'create') ? `<div class="q-card-edit"><button type="button" class="btn btn-outline btn-sm" onclick="App.qEditMaterial()">${this.t('q_edit_material')} →</button></div>` : ''}`;
+      <div class="q-card-month">${this.t('q_month_in_qty')} <strong class="num-pos">+${io.in}</strong> · ${this.t('q_month_out_qty')} <strong class="num-warn">−${io.out}</strong></div>`;
   },
 
   // 从实时库存详情卡跳物料档案编辑：先切页再打开弹窗（editMaterial 自行拉取最新数据）
