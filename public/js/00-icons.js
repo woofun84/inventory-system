@@ -9,6 +9,8 @@
 (function () {
   const ICONS = {
     box: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
+    // 品牌标识：箱体 + 内部上行箭头，兼顾仓储语义与可识别性（登录页/侧栏品牌位专用）
+    brand: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/><path d="M8.5 14.5 12 11l3.5 3.5M12 11v5"/>',
     home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/>',
     inbound: '<path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M4 17v3h16v-3"/>',
     outbound: '<path d="M12 14V3"/><path d="m8 7 4-4 4 4"/><path d="M4 17v3h16v-3"/>',

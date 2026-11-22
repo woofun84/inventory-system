@@ -11,9 +11,10 @@
 <style>
   body { margin: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: auto; }
   .login-wrap { width: 360px; max-width: 92vw; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.12); padding: 40px 32px; margin: 24px 0; }
-  .login-logo { text-align: center; font-size: 40px; margin-bottom: 8px; }
-  .login-logo svg { width: 40px; height: 40px; color: var(--primary); stroke-width: 1.8; }
-  .login-title { text-align: center; font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 28px; }
+  .login-logo { text-align: center; margin-bottom: 10px; }
+  .login-logo svg { width: 44px; height: 44px; color: var(--primary); stroke-width: 1.8; }
+  .login-title { text-align: center; font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .login-sub { text-align: center; font-size: 12px; color: var(--text-muted); letter-spacing: .08em; margin-bottom: 28px; }
   .login-form .form-group { margin-bottom: 16px; }
   .login-form label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
   .login-form input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); box-sizing: border-box; }
@@ -24,7 +25,7 @@
   .login-notice { display: none; margin-bottom: 16px; padding: 10px 12px; border-radius: 8px; background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); font-size: 13px; line-height: 1.6; text-align: center; }
   @media (max-width: 480px) {
     .login-wrap { width: auto; padding: 24px 20px; margin: 12px 16px; }
-    .login-logo svg { width: 32px; height: 32px; }
+    .login-logo svg { width: 36px; height: 36px; }
     .login-title { font-size: 18px; }
   }
 </style>
@@ -33,6 +34,7 @@
 <div class="login-wrap">
   <div class="login-logo" id="login-logo"></div>
   <div class="login-title" id="title">库存进出库管理系统</div>
+  <div class="login-sub" id="subtitle">进出库跟踪</div>
   <div class="login-notice" id="login-notice"></div>
   <div class="login-form">
     <div class="form-group">
@@ -51,15 +53,16 @@
 <script src="js/00-icons.js"></script>
 <script>
 (function() {
-  document.getElementById('login-logo').innerHTML = window.appIcon('box');
+  document.getElementById('login-logo').innerHTML = window.appIcon('brand', 'icon--brand');
   var lang = localStorage.getItem('lang') || 'zh';
   var i18n = {
-    zh: { title: '库存进出库管理系统', sub: '进出库跟踪', user: '用户名', pass: '密码', btn: '登 录', loading: '登录中…', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录', ph_user: '请输入用户名', ph_pass: '请输入密码' },
-    en: { title: 'Inventory Management System', sub: 'In/Out Tracking', user: 'Username', pass: 'Password', btn: 'Log In', loading: 'Signing in…', hint: 'The initial administrator account is configured at deployment. Contact your system administrator for credentials.', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.', ph_user: 'Enter username', ph_pass: 'Enter password' }
+    zh: { title: '库存进出库管理系统', sub: '每一笔流转，都清晰可查', user: '用户名', pass: '密码', btn: '登 录', loading: '登录中…', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录', ph_user: '请输入用户名', ph_pass: '请输入密码' },
+    en: { title: 'Inventory Management System', sub: 'Every movement, clearly traced', user: 'Username', pass: 'Password', btn: 'Log In', loading: 'Signing in…', hint: 'The initial administrator account is configured at deployment. Contact your system administrator for credentials.', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.', ph_user: 'Enter username', ph_pass: 'Enter password' }
   };
   var t = i18n[lang] || i18n.zh;
   document.title = t.title;
   document.getElementById('title').textContent = t.title;
+  document.getElementById('subtitle').textContent = t.sub;
   document.getElementById('lbl-user').textContent = t.user;
   document.getElementById('lbl-pass').textContent = t.pass;
   document.getElementById('btn-login').textContent = t.btn;

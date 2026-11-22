@@ -23,7 +23,7 @@
     width: min(82vw, 260px);
     z-index: 900;
     transform: translateX(-100%);
-    transition: transform 0.22s ease;
+    transition: transform var(--dur-motion) ease;
     box-shadow: var(--shadow-sidebar);
   }
   body.nav-open .sidebar { transform: none; }
@@ -252,7 +252,7 @@
 .confirm-box {
   background: var(--card-bg);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elev-3);
   width: 90%;
   max-width: 420px;
   padding: var(--space-6);
@@ -845,9 +845,11 @@ button.pu-kpi { cursor: pointer; }
 #ret-root .ret-voided-row td { background: var(--bg-muted); color: var(--text-muted); }
 
 /* --- 参数设置（原由 08-orders.js 注入，现收敛到静态样式表） --- */
-.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3_5); align-items: start; }
-.set-grid .pu-card { margin-bottom: 0; }
-.set-add { margin-top: 10px; display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3_5); align-items: stretch; }
+.set-grid .pu-card { margin-bottom: 0; height: 100%; display: flex; flex-direction: column; }
+/* 表格区自然撑开，新增控件行钉在卡片底部，三卡视觉高度对齐 */
+.set-grid .pu-card .table-wrap { flex: 1 1 auto; }
+.set-add { margin-top: auto; padding-top: var(--space-2_5); display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; }
 .set-add .form-group { min-width: 140px; }
 .set-empty { text-align: center; color: var(--text-muted); }
 .set-op { display: flex; gap: var(--space-4); align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
@@ -900,7 +902,7 @@ button.pu-kpi { cursor: pointer; }
 .pu-edit-del:hover { text-decoration: underline; }
 /* 批量新增：可输入过滤的类别/单位 combobox（菜单挂在 body 上，避免被表格裁切） */
 .mat-combo { position: relative; }
-.mat-combo-menu { position: fixed; z-index: 1200; max-height: 190px; overflow: auto; padding: var(--space-1) 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-popover); }
+.mat-combo-menu { position: fixed; z-index: 1200; max-height: 190px; overflow: auto; padding: var(--space-1) 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--elev-2); }
 .mat-combo-menu[hidden] { display: none; }
 .mat-combo-item { padding: var(--space-1_5) var(--space-2_5); font-size: var(--fs-sm); color: var(--text); cursor: pointer; white-space: nowrap; }
 .mat-combo-item:hover, .mat-combo-item.active { background: var(--bg); }
@@ -921,7 +923,7 @@ button.pu-kpi { cursor: pointer; }
 @media (max-width: 640px) {
   .pu-matfilter > input, .pu-matfilter .pu-msearch-host { flex: 1 1 160px; width: auto; min-width: 140px; max-width: 100%; }
 }
-.pu-msearch { position: fixed; z-index: 1200; padding: var(--space-1); overflow: auto; scrollbar-gutter: stable; background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-popover); }
+.pu-msearch { position: fixed; z-index: 1200; padding: var(--space-1); overflow: auto; scrollbar-gutter: stable; background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--elev-2); }
 .pu-msearch-state { padding: var(--space-3); font-size: var(--fs-sm); color: var(--text-muted); text-align: center; }
 .pu-msearch-item { display: flex; align-items: center; gap: var(--space-2); padding: 7px var(--space-2_25); border-radius: var(--radius-sm); font-size: var(--fs-sm); cursor: pointer; }
 .pu-msearch-item:hover, .pu-msearch-item.active { background: var(--primary-light); }

@@ -288,7 +288,7 @@ tbody tr:last-child td { border-bottom: none; }
 .modal {
   background: var(--card-bg);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elev-3);
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
@@ -522,7 +522,7 @@ tbody tr:last-child td { border-bottom: none; }
   max-width: min(360px, calc(100vw - 40px));
   padding: var(--space-3) 22px;
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elev-3);
   font-size: var(--fs-md);
   font-weight: 500;
   pointer-events: auto;
