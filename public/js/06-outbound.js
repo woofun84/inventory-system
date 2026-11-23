@@ -1288,7 +1288,10 @@ Object.assign(App, {
     const vp = (this._obPriceVisibleByStock === null || this._obPriceVisibleByStock === undefined)
       ? this.canViewPrice() : this._obPriceVisibleByStock;
     const corrKeys = this._obCorrection ? this.obOutboundLineKeys(lines) : [];
-    const availLabel = this._obCorrection ? this.t('ibd_corr_orig_qty')
+    // 退库更正的参照列与采购退货对齐，显示「剩余可退」；普通更正仍显示原单数量
+    const corrReturn = !!(this._obCorrection && this._obIsReturn && !this._obNoOrigin);
+    const availLabel = corrReturn ? this.t('ret_origin_remaining')
+      : this._obCorrection ? this.t('ibd_corr_orig_qty')
       : (this._obIsReturn && !this._obNoOrigin ? this.t('ret_origin_remaining') : this.t('out_available'));
     const refLabel = isDraft ? this.t('obd_ref_price') : this.t('out_cost_price');
     const refAmtLabel = isDraft ? this.t('obd_ref_amount') : this.t('pu_line_amount');
@@ -1317,10 +1320,11 @@ Object.assign(App, {
         // 退库行显示的原单剩余可退量；普通出库显示当前库存
         const remain = l.max_qty === null || l.max_qty === undefined ? undefined : l.max_qty;
         const available = this._outboundStockMap ? this._outboundStockMap[l.code] : undefined;
-        const availText = locked ? (origLine ? origLine.qty : '-')
+        const availText = corrReturn ? (remain === undefined ? '-' : remain)
+          : locked ? (origLine ? origLine.qty : '-')
           : isLinked ? (remain === undefined ? '-' : remain)
           : (available === undefined || available === null ? '-' : available);
-        const availCls = isLinked
+        const availCls = (isLinked || corrReturn)
           ? (remain === 0 ? 'num-warn' : '')
           : (available === undefined || available === null ? 'num-zero'
             : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : '')));
@@ -1335,7 +1339,9 @@ Object.assign(App, {
             ? `<span class="ib-doc-no">${this.ibLineLabel(l)}</span>`
             : `<select class="ob-line-mat" data-idx="${i}" onchange="App.obPickMaterial(${i}, this.value)">${this.obMatOpts(l.code)}</select>`;
           const maxAttr = isLinked && remain !== undefined ? ` max="${remain}"` : '';
-          const qtyInput = `<div class="pu-qty-wrap"><input type="number" step="0.01" min="0.01"${maxAttr} class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div>`;
+          // 更正草稿允许填 0（= 作废该行）；普通单据仍要求大于 0
+          const minAttr = corrReturn ? 'min="0"' : 'min="0.01"';
+          const qtyInput = `<div class="pu-qty-wrap"><input type="number" step="0.01" ${minAttr}${maxAttr} class="ob-edit-qty" data-idx="${i}" value="${l.qty || ''}" oninput="App.onOutEditQtyInput(${i}, this)" onpaste="App.qtyPaste(event)">${l.material_unit ? `<span class="pu-qty-unit">${this.docEsc(l.material_unit)}</span>` : ''}</div>`;
           const remarksInput = `<input class="ob-edit-remarks" data-idx="${i}" value="${l.remarks || ''}" oninput="App._obEditLines[${i}].remarks=this.value">`;
           const delBtn = `<button type="button" class="pu-edit-del" onclick="App.removeOutboundEditRow(${i})">${this.t('in_remove_row')}</button>`;
           return `<tr>
@@ -1704,14 +1710,31 @@ Object.assign(App, {
     }
   },
 
-  // 明细行校验：数量必须为正数；0/非法值显式报错，不再静默丢行
+  // 退库更正是否允许数量为 0（0 = 作废该行）；与参照列/提交口径共用
+  obCorrAllowZero() {
+    return !!(this._obCorrection && this._obIsReturn && !this._obNoOrigin);
+  },
+
+  // 构造提交明细：退库更正时剔除数量为 0 的行（= 作废该行）；全 0 时提交空数组，
+  // 后端 confirm-correction 走既有的 void-only 作废流程（含权限/下游/库存校验），不写 0 数量流水。
+  obSubmitLines() {
+    const all = (this._obEditLines || []).filter(l => l.code);
+    if (!this.obCorrAllowZero()) return all;
+    return all.filter(l => Number(l.qty) > 0);
+  },
+
+  // 明细行校验：数量必须为正数；退库更正允许 0（作废该行）；非法值显式报错
   obValidateEditLines() {
     const lines = this._obEditLines || [];
+    const allowZero = this.obCorrAllowZero();
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
       if (!l.code && !l.qty && !l.remarks) continue;
       if (!l.code) return { ok: false, message: this.t('line_material_required', { n: i + 1 }) };
-      if (!this.qtyIsValid(l.qty)) return { ok: false, message: this.t('qty_line_invalid', { n: i + 1 }) };
+      const qtyOk = allowZero
+        ? (/^\d+(\.\d+)?$/.test(String(l.qty).trim()) && Number(l.qty) >= 0)
+        : this.qtyIsValid(l.qty);
+      if (!qtyOk) return { ok: false, message: this.t(allowZero ? 'qty_line_nonneg_invalid' : 'qty_line_invalid', { n: i + 1 }) };
       // 2C：关联原出库行的退库数量不能超过剩余可退量
       if (this._obIsReturn && l.origin_line_id && l.max_qty !== null && l.max_qty !== undefined
         && Number(l.qty) > Number(l.max_qty) + 1e-4) {
@@ -1773,7 +1796,7 @@ Object.assign(App, {
       this.toast(check.message, 'error');
       return;
     }
-    const lines = (this._obEditLines || []).filter(l => l.code);
+    const lines = this.obSubmitLines();
 
     const body = {
       lines: lines.map(l => ({
@@ -2029,7 +2052,7 @@ Object.assign(App, {
     }
     const check = this.obValidateEditLines();
     if (!check.ok) { this.toast(check.message, 'error'); return; }
-    const lines = (this._obEditLines || []).filter(l => l.code);
+    const lines = this.obSubmitLines();
     const voidOnly = lines.length === 0;
     // 领料退库的业务归属是「退货与退库」：权限与后续跳转都按退货模块处理
     const isReturnDoc = ((this._obDetail && this._obDetail.txn_type) || '') === '领料退库';
@@ -2054,7 +2077,10 @@ Object.assign(App, {
       remarks: document.getElementById('ob_e_remarks')?.value
     };
     const self = this;
-    const hint = voidOnly ? this.t('ibd_corr_void_only_hint') : this.t('ibd_corr_confirm_hint');
+    const hadZeroedLines = voidOnly && (this._obEditLines || []).some(l => l.code);
+    const hint = voidOnly
+      ? this.t(hadZeroedLines ? 'obd_corr_all_zero_hint' : 'ibd_corr_void_only_hint')
+      : this.t('ibd_corr_confirm_hint');
     this.confirmDialog(this.t('ibd_corr_confirm'), hint, async () => {
       try {
         await self.api('/api/outbound-docs/' + encodeURIComponent(docNo) + '/lines', 'PUT', body);
