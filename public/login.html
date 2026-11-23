@@ -10,7 +10,14 @@
 <link rel="stylesheet" href="css/theme-dark.css">
 <style>
   body { margin: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: auto; }
-  .login-wrap { width: 360px; max-width: 92vw; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.12); padding: 40px 32px; margin: 24px 0; }
+  .login-wrap { width: 360px; max-width: 92vw; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.12); padding: 40px 32px; margin: 24px 0; position: relative; }
+  /* 登录页偏好按钮：与主应用右上角工具栏同款，绝对定位不占品牌位。
+     登录页未加载 pages.css，这里内联同款按钮样式，保证外观一致。 */
+  .login-tools { position: absolute; top: 12px; right: 12px; }
+  .toolbar { display: flex; align-items: center; gap: var(--space-1_5); }
+  .tool-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text-muted); cursor: pointer; font-size: var(--fs-lg); transition: all 0.15s; flex-shrink: 0; }
+  .tool-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+  .tool-btn-sm { width: auto; padding: var(--space-1) var(--space-2_5); font-size: var(--fs-xs); font-weight: 500; gap: var(--space-1); }
   .login-logo { text-align: center; margin-bottom: 10px; }
   .login-logo svg { width: 44px; height: 44px; color: var(--primary); stroke-width: 1.8; }
   .login-title { text-align: center; font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
@@ -32,6 +39,10 @@
 </head>
 <body>
 <div class="login-wrap">
+  <div class="toolbar login-tools">
+    <button id="login-lang-btn" class="tool-btn tool-btn-sm" type="button" onclick="switchLoginLang()"></button>
+    <button id="login-theme-btn" class="tool-btn" type="button" onclick="switchLoginTheme()"></button>
+  </div>
   <div class="login-logo" id="login-logo"></div>
   <div class="login-title" id="title">库存进出库管理系统</div>
   <div class="login-sub" id="subtitle">进出库跟踪</div>
@@ -54,24 +65,86 @@
 <script>
 (function() {
   document.getElementById('login-logo').innerHTML = window.appIcon('brand', 'icon--brand');
+  // 语言与主题与主应用共用 localStorage 键：登录页切换后，进入主应用自动沿用同一偏好
   var lang = localStorage.getItem('lang') || 'zh';
+  var theme = localStorage.getItem('theme') || 'light';
   var i18n = {
-    zh: { title: '库存进出库管理系统', sub: '每一笔流转，都清晰可查', user: '用户名', pass: '密码', btn: '登 录', loading: '登录中…', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录', ph_user: '请输入用户名', ph_pass: '请输入密码' },
-    en: { title: 'Inventory Management System', sub: 'Every movement, clearly traced', user: 'Username', pass: 'Password', btn: 'Log In', loading: 'Signing in…', hint: 'The initial administrator account is configured at deployment. Contact your system administrator for credentials.', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.', ph_user: 'Enter username', ph_pass: 'Enter password' }
+    zh: { title: '库存进出库管理系统', sub: '每一笔流转，都清晰可查', user: '用户名', pass: '密码', btn: '登 录', loading: '登录中…', hint: '初始管理员账号由部署环境配置，请联系系统管理员获取', fail: '登录失败', netfail: '无法连接到服务器，请确认服务已启动', empty: '请输入用户名和密码', notice: '系统已重置，请使用默认管理员登录：{user} / {pass}', kicked: '该账号已在其它终端登录，当前终端已退出，请重新登录', ph_user: '请输入用户名', ph_pass: '请输入密码', lang_tip: '切换语言', theme_tip: '切换主题' },
+    en: { title: 'Inventory Management System', sub: 'Every movement, clearly traced', user: 'Username', pass: 'Password', btn: 'Log In', loading: 'Signing in…', hint: 'The initial administrator account is configured at deployment. Contact your system administrator for credentials.', fail: 'Login failed', netfail: 'Cannot reach the server. Make sure the service is running.', empty: 'Please enter username and password', notice: 'The system has been reset. Log in with the default administrator: {user} / {pass}', kicked: 'This account was signed in on another device, so this session ended. Please log in again.', ph_user: 'Enter username', ph_pass: 'Enter password', lang_tip: 'Switch language', theme_tip: 'Switch theme' }
   };
   var t = i18n[lang] || i18n.zh;
-  document.title = t.title;
-  document.getElementById('title').textContent = t.title;
-  document.getElementById('subtitle').textContent = t.sub;
-  document.getElementById('lbl-user').textContent = t.user;
-  document.getElementById('lbl-pass').textContent = t.pass;
-  document.getElementById('btn-login').textContent = t.btn;
-  document.getElementById('hint').textContent = t.hint;
-  document.getElementById('username').setAttribute('placeholder', t.ph_user);
-  document.getElementById('password').setAttribute('placeholder', t.ph_pass);
 
-  var theme = localStorage.getItem('theme') || 'light';
-  document.documentElement.setAttribute('data-theme', theme);
+  // 被其它终端挤下线 / 全清重置的提示：只读取一次并缓存，切换语言时才能重新翻译
+  var qs = new URLSearchParams(location.search);
+  var reason = qs.get('reason') || '';
+  var next = qs.get('next') || '';
+  if (!/^#[a-z]+(\?[^#\s]*)?$/.test(next)) next = ''; // 只接受站内页面 hash（可带查询参数），杜绝开放跳转
+  var noticeRaw = localStorage.getItem('login_notice');
+  var loginNotice = null;
+  if (noticeRaw && reason !== 'kicked') {
+    try { loginNotice = JSON.parse(noticeRaw); } catch (e) { /* 提示数据损坏时忽略 */ }
+    localStorage.removeItem('login_notice');
+  }
+
+  function renderNotices() {
+    var box = document.getElementById('login-notice');
+    if (reason === 'kicked') {
+      box.textContent = t.kicked;
+      box.style.display = 'block';
+    } else if (loginNotice) {
+      box.textContent = t.notice.replace('{user}', loginNotice.username || '').replace('{pass}', loginNotice.password || '');
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  function syncThemeBtn() {
+    var b = document.getElementById('login-theme-btn');
+    b.innerHTML = window.appIcon(theme === 'light' ? 'moon' : 'sun', 'icon--tool');
+    b.title = t.theme_tip;
+    b.setAttribute('aria-label', t.theme_tip);
+  }
+
+  function applyLang(next) {
+    var prev = t;
+    lang = next === 'en' ? 'en' : 'zh';
+    localStorage.setItem('lang', lang);
+    t = i18n[lang];
+    document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+    document.title = t.title;
+    document.getElementById('title').textContent = t.title;
+    document.getElementById('subtitle').textContent = t.sub;
+    document.getElementById('lbl-user').textContent = t.user;
+    document.getElementById('lbl-pass').textContent = t.pass;
+    document.getElementById('btn-login').textContent = t.btn;
+    document.getElementById('hint').textContent = t.hint;
+    document.getElementById('username').setAttribute('placeholder', t.ph_user);
+    document.getElementById('password').setAttribute('placeholder', t.ph_pass);
+    var langBtn = document.getElementById('login-lang-btn');
+    langBtn.textContent = lang === 'zh' ? 'EN' : '中文';
+    langBtn.title = t.lang_tip;
+    langBtn.setAttribute('aria-label', t.lang_tip);
+    syncThemeBtn();
+    // 已显示的内置错误提示随语言一起翻译；服务端返回的原文保持不动
+    var err = document.getElementById('err');
+    var idx = [prev.fail, prev.netfail, prev.empty].indexOf(err.textContent);
+    if (idx >= 0) err.textContent = [t.fail, t.netfail, t.empty][idx];
+    renderNotices();
+  }
+
+  function applyTheme(next) {
+    theme = next === 'dark' ? 'dark' : 'light';
+    localStorage.setItem('theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    syncThemeBtn();
+  }
+
+  window.switchLoginLang = function() { applyLang(lang === 'zh' ? 'en' : 'zh'); };
+  window.switchLoginTheme = function() { applyTheme(theme === 'light' ? 'dark' : 'light'); };
+
+  applyLang(lang);
+  applyTheme(theme);
 
   // 当前终端标识：同一浏览器的多个标签页共享（存在 localStorage），用于「同终端重新登录不算挤下线」
   function terminalId() {
@@ -83,29 +156,6 @@
       localStorage.setItem('terminal_id', id);
     }
     return id;
-  }
-
-  // 被其它终端挤下线后跳转而来：在登录页说明原因（沿用重置提示的样式）
-  var qs = new URLSearchParams(location.search);
-  var reason = qs.get('reason') || '';
-  var next = qs.get('next') || '';
-  if (!/^#[a-z]+(\?[^#\s]*)?$/.test(next)) next = ''; // 只接受站内页面 hash（可带查询参数），杜绝开放跳转
-  if (reason === 'kicked') {
-    var kickBox = document.getElementById('login-notice');
-    kickBox.textContent = t.kicked;
-    kickBox.style.display = 'block';
-  }
-
-  // 全清/重置后由前端写入的一次性提示：展示默认管理员账号
-  var noticeRaw = localStorage.getItem('login_notice');
-  if (noticeRaw && reason !== 'kicked') {
-    try {
-      var notice = JSON.parse(noticeRaw);
-      var box = document.getElementById('login-notice');
-      box.textContent = t.notice.replace('{user}', notice.username || '').replace('{pass}', notice.password || '');
-      box.style.display = 'block';
-    } catch (e) { /* 提示数据损坏时忽略 */ }
-    localStorage.removeItem('login_notice');
   }
 
   window.doLogin = function() {
