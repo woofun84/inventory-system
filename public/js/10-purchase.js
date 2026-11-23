@@ -1393,9 +1393,22 @@ Object.assign(App, {
     if (!this.can('purchase', status === 'draft' ? 'manage' : 'modify')) { this.toast(this.t('no_perm_msg'), 'error'); return; }
     const head = this.puReadEditForm();
     this.puClearLineErrors();
+    // 草稿不产生下游影响，直接保存；已确认单的修改会立即生效（改价同步入库/退货并重算成本），保存前二次确认
+    if (status === 'draft') { await this.puDoSaveOrder(head); return; }
+    const lines = this.puCollectEditLines();
+    this.confirmDialog(this.t('pu_save_modify'),
+      `${this.t('pu_save_modify_msg')}<br><br>${this.t('pu_line_count')}: ${lines.length}`,
+      () => this.puDoSaveOrder(head, lines), null, 'primary');
+  },
+
+  async puDoSaveOrder(head, lines) {
+    const status = this._puEditPo?.status || 'draft';
     try {
-      const r = await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no), 'PUT', Object.assign({}, head, { lines: this.puCollectEditLines() }));
+      const r = await this.api('/api/purchase/orders/' + encodeURIComponent(head.po_no), 'PUT',
+        Object.assign({}, head, { lines: lines || this.puCollectEditLines() }));
       this.puToastSaved(this.t(status === 'draft' ? 'pu_draft_saved' : 'pu_modified_saved'), r);
+      // 修改已落库：清除编辑页脏标记，避免随后跳转时误弹「放弃未保存的修改」
+      this.clearFormDirty();
       delete this._puDetail['orders:' + head.po_no];
       await this.puEditOrderPage(head.po_no);
     } catch (e) {
