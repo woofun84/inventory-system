@@ -1410,7 +1410,9 @@ Object.assign(App, {
       // 修改已落库：清除编辑页脏标记，避免随后跳转时误弹「放弃未保存的修改」
       this.clearFormDirty();
       delete this._puDetail['orders:' + head.po_no];
-      await this.puEditOrderPage(head.po_no);
+      // 已确认单的修改立即生效，保存后回到列表；草稿仍留在编辑页，方便继续补明细
+      if (status === 'draft') await this.puEditOrderPage(head.po_no);
+      else await this.puBackToList(head.po_no);
     } catch (e) {
       if (!this.puShowLineErrorFromApi(e)) this.toast(e.message, 'error');
     }
