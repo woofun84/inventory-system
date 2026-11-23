@@ -784,14 +784,14 @@ const I18N = {
     cost_basis_none_forbidden: '仅管理员可确认按 0 成本入账'
   },
   en: {
-    appName: 'Inventory System', nav_header_sub: 'Stock · Documents · Analytics', loading: 'Loading...',
+    appName: 'Inventory', nav_header_sub: 'Stock · Docs · Analytics', loading: 'Loading...',
     hdr_lang_tip: 'Switch language', hdr_theme_tip: 'Switch theme', hdr_logout_tip: 'Logout',
     doc_title: 'Inventory In/Out Management',
     confirm: 'Confirm', cancel: 'Cancel', save: 'Save', add: 'Add', edit: 'Edit', delete: 'Delete', create: 'Create', close: 'Close', search: 'Search',
     unsaved_title: 'Discard unsaved changes?', unsaved_msg: 'This form has unsaved changes that will be lost if you leave.',
     updated: 'Updated', added: 'Added', deleted: 'Deleted', fillRequired: 'Please fill required fields', requestFailed: 'Request failed',
     selectMaterial: 'Please select a material', please_select: 'Select', none: 'None',
-    nav_home: 'Dashboard', nav_inbound: 'Inbound Management', nav_outbound: 'Outbound Management', nav_returns: 'Returns', nav_query: 'Query Center', nav_purchase: 'Purchasing',
+    nav_home: 'Dashboard', nav_inbound: 'Inbound', nav_outbound: 'Outbound', nav_returns: 'Returns', nav_query: 'Query Center', nav_purchase: 'Purchasing',
     nav_materials: 'Materials', nav_price: 'Prices', nav_suppliers: 'Suppliers', nav_settings: 'Settings',
     nav_sec_overview: 'Overview', nav_sec_business: 'Operations', nav_sec_analytics: 'Query & Analytics',
     nav_sec_master: 'Master Data', nav_sec_system: 'System', nav_menu: 'Menu',
