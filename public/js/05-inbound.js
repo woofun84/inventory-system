@@ -1582,15 +1582,20 @@ Object.assign(App, {
     this._ibNoOrigin = detail.txn_type === '采购退货' && this._ibReturnTier === 'none';
     this._ibReturnSourceMap = null;
     if (this._ibReturnLinked) {
+      // 可退量口径必须与后端「确认更正」一致：更正草稿确认后被更正原单会作废，
+      // 因此计算剩余可退时要排除原单占用（而非排除草稿自身，草稿本就不占用）。
+      // 普通退货单仍排除自身，避免可选来源把自己算进去。
+      const isCorrDraft = detail.status === 'draft' && !!String(detail.corrects_doc_no || '').trim();
+      const exclDoc = isCorrDraft ? String(detail.corrects_doc_no).trim() : docNo;
       let srcUrl = '';
       if (this._ibReturnTier === 'inbound') {
         srcUrl = (isMiscReturnDetail ? '/api/returns/misc/origin-lines' : '/api/returns/purchase/origin-lines')
           + '?docNo=' + encodeURIComponent(detail.origin_doc_no || '')
-          + '&excludeDocNo=' + encodeURIComponent(docNo);
+          + '&excludeDocNo=' + encodeURIComponent(exclDoc);
       } else {
         srcUrl = '/api/returns/purchase/scope-lines?scope=' + encodeURIComponent(this._ibReturnTier)
           + '&refNo=' + encodeURIComponent(detail.return_ref_no || '')
-          + '&excludeDocNo=' + encodeURIComponent(docNo);
+          + '&excludeDocNo=' + encodeURIComponent(exclDoc);
       }
       try {
         const sources = await this.api(srcUrl);
