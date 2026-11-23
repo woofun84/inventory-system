@@ -1153,14 +1153,18 @@ Object.assign(App, {
     } catch (e) { this._obOriginCandidates = []; }
   },
 
-  // 可退明细：以“排除本单”的口径计算剩余可退量
+  // 可退明细：口径必须与后端「确认更正」一致——更正草稿确认后原退库单会作废，
+  // 因此排除被更正原单的占用（普通退库单仍排除自身，草稿本就不占用）。
   async loadReturnableMap() {
     this._obReturnableMap = {};
     this._obReturnableHeader = null;
     if (!this._obOriginDocNo) return;
+    const d = this._obDetail || {};
+    const isCorrDraft = d.status === 'draft' && !!String(d.corrects_doc_no || '').trim();
+    const exclDoc = isCorrDraft ? String(d.corrects_doc_no).trim() : (this._obDocNo || '');
     try {
       const r = await this.api('/api/outbound-docs/' + encodeURIComponent(this._obOriginDocNo)
-        + '/returnable?excludeDocNo=' + encodeURIComponent(this._obDocNo || ''));
+        + '/returnable?excludeDocNo=' + encodeURIComponent(exclDoc));
       (r.lines || []).forEach(l => { this._obReturnableMap[String(l.id)] = l; });
       this._obReturnableHeader = r;
     } catch (e) { this._obReturnableMap = {}; }
