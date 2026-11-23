@@ -1580,12 +1580,31 @@ Object.assign(App, {
         // 没有 price:edit：不提交 order_price（编辑时服务端保留原值，新增时为 0）
         if (priceEditable) payload.order_price = Number(document.getElementById('pu_l_price').value || 0);
         if (!payload.code) { this.setFieldError('pu_l_code', this.t('pu_need_material')); return; }
-        try {
-          const r = await this.api('/api/purchase/lines' + (isEdit ? '/' + l.id : ''), isEdit ? 'PUT' : 'POST', payload);
-          this.closeModal();
-          this.puToastSaved(isEdit ? this.t('pu_line_updated') : this.t('pu_line_added'), r);
-          this.puRefreshCurrent();
-        } catch (e) { this.toast(e.message, 'error'); }
+
+        const doSave = async () => {
+          try {
+            const r = await this.api('/api/purchase/lines' + (isEdit ? '/' + l.id : ''), isEdit ? 'PUT' : 'POST', payload);
+            this.closeModal();
+            this.puToastSaved(isEdit ? this.t('pu_line_updated') : this.t('pu_line_added'), r);
+            this.puRefreshCurrent();
+          } catch (e) { this.toast(e.message, 'error'); }
+        };
+        // 草稿无下游影响，直接保存；已确认单的明细改动立即生效（改价还会重算成本），保存前二次确认
+        const rec = this._puDetail['orders:' + poNo];
+        const status = (rec && rec.d && rec.d.status) || 'draft';
+        if (status === 'draft') { await doSave(); return; }
+        const okBtn = document.getElementById('modal-confirm-btn');
+        if (okBtn) this.setButtonLoading(okBtn, false); // 等待确认时解除转圈，busy 仍锁住重复点击
+        let agreed = false;
+        await new Promise(resolve => {
+          this.confirmDialog(this.t(isEdit ? 'pu_edit_line' : 'pu_add_line'),
+            this.t('pu_line_save_msg'),
+            () => { agreed = true; resolve(); },
+            () => resolve(),
+            'primary');
+        });
+        // 取消时保持弹窗和已填内容，用户可继续修改后再保存
+        if (agreed) await doSave();
       }, null, true);
   },
 
