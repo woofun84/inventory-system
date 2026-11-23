@@ -1778,9 +1778,14 @@ Object.assign(App, {
         available = null;
       }
     } else {
-      available = isCorr
-        ? (corr.current[this.ibCorrKey(l)] !== undefined ? corr.current[this.ibCorrKey(l)] : 0)
-        : (linked ? linkedMax : this._inboundStockMap[l.code]);
+      // 退货关联档（linked）参照列一律显示「剩余可退」：表头由 linked 优先决定，
+      // 取值也必须以 linked 优先，否则「退货更正单」会误取原单数量（corr.current）当可退量。
+      // 纯入库更正单 linked=false，仍走 corr.current（当前有效数量），口径不变。
+      available = linked
+        ? linkedMax
+        : (isCorr
+          ? (corr.current[this.ibCorrKey(l)] !== undefined ? corr.current[this.ibCorrKey(l)] : 0)
+          : this._inboundStockMap[l.code]);
     }
     const availCls = available === undefined || available === null ? 'num-zero'
       : (available < 0 ? 'num-neg' : (available === 0 ? 'num-warn' : ''));
@@ -1819,6 +1824,8 @@ Object.assign(App, {
   // 明细行 HTML：过账态只读、草稿态可编辑，两种分支都走同一份参照列结果
   ibEditRowHtml(l, i, ctx, r) {
     const { d, isDraft, isCorr, isPurchaseIn, linked, vp } = ctx;
+    // 「当前有效数量」说明只属于纯更正单；退货关联档（含退货更正）参照列是「剩余可退」，不套用该 tooltip
+    const corrRefTip = isCorr && !linked;
     if (!isDraft) {
       const qty = Number(l.qty) || 0;
       return `<tr>
@@ -1828,7 +1835,7 @@ Object.assign(App, {
             <td class="u-fs-xs">${r.contract}</td>
             <td>${l.remarks || ''}</td>
             ${r.corrUnrecCell}
-            <td class="pu-edit-amt${r.availCls ? ' ' + r.availCls : ''}"${isCorr ? ` title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${r.availText}</td>
+            <td class="pu-edit-amt${r.availCls ? ' ' + r.availCls : ''}"${corrRefTip ? ` title="${this.docEsc(this.t('ibd_corr_current_qty_title'))}"` : ''}>${r.availText}</td>
             <td></td>
           </tr>`;
     }
@@ -1859,7 +1866,7 @@ Object.assign(App, {
           <td style="min-width:120px" class="u-fs-xs">${r.contract}</td>
           <td class="u-min-w-140"><input value="${this.docEsc(l.remarks || '')}" oninput="App.ibEditSet(${i},'remarks',this.value)"></td>
           ${r.corrUnrecCell}
-          <td class="pu-edit-amt u-fs-xs${r.availCls ? ' ' + r.availCls : ''}"${(r.availTitle || isCorr) ? ` title="${this.docEsc(isCorr ? this.t('ibd_corr_current_qty_title') : r.availTitle)}"` : ''}>${r.availText}</td>
+          <td class="pu-edit-amt u-fs-xs${r.availCls ? ' ' + r.availCls : ''}"${(r.availTitle || corrRefTip) ? ` title="${this.docEsc(corrRefTip ? this.t('ibd_corr_current_qty_title') : r.availTitle)}"` : ''}>${r.availText}</td>
           <td class="text-center"><button type="button" class="pu-edit-del" onclick="App.removeInboundEditRow(${i})">${this.t('in_remove_row')}</button></td>
         </tr>`;
   },
